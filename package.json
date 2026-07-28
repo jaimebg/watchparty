@@ -1,0 +1,10 @@
+{
+  "name": "jbg-watchparty",
+  "private": true,
+  "type": "module",
+  "workspaces": ["server", "web"],
+  "scripts": {
+    "start": "npm run build -w web && npm run start -w server",
+    "test": "npm run test -w server && npm run test -w web"
+  }
+}
