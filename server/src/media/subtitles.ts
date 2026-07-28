@@ -18,10 +18,10 @@ export function listSubtitleOptions(info: MediaInfo, srtFiles: string[]): Subtit
 export async function extractSubtitle(input: string, info: MediaInfo, srtFiles: string[], id: number, outVtt: string): Promise<void> {
   const embedded = info.subs.filter(s => s.textBased)
   if (id < embedded.length) {
-    await pExecFile(ffmpegPath as string, ['-y', '-i', input, '-map', `0:s:${embedded[id].index}`, '-f', 'webvtt', outVtt])
+    await pExecFile(ffmpegPath as unknown as string, ['-y', '-i', input, '-map', `0:s:${embedded[id].index}`, '-f', 'webvtt', outVtt])
   } else {
     const srt = srtFiles[id - embedded.length]
     if (!srt) throw new Error(`Subtítulo ${id} no existe`)
-    await pExecFile(ffmpegPath as string, ['-y', '-i', srt, '-f', 'webvtt', outVtt])
+    await pExecFile(ffmpegPath as unknown as string, ['-y', '-i', srt, '-f', 'webvtt', outVtt])
   }
 }
