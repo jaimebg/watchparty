@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { mkdtempSync, existsSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -32,9 +32,45 @@ describe('TranscodeSession', () => {
     expect(existsSync(join(outDir, 'init_0.mp4'))).toBe(true)
   })
 
-  it('seek restart produces the requested later segment', async () => {
-    const last = session['segments'].length - 1
-    const p = await session.requestSegment(0, last, 45_000)
+  it('requesting a segment behind the current start forces a genuine seekTo restart', async () => {
+    // Starting session.start() at 0 and later asking for a late segment never
+    // exercises seekTo(): a "copy"-mode remux of the 30s fixture finishes
+    // almost instantly, so by the time the later segment is requested it is
+    // already on disk from the original process. To force a real kill+restart
+    // we start a fresh session at a mid segment and then ask for an earlier
+    // one that the mid-start process can never produce on its own (it only
+    // encodes forward from its -ss point), which must trigger seekTo().
+    const segments = session['segments']
+    const midIndex = Math.floor(segments.length / 2)
+    const earlierIndex = 1 // != 0, so success also proves -start_number isn't just defaulting to 0
+    expect(earlierIndex).toBeLessThan(midIndex)
+
+    const seekOutDir = join(mkdtempSync(join(tmpdir(), 'tsc-seek-')), 'out')
+    mkdirSync(seekOutDir)
+    const seekSession = new TranscodeSession({
+      input: fixture, mode: 'copy', encoder: 'libx264', segments, audioCount: 2, outDir: seekOutDir,
+    })
+    const seekSpy = vi.spyOn(seekSession, 'seekTo')
+
+    seekSession.start(midIndex)
+    await seekSession.requestSegment(0, midIndex, 20_000)
+    const oldProc = seekSession['proc']
+    expect(oldProc).not.toBeNull()
+
+    const earlierPath = join(seekOutDir, `seg_0_${String(earlierIndex).padStart(5, '0')}.m4s`)
+    expect(existsSync(earlierPath)).toBe(false) // the mid-start process never produces this
+
+    const p = await seekSession.requestSegment(0, earlierIndex, 45_000)
+
+    expect(seekSpy).toHaveBeenCalledWith(earlierIndex) // seekTo genuinely ran
+    expect(p).toBe(earlierPath) // restarted numbering at earlierIndex via -start_number
     expect(existsSync(p)).toBe(true)
-  })
+    expect(seekSession['proc']).not.toBe(oldProc) // old process was replaced
+    expect(oldProc?.killed).toBe(true) // we sent it SIGKILL
+    // A signal-killed child gets exitCode=null + signalCode set (Node semantics,
+    // not a normal exit(0)), so "died" means either field is non-null.
+    expect(oldProc?.exitCode !== null || oldProc?.signalCode !== null).toBe(true)
+
+    await seekSession.stop()
+  }, 90_000)
 })
