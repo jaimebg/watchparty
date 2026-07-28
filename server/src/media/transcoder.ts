@@ -12,7 +12,13 @@ export class TranscodeSession {
   private proc: ChildProcess | null = null
   private startSegment = 0
   private finished = false
-  private killing = false
+  // Per-process intentional-kill marker. A shared boolean would race when a
+  // seekTo() overlaps with the previous process's own exit event (the old
+  // process's exit handler could reset the flag before/after the new kill,
+  // producing false errorCb firings or swallowing real ones). Keying off the
+  // ChildProcess instance itself (captured locally in each start() closure)
+  // makes each exit handler check only its own process's kill status.
+  private killedProcs = new WeakSet<ChildProcess>()
   private errorCb: ((log: string[]) => void) | null = null
   private segments: Segment[]
 
@@ -22,15 +28,16 @@ export class TranscodeSession {
     this.startSegment = fromSegment
     this.finished = false
     const args = buildTranscodeArgs({ ...this.opts, startSegment: fromSegment })
-    this.proc = spawn(ffmpegPath as unknown as string, args, { stdio: ['ignore', 'ignore', 'pipe'] })
-    this.proc.stderr!.on('data', (d: Buffer) => {
+    const proc = spawn(ffmpegPath as unknown as string, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    this.proc = proc
+    proc.stderr!.on('data', (d: Buffer) => {
       this.lastLog.push(...d.toString().split('\n').filter(Boolean))
       this.lastLog = this.lastLog.slice(-50)
     })
-    this.proc.on('exit', code => {
+    proc.on('exit', code => {
       if (code === 0) this.finished = true
-      else if (!this.killing) this.errorCb?.(this.lastLog)
-      this.killing = false
+      else if (!this.killedProcs.has(proc)) this.errorCb?.(this.lastLog)
+      this.killedProcs.delete(proc)
     })
   }
 
@@ -63,7 +70,8 @@ export class TranscodeSession {
   }
 
   private killProc(): void {
-    if (this.proc && this.proc.exitCode === null) { this.killing = true; this.proc.kill('SIGKILL') }
+    const p = this.proc
+    if (p && p.exitCode === null) { this.killedProcs.add(p); p.kill('SIGKILL') }
     this.proc = null
   }
 
