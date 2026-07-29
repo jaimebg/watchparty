@@ -26,7 +26,7 @@ function broadcast(room: Room, m: ServerMsg): void {
 }
 
 function system(room: Room, text: string): void {
-  const entry: ChatEntry = { id: randomBytes(6).toString('hex'), from: { id: 'sys', name: 'sistema', color: '#888' }, kind: 'system', text, at: Date.now() }
+  const entry: ChatEntry = { id: randomBytes(6).toString('hex'), from: { id: 'sys', name: 'sistema', color: '#888', active: true }, kind: 'system', text, at: Date.now() }
   room.chat.push(entry)
   room.chat = room.chat.slice(-500)
   broadcast(room, { t: 'chat', entry })
@@ -76,7 +76,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
 
         if (msg.t === 'join') {
           if (typeof msg.name !== 'string') return
-          me = { id: randomBytes(6).toString('hex'), name: msg.name.slice(0, 30) || 'Anónimo', color: COLORS[peers.size % COLORS.length] }
+          me = { id: randomBytes(6).toString('hex'), name: msg.name.slice(0, 30) || 'Anónimo', color: COLORS[peers.size % COLORS.length], active: true }
           peers.set(socket, me)
           send(socket, { t: 'welcome', self: me, participants: [...peers.values()], state: room.state, serverNow: now, history: room.chat })
           broadcast(room, { t: 'presence', participants: [...peers.values()] })
@@ -126,6 +126,12 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
             if (typeof msg.value !== 'boolean') return
             bufferingActive = msg.value
             broadcast(room, { t: 'buffering', name: me.name, value: msg.value })
+            break
+          }
+          case 'visibility': {
+            if (typeof msg.active !== 'boolean') return
+            me.active = msg.active
+            broadcast(room, { t: 'presence', participants: [...peers.values()] })
             break
           }
         }
