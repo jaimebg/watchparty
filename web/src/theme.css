@@ -45,3 +45,53 @@ ul {
   flex-direction: column;
   gap: 0.5rem;
 }
+
+input {
+  background: #1c1f26;
+  color: #e8e8e8;
+  border: 1px solid #2a2e37;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-size: 1rem;
+}
+
+.name-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.banner {
+  background: #4a2a00;
+  border: 1px solid #ffb020;
+  color: #ffb020;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.error-log {
+  background: #1c1f26;
+  border: 1px solid #2a2e37;
+  border-radius: 6px;
+  padding: 1rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.player video {
+  width: 100%;
+  border-radius: 8px;
+  background: #000;
+  display: block;
+}
+
+.player .controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.player .controls input[type='range'] {
+  flex: 1;
+}
