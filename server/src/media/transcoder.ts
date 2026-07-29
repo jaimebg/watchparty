@@ -5,6 +5,9 @@ import ffmpegPath from 'ffmpeg-static'
 import { buildTranscodeArgs } from './ffmpegArgs.js'
 import type { Segment } from './planner.js'
 
+// Margen antes de dar por perdido a ffmpeg. Tiene que superar con holgura lo que
+// cuesta un segmento (planSegments reparte cada 4 s), o una producción lenta se
+// confundiría con un proceso ausente.
 const FORWARD_GRACE_MS = 6_000
 
 interface Opts { input: string; mode: 'copy' | 'transcode'; encoder: string; segments: Segment[]; audioCount: number; outDir: string }
@@ -56,7 +59,10 @@ export class TranscodeSession {
     // Ya estamos produciendo desde ahí: matar el proceso que justo está llenando
     // ese hueco solo reiniciaría el trabajo desde cero. Sin esta guarda, las
     // peticiones de vídeo y de audio del mismo índice se matan entre sí en bucle.
-    if (segmentIndex === this.startSegment && this.proc && this.proc.exitCode === null) return
+    // `exitCode` a solas no vale como prueba de vida: también es null cuando una
+    // señal (OOM, SIGSEGV) se llevó el proceso, y ese sí hay que relanzarlo.
+    if (segmentIndex === this.startSegment && this.proc
+        && this.proc.exitCode === null && this.proc.signalCode === null) return
     // Seek a una zona ya cacheada: reiniciar ffmpeg ahí regeneraría segmentos
     // ya servibles y reescribiría init_*.mp4 mientras algún cliente los
     // descarga, sin producir nada nuevo. Se comprueban todas las variantes
@@ -108,16 +114,27 @@ export class TranscodeSession {
 
   async requestSegment(variant: number, index: number, timeoutMs = 30_000): Promise<string> {
     if (this.isReady(variant, index)) return this.segPath(variant, index)
-    if (index < this.startSegment && !existsSync(this.segPath(variant, index))) this.seekTo(index)
+    let restarted = false
+    if (index < this.startSegment && !existsSync(this.segPath(variant, index))) {
+      this.seekTo(index)
+      restarted = true
+    }
     const deadline = Date.now() + timeoutMs
     const forwardAt = Date.now() + FORWARD_GRACE_MS
-    let restarted = false
     while (Date.now() < deadline) {
       if (this.isReady(variant, index)) return this.segPath(variant, index)
       if (this.finished && existsSync(this.segPath(variant, index))) return this.segPath(variant, index)
-      // Ni siquiera existe el segmento anterior: ffmpeg no viene de camino y
-      // esperar el plazo entero solo acaba en 504. Se reinicia aquí, una vez.
-      if (!restarted && Date.now() >= forwardAt && index > this.startSegment
+      // ffmpeg no viene de camino y esperar el plazo entero solo acaba en 504.
+      // Las tres condiciones acotan el falso positivo:
+      // - `index > startSegment + 1`: nunca matamos al proceso que está produciendo
+      //   el segmento contiguo, que en modo transcode puede tardar más que la gracia.
+      // - el segmento pedido no existe: si existe, ffmpeg pasó por ahí y solo falta
+      //   que cierre el siguiente.
+      // - el anterior tampoco: su ausencia solo prueba algo junto a la condición
+      //   anterior, porque la poda de caché (cada 60 s, index.ts) borra segmentos
+      //   viejos de salas vivas.
+      if (!restarted && Date.now() >= forwardAt && index > this.startSegment + 1
+          && !existsSync(this.segPath(variant, index))
           && !existsSync(this.segPath(variant, index - 1))) {
         restarted = true
         this.seekTo(index)
