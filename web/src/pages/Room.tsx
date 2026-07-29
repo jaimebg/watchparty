@@ -1,11 +1,24 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { getRoom, getStatus } from '../api'
 import { connectRoom } from '../ws'
 import { Player, type LastState } from '../player/Player'
-import type { ClientMsg, RoomInfo } from '../types'
+import { ChatPanel } from '../chat/ChatPanel'
+import { ReactionsBar } from '../chat/ReactionsBar'
+import { ReactionOverlay } from '../chat/ReactionOverlay'
+import { chatReducer, dropReaction, initialChat, type ChatState } from '../chat/chatStore'
+import type { ClientMsg, RoomInfo, ServerMsg } from '../types'
 
 const NAME_KEY = 'jbg-name'
 const STATUS_POLL_MS = 30_000
+
+// Superset of ServerMsg with a UI-only action to retire a reaction once its
+// float-up animation finishes. Keeps chatReducer's exported signature (tested
+// directly in chatStore.test.ts) limited to ServerMsg, as the brief requires.
+type RoomChatAction = ServerMsg | { t: 'drop-reaction'; id: number }
+
+function roomChatReducer(s: ChatState, a: RoomChatAction): ChatState {
+  return a.t === 'drop-reaction' ? dropReaction(s, a.id) : chatReducer(s, a)
+}
 
 export function Room({ token }: { token: string }) {
   const [name, setName] = useState<string | null>(() => localStorage.getItem(NAME_KEY))
@@ -14,6 +27,7 @@ export function Room({ token }: { token: string }) {
   const [notFound, setNotFound] = useState(false)
   const [lastState, setLastState] = useState<LastState | null>(null)
   const [tunnelDown, setTunnelDown] = useState(false)
+  const [chat, dispatchChat] = useReducer(roomChatReducer, initialChat)
   const sendRef = useRef<(m: ClientMsg) => void>(() => {})
 
   useEffect(() => {
@@ -27,10 +41,10 @@ export function Room({ token }: { token: string }) {
   useEffect(() => {
     if (!name || notFound) return
     const conn = connectRoom(token, name, m => {
+      dispatchChat(m)
       if (m.t === 'welcome' || m.t === 'state') {
         setLastState({ state: m.state, serverNow: m.serverNow, receivedAt: Date.now() })
       }
-      // chat/presence/reaction/buffering de otros llegan en Task 18.
     })
     sendRef.current = conn.send
     return () => conn.close()
@@ -92,11 +106,17 @@ export function Room({ token }: { token: string }) {
   }
 
   return (
-    <main className="page">
+    <main className="page page--room">
       {tunnelDown && <div className="banner">Túnel caído, relanzando…</div>}
       <h1>{info.title}</h1>
-      <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} />
-      {/* Chat llega en Task 18 */}
+      <div className="room-grid">
+        <div className="video-stage">
+          <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} />
+          <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />
+          <ReactionsBar send={m => sendRef.current(m)} />
+        </div>
+        <ChatPanel token={token} state={chat} send={m => sendRef.current(m)} />
+      </div>
     </main>
   )
 }

@@ -95,3 +95,187 @@ input {
 .player .controls input[type='range'] {
   flex: 1;
 }
+
+/* Room layout: video + reactions on the left, chat panel on the right. */
+
+.page--room {
+  max-width: 1280px;
+}
+
+.room-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.video-stage {
+  position: relative;
+}
+
+@media (max-width: 800px) {
+  .room-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Reactions */
+
+.reactions-bar {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.reactions-bar button {
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.4rem 0.6rem;
+}
+
+.reaction-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.reaction-overlay span {
+  position: absolute;
+  bottom: 0;
+  font-size: 2.5rem;
+  animation: float-up 2.5s ease-out forwards;
+}
+
+@keyframes float-up {
+  to {
+    transform: translateY(-40vh);
+    opacity: 0;
+  }
+}
+
+/* Chat panel */
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  background: #1c1f26;
+  border: 1px solid #2a2e37;
+  border-radius: 8px;
+  padding: 0.75rem;
+  min-width: 0;
+}
+
+.participants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.participants li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.participants .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chat-entries {
+  flex: 1;
+  min-height: 240px;
+  max-height: 50vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border-top: 1px solid #2a2e37;
+  border-bottom: 1px solid #2a2e37;
+  padding: 0.5rem 0;
+}
+
+.chat-entry {
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+
+.chat-entry--system {
+  color: #888;
+  font-style: italic;
+  font-size: 0.8rem;
+}
+
+.chat-entry--gif img {
+  display: block;
+  max-width: 160px;
+  border-radius: 6px;
+  margin-top: 0.25rem;
+}
+
+.buffering-note {
+  color: #888;
+  font-style: italic;
+  font-size: 0.8rem;
+  margin: 0.4rem 0 0;
+}
+
+.chat-input {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.chat-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* GIF picker */
+
+.gif-picker {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #14161b;
+  border: 1px solid #2a2e37;
+  border-radius: 8px;
+}
+
+.gif-picker-header {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.gif-picker-header input {
+  flex: 1;
+  min-width: 0;
+}
+
+.gif-picker-status {
+  color: #888;
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
+}
+
+.gif-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.35rem;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.gif-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+}
