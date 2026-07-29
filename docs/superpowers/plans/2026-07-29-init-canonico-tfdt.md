@@ -628,23 +628,58 @@ git commit -m "feat: reanclar la cabecera de un segmento al tiempo absoluto de l
 
 ---
 
-### Task 4: `requestInit` entrega un init canónico
+### Task 4: Init canónico y segmento anclado
+
+Las dos mitades del arreglo van juntas porque están acopladas: canonicalizar el
+init sin retimear deja el segmento de un run reiniciado en 0, y retimear sin
+canonicalizar suma el offset dos veces (el `elst` y el `tfdt`). Cualquiera de las
+dos a solas rompe los tests de timestamp que ya existen; juntas los dejan más
+exactos. Un solo commit.
 
 **Files:**
 - Modify: `server/src/media/transcoder.ts`
 - Test: `server/test/transcoder.test.ts`
 
 **Interfaces:**
-- Consumes: `canonicalizeInit` (Task 2).
-- Produces: `TranscodeSession.requestInit` sigue devolviendo `Promise<string>` (la ruta de `init_V.stable.mp4`), ahora con contenido canónico. Nuevo método interno `timescalesFor(variant: number): Map<number, number> | undefined`, que consume Task 5.
+- Consumes: `canonicalizeInit`, `headerLength`, `retimeHeader`, `parseBoxes` (Tasks 1-3).
+- Produces:
+  - `TranscodeSession.requestInit(variant, timeoutMs?)` → `Promise<string>` — misma firma, ahora el archivo apuntado es canónico.
+  - `TranscodeSession.openSegment(variant: number, index: number, timeoutMs?: number): Promise<Readable>`.
 
-- [ ] **Step 1: Escribir el test que falla**
+- [ ] **Step 1: Escribir los tests que fallan**
 
-Añade a `server/test/transcoder.test.ts` (dentro del `describe('TranscodeSession', ...)`). Necesita `parseBoxes` importado arriba del archivo:
+En `server/test/transcoder.test.ts` añade estos imports arriba del archivo:
 
 ```ts
+import { randomBytes } from 'node:crypto'
+import { Readable } from 'node:stream'
 import { parseBoxes } from '../src/media/fmp4.js'
+```
 
+Y estos dos helpers, antes del `describe`:
+
+```ts
+async function drain(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  for await (const c of stream) chunks.push(c as Buffer)
+  return Buffer.concat(chunks)
+}
+
+// start_time de cada pista de un fMP4, que solo es reproducible con su init
+// delante. Es la medida que importa: es donde hls.js coloca el segmento.
+async function startTimes(dir: string, init: Buffer, seg: Buffer): Promise<number[]> {
+  const joined = join(dir, `joined-${randomBytes(4).toString('hex')}.mp4`)
+  writeFileSync(joined, Buffer.concat([init, seg]))
+  const { stdout } = await run(ffprobeStatic.path, [
+    '-v', 'error', '-show_entries', 'stream=start_time', '-of', 'csv=p=0', joined,
+  ])
+  return stdout.trim().split('\n').map(Number)
+}
+```
+
+Y los dos tests, dentro del `describe('TranscodeSession', ...)`:
+
+```ts
   it('el init entregado es canónico y no depende del run que lo produjo', async () => {
     // El fallo de bb67bc0: ffmpeg guarda en el edts del init la posición donde
     // arrancó ESE proceso, y el servidor fija un init para toda la sala. Si el
@@ -677,131 +712,7 @@ import { parseBoxes } from '../src/media/fmp4.js'
     // Y los dos runs dan exactamente el mismo init.
     expect(desdeMid.equals(desde0)).toBe(true)
   }, 120_000)
-```
 
-- [ ] **Step 2: Ejecutar el test y verificar que falla**
-
-Run: `npm test -w server -- transcoder -t "el init entregado es canónico"`
-Expected: FAIL — el init aún trae `edts` (`expected [...] not to contain 'edts'`).
-
-- [ ] **Step 3: Escribir la implementación mínima**
-
-En `server/src/media/transcoder.ts`, cambia el import de `node:fs` y añade el de `fmp4.js`:
-
-```ts
-import { createReadStream, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { canonicalizeInit } from './fmp4.js'
-```
-
-(`copyFileSync` deja de usarse: el snapshot ya no es una copia byte a byte sino el init canonicalizado.)
-
-Añade el campo, junto a `initCopies`:
-
-```ts
-  // Timescale de cada pista, por variante, sacado del init al fijarlo. Hace
-  // falta para retimear los segmentos, y no se puede deducir del plan: cada
-  // pista tiene el suyo (medido: vídeo 12800, audio 44100).
-  private timescales = new Map<number, Map<number, number>>()
-```
-
-Sustituye el cuerpo de `requestInit` entre la línea del `stable` y el `return stable` del bucle:
-
-```ts
-    const stable = join(this.opts.outDir, `init_${variant}.stable.mp4`)
-    if (existsSync(stable)) { this.loadTimescales(variant, stable); return stable }
-```
-
-y, dentro del `while`, el bloque que copiaba:
-
-```ts
-      if (existsSync(live) && (this.finished || this.segFreshEnough(this.segPath(variant, this.startSegment)))) {
-        const { init, timescales } = canonicalizeInit(readFileSync(live))
-        const tmp = `${stable}.${this.initCopies++}.tmp`
-        writeFileSync(tmp, init)
-        renameSync(tmp, stable)
-        this.timescales.set(variant, timescales)
-        return stable
-      }
-```
-
-Y añade, debajo de `requestInit`:
-
-```ts
-  // Un snapshot que ya existía (misma sesión, otra variante ya servida) no pasó
-  // por el set de arriba. canonicalizeInit es idempotente sobre un init ya
-  // canónico, así que releerlo es la forma barata de recuperar sus timescales.
-  private loadTimescales(variant: number, stable: string): void {
-    if (this.timescales.has(variant)) return
-    this.timescales.set(variant, canonicalizeInit(readFileSync(stable)).timescales)
-  }
-
-  timescalesFor(variant: number): Map<number, number> | undefined {
-    return this.timescales.get(variant)
-  }
-```
-
-- [ ] **Step 4: Ejecutar los tests y verificar que pasan**
-
-Run: `npm test -w server -- transcoder`
-Expected: el test nuevo PASA. **Los tests de las líneas 190 y 217 (`...carries the correct absolute timestamp`) ahora FALLAN**: miden sobre `requestSegment`, que devuelve bytes sin retimear, y sin `edts` en el init ese segmento arranca en 0. Es lo esperado — los arregla la Task 5. Anótalo y sigue.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add server/src/media/transcoder.ts server/test/transcoder.test.ts
-git commit -m "fix: canonicalizar el init al fijarlo, para que no ancle la sala a un run
-
-El edts que ffmpeg escribe tras un -ss guarda la posición donde arrancó ese
-proceso. Como requestInit fija un snapshot para toda la vida de la sala, ese
-offset se aplicaba a segmentos de cualquier otro reinicio. Medido: dos runs
-(desde 0 y desde mitad de película) ahora producen inits byte-idénticos.
-
-Los dos tests de timestamp absoluto quedan en rojo a propósito: miden sobre
-requestSegment, que todavía entrega los bytes tal cual salen de ffmpeg."
-```
-
----
-
-### Task 5: `openSegment` sirve el segmento retimeado
-
-El corazón del arreglo, y el test que reproduce el fallo real de la sala.
-
-**Files:**
-- Modify: `server/src/media/transcoder.ts`
-- Modify: `server/test/transcoder.test.ts` (los dos tests de timestamp pasan a `openSegment`)
-
-**Interfaces:**
-- Consumes: `headerLength`, `retimeHeader` (Tasks 1 y 3), `timescalesFor` (Task 4).
-- Produces: `TranscodeSession.openSegment(variant: number, index: number, timeoutMs?: number): Promise<Readable>`.
-
-- [ ] **Step 1: Escribir el test que falla**
-
-En `server/test/transcoder.test.ts`, añade el import de `Readable` y un helper arriba del `describe`:
-
-```ts
-import { Readable } from 'node:stream'
-
-async function drain(stream: Readable): Promise<Buffer> {
-  const chunks: Buffer[] = []
-  for await (const c of stream) chunks.push(c as Buffer)
-  return Buffer.concat(chunks)
-}
-
-// start_time de vídeo y audio de un fMP4, que solo es reproducible con su init
-// delante. Es la medida que importa: es donde hls.js coloca el segmento.
-async function startTimes(dir: string, init: Buffer, seg: Buffer): Promise<number[]> {
-  const joined = join(dir, `joined-${randomBytes(4).toString('hex')}.mp4`)
-  writeFileSync(joined, Buffer.concat([init, seg]))
-  const { stdout } = await run(ffprobeStatic.path, [
-    '-v', 'error', '-show_entries', 'stream=start_time', '-of', 'csv=p=0', joined,
-  ])
-  return stdout.trim().split('\n').map(Number)
-}
-```
-
-…con `import { randomBytes } from 'node:crypto'` arriba del archivo. Y añade el test:
-
-```ts
   it('un segmento de un run reiniciado aterriza en su sitio con el init de OTRO run', async () => {
     // Exactamente el fallo reportado en bb67bc0: la sala arranca en 0, fija ese
     // init, el host salta a mitad de película y ffmpeg reinicia. Medido antes de
@@ -838,22 +749,25 @@ async function startTimes(dir: string, init: Buffer, seg: Buffer): Promise<numbe
   }, 120_000)
 ```
 
-- [ ] **Step 2: Ejecutar el test y verificar que falla**
+- [ ] **Step 2: Ejecutar los tests y verificar que fallan**
 
-Run: `npm test -w server -- transcoder -t "aterriza en su sitio"`
-Expected: FAIL — `b.openSegment is not a function`.
+Run: `npm test -w server -- transcoder -t "canónico"` y `npm test -w server -- transcoder -t "aterriza en su sitio"`
+Expected: el primero FALLA porque el init aún trae `edts`; el segundo FALLA con `b.openSegment is not a function`.
 
-- [ ] **Step 3: Escribir la implementación mínima**
+- [ ] **Step 3: Canonicalizar el init al fijarlo**
 
-En `server/src/media/transcoder.ts` añade los imports:
+En `server/src/media/transcoder.ts`, cambia el import de `node:fs` y añade los nuevos:
 
 ```ts
+import { createReadStream, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { PassThrough, Readable } from 'node:stream'
 import { canonicalizeInit, headerLength, retimeHeader } from './fmp4.js'
 ```
 
-Y una constante junto a `FORWARD_GRACE_MS`:
+(`copyFileSync` deja de usarse: el snapshot ya no es una copia byte a byte sino el init canonicalizado.)
+
+Añade una constante junto a `FORWARD_GRACE_MS`:
 
 ```ts
 // Cuánto se lee de un segmento para encontrar y parchear su cabecera. Medido en
@@ -862,7 +776,50 @@ Y una constante junto a `FORWARD_GRACE_MS`:
 const HEAD_PROBE_BYTES = 64 * 1024
 ```
 
-Y el método, tras `requestSegment`:
+Añade el campo, junto a `initCopies`:
+
+```ts
+  // Timescale de cada pista, por variante, sacado del init al fijarlo. Hace
+  // falta para retimear los segmentos, y no se puede deducir del plan: cada
+  // pista tiene el suyo (medido: vídeo 12800, audio 44100).
+  private timescales = new Map<number, Map<number, number>>()
+```
+
+En `requestInit`, la línea del `stable`:
+
+```ts
+    const stable = join(this.opts.outDir, `init_${variant}.stable.mp4`)
+    if (existsSync(stable)) { this.loadTimescales(variant, stable); return stable }
+```
+
+y, dentro del `while`, el bloque que copiaba:
+
+```ts
+      if (existsSync(live) && (this.finished || this.segFreshEnough(this.segPath(variant, this.startSegment)))) {
+        const { init, timescales } = canonicalizeInit(readFileSync(live))
+        const tmp = `${stable}.${this.initCopies++}.tmp`
+        writeFileSync(tmp, init)
+        renameSync(tmp, stable)
+        this.timescales.set(variant, timescales)
+        return stable
+      }
+```
+
+Y debajo de `requestInit`:
+
+```ts
+  // Un snapshot que ya existía (misma sesión, otra variante ya servida) no pasó
+  // por el set de arriba. canonicalizeInit es idempotente sobre un init ya
+  // canónico, así que releerlo es la forma barata de recuperar sus timescales.
+  private loadTimescales(variant: number, stable: string): void {
+    if (this.timescales.has(variant)) return
+    this.timescales.set(variant, canonicalizeInit(readFileSync(stable)).timescales)
+  }
+```
+
+- [ ] **Step 4: Implementar `openSegment`**
+
+Tras `requestSegment`, en la misma clase:
 
 ```ts
   /**
@@ -876,7 +833,7 @@ Y el método, tras `requestSegment`:
     const path = await this.requestSegment(variant, index, timeoutMs)
     // Garantiza que el init está fijado, que es de donde salen los timescales.
     await this.requestInit(variant, timeoutMs)
-    const timescales = this.timescalesFor(variant)
+    const timescales = this.timescales.get(variant)
     const start = this.segments[index]?.start
     if (!timescales || start === undefined) return createReadStream(path)
 
@@ -910,9 +867,9 @@ Y el método, tras `requestSegment`:
   }
 ```
 
-- [ ] **Step 4: Arreglar los dos tests que la Task 4 dejó en rojo**
+- [ ] **Step 5: Poner al día los dos tests de timestamp que ya existían**
 
-En `server/test/transcoder.test.ts`, los tests `'a segment produced by a mid-film start carries the correct absolute timestamp'` (≈línea 190) y su gemelo de transcode (≈línea 217) miden sobre `requestSegment`. Cambia en **ambos**:
+Los tests `'a segment produced by a mid-film start carries the correct absolute timestamp'` (≈línea 190) y su gemelo de transcode (≈línea 217) miden sobre `requestSegment`, que entrega los bytes tal cual salen de ffmpeg. Con el init ya canónico, esos bytes arrancan en 0: hay que medir sobre `openSegment`, que es lo que sirve el servidor. Cambia en **ambos**:
 
 ```ts
     const segPath = await s.requestSegment(0, mid, 30_000)
@@ -941,21 +898,27 @@ por:
     expect(Math.abs(video - segments[mid].start)).toBeLessThan(0.05)
 ```
 
-- [ ] **Step 5: Ejecutar toda la suite del transcoder y verificar que pasa**
+- [ ] **Step 6: Ejecutar toda la suite del transcoder y verificar que pasa**
 
-Run: `npm test -w server -- transcoder`
-Expected: PASS, todos.
+Run: `npm test -w server -- transcoder && npm run typecheck -w server`
+Expected: PASS, todos. Ningún test queda en rojo.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add server/src/media/transcoder.ts server/test/transcoder.test.ts
-git commit -m "fix: servir cada segmento anclado al tiempo que declara la playlist
+git commit -m "fix: fijar la línea de tiempo en el servidor, no heredarla de ffmpeg
 
-ffmpeg numera cada reinicio desde su propio origen (el tfdt del segmento vale 0
-en un run arrancado con -ss), así que la posición del medio dependía de qué
-proceso escribió cada archivo. openSegment la fija por construcción: parchea la
-cabecera y deja el mdat viajando en streaming desde disco.
+El edts que ffmpeg escribe tras un -ss guarda la posición donde arrancó ese
+proceso, y el tfdt del segmento vuelve a 0. Como requestInit fija un snapshot
+para toda la vida de la sala, ese offset se aplicaba a segmentos de cualquier
+otro reinicio: medido, un segmento de mitad de película decodificaba en 0:00:00.
+
+Las dos mitades van juntas porque están acopladas: canonicalizar el init sin
+retimear deja el segmento en 0, y retimear sin canonicalizar suma el offset dos
+veces. requestInit entrega ahora un init sin edts (byte-idéntico venga del run
+que venga) y openSegment reancla la cabecera al instante que declara la
+playlist, dejando el mdat en streaming desde disco.
 
 El test nuevo cruza a propósito el init de un run desde 0 con un segmento de un
 run desde mitad de película, que es lo que pasaba en la sala."
@@ -963,7 +926,8 @@ run desde mitad de película, que es lo que pasaba en la sala."
 
 ---
 
-### Task 6: La ruta HTTP sirve el segmento retimeado
+
+### Task 5: La ruta HTTP sirve el segmento retimeado
 
 **Files:**
 - Modify: `server/src/http/api.ts:125-133`
@@ -971,7 +935,7 @@ run desde mitad de película, que es lo que pasaba en la sala."
 - Test: `server/test/api.test.ts`
 
 **Interfaces:**
-- Consumes: `openSegment` (Task 5).
+- Consumes: `openSegment` (Task 4).
 - Produces: `SessionLike.openSegment(variant: number, index: number, timeoutMs?: number): Promise<Readable>`.
 
 - [ ] **Step 1: Escribir el test que falla**
@@ -1068,7 +1032,7 @@ git commit -m "fix: la ruta de segmento sirve los bytes anclados, no el archivo 
 
 ---
 
-### Task 7: Helpers puros de la barra de posición
+### Task 6: Helpers puros de la barra de posición
 
 Los tests del web son de lógica pura (no hay jsdom ni testing-library), así que lo que se puede probar del slider se extrae a `format.ts`, como ya se hizo con `volumeGradient`.
 
@@ -1163,7 +1127,7 @@ git commit -m "feat: helpers de la barra de posición (recorte y relleno)"
 
 ---
 
-### Task 8: Barra arrastrable, para todos
+### Task 7: Barra arrastrable, para todos
 
 **Files:**
 - Modify: `web/src/player/Player.tsx` (props, estado de arrastre, líneas ≈257-262 y ≈299-314)
@@ -1171,7 +1135,7 @@ git commit -m "feat: helpers de la barra de posición (recorte y relleno)"
 - Modify: `web/src/theme.css:639-655`
 
 **Interfaces:**
-- Consumes: `clampPosition`, `positionGradient` (Task 7).
+- Consumes: `clampPosition`, `positionGradient` (Task 6).
 - Produces: `Player` deja de aceptar el prop `isHost`.
 
 - [ ] **Step 1: Quitar el prop `isHost` de `Player`**
@@ -1287,7 +1251,7 @@ del reloj de sala se lo llevaría por delante."
 
 ---
 
-### Task 9: Documentación
+### Task 8: Documentación
 
 **Files:**
 - Modify: `docs/e2e-checklist.md`
