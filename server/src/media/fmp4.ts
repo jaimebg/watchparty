@@ -96,9 +96,22 @@ function elstMediaTime(buf: Buffer, at: number, version: number): number {
  * `retimeHeader` (tfdt = start × timescale) salga exacta.
  */
 function rebuildElst(buf: Buffer, b: Box): Buffer | null {
+  // Sin hueco ni para su propio prólogo (version+flags+entry_count) no hay
+  // nada fiable que leer de esta caja: se trata como vacía en vez de
+  // asomarse a bytes que, aunque estén dentro de `buf`, pertenecen a lo que
+  // venga después (el `mdia` del mismo trak).
+  if (b.size < b.hdr + 8) return null
   const version = buf[b.start + b.hdr]
-  const count = buf.readUInt32BE(b.start + b.hdr + 4)
   const entrySize = elstEntrySize(version)
+  // Acotar entry_count a lo que de verdad cabe en el tamaño DECLARADO de la
+  // caja: sin esto, un entry_count inflado (o una caja truncada) hace que el
+  // bucle lea entradas fantasma de los bytes del `mdia` siguiente y las
+  // conserve —su media_time no sería -1—, dejando un init corrompido en
+  // silencio: los tamaños quedan igual de autoconsistentes, así que nada
+  // lanza y ningún test de estructura falla. Mismo espíritu defensivo que
+  // parseBoxes (para en seco) y headerLength (nunca se pasa del buffer).
+  const maxEntries = Math.floor((b.size - b.hdr - 8) / entrySize)
+  const count = Math.min(buf.readUInt32BE(b.start + b.hdr + 4), maxEntries)
   const kept: Buffer[] = []
   let p = b.start + b.hdr + 8
   for (let i = 0; i < count; i++) {

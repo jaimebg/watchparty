@@ -2,7 +2,7 @@ import { spawn, ChildProcess } from 'node:child_process'
 import { createReadStream, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { join } from 'node:path'
-import { PassThrough, Readable } from 'node:stream'
+import { PassThrough, Readable, pipeline } from 'node:stream'
 import ffmpegPath from 'ffmpeg-static'
 import { buildTranscodeArgs } from './ffmpegArgs.js'
 import { canonicalizeInit, headerLength, retimeHeader } from './fmp4.js'
@@ -42,7 +42,8 @@ export class TranscodeSession {
   private initCopies = 0
   // Timescale de cada pista, por variante, sacado del init al fijarlo. Hace
   // falta para retimear los segmentos, y no se puede deducir del plan: cada
-  // pista tiene el suyo (medido: vídeo 12800, audio 44100).
+  // pista tiene el suyo (medido con la fixture de test, rate=24: vídeo 12288,
+  // audio 44100).
   private timescales = new Map<number, Map<number, number>>()
   // When the currently-running process was spawned. requestInit's proof below
   // ("seeing the segment proves the init is whole") only holds for a segment
@@ -231,8 +232,15 @@ export class TranscodeSession {
     const out = new PassThrough()
     out.write(head)
     const rest = createReadStream(path, { start: headLen })
-    rest.on('error', e => out.destroy(e))
-    rest.pipe(out)
+    // pipeline() en vez de rest.pipe(out) a mano: un pipe manual solo
+    // propaga hacia delante, así que cuando el consumidor destruye `out` a
+    // media descarga (hls.js aborta la petición del segmento en cada seek y
+    // en cada cambio de ABR) Node solo hace unpipe() y PAUSA `rest` sin
+    // destruirlo — el fd (y su buffer de 64 KB) se queda abierto para
+    // siempre. Medido: tras out.destroy(), rest.destroyed=false,
+    // rest.closed=false. pipeline() destruye el origen en cuanto el destino
+    // se cierra antes de tiempo, en cualquier dirección.
+    pipeline(rest, out, () => {})
     return out
   }
 

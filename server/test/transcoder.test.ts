@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
-import { mkdtempSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, existsSync, mkdirSync, readFileSync, writeFileSync, createReadStream } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -11,6 +11,15 @@ import { planSegments } from '../src/media/planner.js'
 import { TranscodeSession } from '../src/media/transcoder.js'
 import { parseBoxes, type Box } from '../src/media/fmp4.js'
 import { run } from './support/run.js'
+
+// Envuelve createReadStream (sin cambiar su comportamiento: reenvía a la
+// implementación real) para poder observar, desde fuera, el stream que
+// openSegment abre para el `mdat` y comprobar que un abort del consumidor lo
+// destruye — la regresión de fd colgado que este mock existe para vigilar.
+vi.mock('node:fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return { ...actual, createReadStream: vi.fn(actual.createReadStream) }
+})
 
 let fixture: string, session: TranscodeSession, outDir: string
 
@@ -257,7 +266,13 @@ describe('TranscodeSession', () => {
     const moov = parseBoxes(desde0).find(b => b.type === 'moov')!
     for (const t of parseBoxes(desde0, moov.start + moov.hdr, moov.start + moov.size)) {
       if (t.type !== 'trak') continue
-      expect(elstMediaTimes(desde0, t)).not.toContain(-1)
+      const mediaTimes = elstMediaTimes(desde0, t)
+      expect(mediaTimes).not.toContain(-1)
+      // [] tampoco contiene -1: sin esto, revertir a "quitar el edts entero"
+      // -el defecto exacto de bb67bc0 que este arreglo corrige- dejaría este
+      // test en verde igualmente, porque las dos pistas de un run real de
+      // libx264 conservan una entrada de trim (vídeo [0,1024], audio [0,0]).
+      expect(mediaTimes.length).toBeGreaterThan(0)
     }
     // Y los dos runs dan exactamente el mismo init.
     expect(desdeMid.equals(desde0)).toBe(true)
@@ -297,6 +312,38 @@ describe('TranscodeSession', () => {
       expect(Math.abs(t - segments[mid].start)).toBeLessThan(0.05)
     }
   }, 120_000)
+
+  it('openSegment destruye el stream del mdat si el consumidor aborta la descarga (sin fd colgado)', async () => {
+    // hls.js aborta la petición de un segmento en cada seek y en cada cambio
+    // de ABR. Antes de este arreglo, out.destroy() solo disparaba un
+    // unpipe() sobre `rest` (rest.pipe(out) manual) que lo PAUSABA sin
+    // destruirlo: el fd -y su buffer de 64 KB- se quedaba abierto para
+    // siempre. Medido entonces sobre un segmento real: tras out.destroy(),
+    // rest.destroyed=false, rest.closed=false, con el fd todavía abierto.
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-abort-'))
+    const abortOutDir = join(dir, 'out'); mkdirSync(abortOutDir)
+    const segments = session['segments']
+    const s = new TranscodeSession({
+      input: fixture, mode: 'transcode', encoder: 'libx264', segments, audioCount: 1, outDir: abortOutDir,
+    })
+    s.start(0)
+    const spy = vi.mocked(createReadStream)
+    const callsBefore = spy.mock.calls.length
+
+    const out = await s.openSegment(0, 0, 30_000)
+    // El stream del mdat es la última llamada a createReadStream que hizo
+    // openSegment (la única con `start: headLen`; el fallback sin timescales
+    // no aplica aquí porque requestInit ya dejó `timescales` poblado).
+    expect(spy.mock.calls.length).toBeGreaterThan(callsBefore)
+    const rest = spy.mock.results.at(-1)!.value as ReturnType<typeof createReadStream>
+    expect(rest.destroyed).toBe(false)
+
+    out.destroy(new Error('client abort'))
+    await new Promise(r => setTimeout(r, 100))
+
+    expect(rest.destroyed).toBe(true)
+    await s.stop()
+  }, 60_000)
 
   it('a segment produced by a mid-film start carries the correct absolute timestamp', async () => {
     // Si el tfdt del segmento no coincide con lo que dice la playlist, hls.js lo

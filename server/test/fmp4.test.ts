@@ -182,6 +182,8 @@ describe('canonicalizeInit', () => {
     const [t] = parseBoxes(init, moov.start + moov.hdr, moov.start + moov.size).filter(b => b.type === 'trak')
     expect(parseBoxes(init, t.start + t.hdr, t.start + t.size).map(b => b.type)).toEqual(['tkhd', 'edts', 'mdia'])
     expect(readElst(init, t)).toEqual([TRIM])
+    // La cascada de tamaños (elst→edts→trak→moov) tiene que cuadrar de verdad.
+    expect(moov.start + moov.size).toBe(init.length)
   })
 
   it('un elst con solo empty edits desaparece por completo, junto con su edts', () => {
@@ -194,6 +196,8 @@ describe('canonicalizeInit', () => {
     const moov = parseBoxes(init).find(b => b.type === 'moov')!
     const [t] = parseBoxes(init, moov.start + moov.hdr, moov.start + moov.size).filter(b => b.type === 'trak')
     expect(parseBoxes(init, t.start + t.hdr, t.start + t.size).map(b => b.type)).toEqual(['tkhd', 'mdia'])
+    // Tirar el edts entero también tiene que cuadrar la cascada de tamaños.
+    expect(moov.start + moov.size).toBe(init.length)
   })
 
   it('funciona igual con un elst de versión 1 (64 bits), sin promocionar la versión', () => {
@@ -209,6 +213,44 @@ describe('canonicalizeInit', () => {
     const elst = parseBoxes(init, edtsBox.start + edtsBox.hdr, edtsBox.start + edtsBox.size)[0]
     expect(init[elst.start + elst.hdr]).toBe(1) // sigue siendo v1
     expect(readElst(init, t)).toEqual([TRIM])
+    // Esta es la única cobertura de la aritmética de entradas de 20 bytes
+    // (v1): si saliera corta, parseBoxes seguiría encontrando el trak igual,
+    // así que hace falta comprobar la cascada de tamaños explícitamente.
+    expect(moov.start + moov.size).toBe(init.length)
+  })
+
+  it('un elst con entry_count inflado no lee más allá de su propio tamaño declarado', () => {
+    // entry_count dice 4, pero la caja solo está dimensionada para 2
+    // entradas reales (24 bytes de payload tras el prólogo de 8, dentro de
+    // un elst de tamaño 40 = hdr 8 + 8 + 24). Sin acotar, el bucle seguiría
+    // leyendo 2 "entradas" más de los bytes que vienen justo después del
+    // elst dentro del trak: el mdia siguiente.
+    const prologueMentiroso = Buffer.alloc(8)
+    prologueMentiroso.writeUInt32BE(4, 4) // entry_count MIENTE: dice 4, caben 2
+    const entradasReales = Buffer.concat([[20000, -1], TRIM].map(([dur, mediaTime]) => {
+      const e = Buffer.alloc(12)
+      e.writeUInt32BE(dur, 0)
+      e.writeInt32BE(mediaTime, 4)
+      return e
+    }))
+    const elstMentiroso = box('elst', Buffer.concat([prologueMentiroso, entradasReales])) // size real = 40
+    const trakBuf = Buffer.concat([
+      tkhd(1, 4000), box('edts', elstMentiroso), box('mdia', mdhd(12800, 4000)),
+    ])
+    const conMentira = Buffer.concat([
+      box('ftyp', Buffer.alloc(8)),
+      box('moov', Buffer.concat([mvhd(1000, 4000), box('trak', trakBuf)])),
+    ])
+    const { init, timescales } = canonicalizeInit(conMentira)
+    const moov = parseBoxes(init).find(b => b.type === 'moov')!
+    const [t] = parseBoxes(init, moov.start + moov.hdr, moov.start + moov.size).filter(b => b.type === 'trak')
+    // El elst solo conserva lo que de verdad cabía en su tamaño declarado: el
+    // trim real, no una entrada fantasma hecha de bytes del mdia siguiente.
+    expect(readElst(init, t)).toEqual([TRIM])
+    // Y el mdia sigue intacto: si el elst se hubiera tragado sus primeros
+    // bytes, este timescale saldría corrompido o el trak ni se encontraría.
+    expect([...timescales]).toEqual([[1, 12800]])
+    expect(moov.start + moov.size).toBe(init.length)
   })
 
   it('devuelve el timescale de cada pista', () => {
