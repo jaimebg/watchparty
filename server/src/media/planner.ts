@@ -1,7 +1,22 @@
 import type { AudioTrack } from './probe.js'
 import { langLabel } from './lang.js'
 
-export interface Segment { index: number; start: number; duration: number }
+export interface Segment { index: number; start: number; duration: number; seekAt: number }
+
+// El demuxer de Matroska retrocede al keyframe ANTERIOR cuando el -ss cae justo
+// sobre uno (ffmpeg se guarda un margen de ~0,17 s), y aquí todos los límites
+// salen de la lista real de keyframes: sin esto, cada reinicio a mitad de
+// película en un MKV empieza un GOP antes de lo que declara la playlist y hls.js
+// bufferiza el segmento en el sitio equivocado. Apuntar al punto medio hasta el
+// siguiente keyframe acierta sin depender de adivinar ese margen; un epsilon
+// pequeño y fijo no basta (medido: +0,05 s sigue cayendo un GOP antes).
+// Sin lista de keyframes es modo transcode: ahí el seek decodifica y descarta
+// hasta el instante pedido, así que ya cae exacto y no hay nada que corregir.
+function seekPoint(start: number, keyframes: number[] | null, durationSec: number): number {
+  if (start === 0 || !keyframes || keyframes.length === 0) return start
+  const next = keyframes.find(k => k > start) ?? durationSec
+  return next > start ? (start + next) / 2 : start
+}
 
 export function planSegments(durationSec: number, keyframes: number[] | null, target = 4): Segment[] {
   const bounds: number[] = [0]
@@ -14,6 +29,7 @@ export function planSegments(durationSec: number, keyframes: number[] | null, ta
   return bounds.map((start, i) => ({
     index: i, start,
     duration: (i + 1 < bounds.length ? bounds[i + 1] : durationSec) - start,
+    seekAt: seekPoint(start, keyframes, durationSec),
   }))
 }
 

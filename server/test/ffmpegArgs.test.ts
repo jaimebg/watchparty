@@ -13,18 +13,18 @@ describe('buildTranscodeArgs', () => {
     expect(a.join(' ')).toContain('-start_number 0')
     expect(a.join(' ')).toContain('seg_%v_%05d.m4s')
   })
-  it('restart mid-stream offsets output timestamps to the segment start', () => {
+  it('restart mid-stream keeps the source timeline with -copyts', () => {
     for (const mode of ['copy', 'transcode'] as const) {
       const a = buildTranscodeArgs({ ...base, mode, startSegment: 2 })
-      const i = a.indexOf('-output_ts_offset')
+      const i = a.indexOf('-copyts')
       expect(i).toBeGreaterThan(a.indexOf('-i')) // opción de salida: tras el input
       expect(i).toBeLessThan(a.length - 1) // y antes de la URL de salida
-      expect(Number(a[i + 1])).toBeCloseTo(8)
+      expect(a).not.toContain('-output_ts_offset')
     }
   })
   it('start from segment 0 needs no timestamp offset', () => {
     const a = buildTranscodeArgs({ ...base, mode: 'copy', startSegment: 0 })
-    expect(a).not.toContain('-output_ts_offset')
+    expect(a).not.toContain('-copyts')
   })
   it('transcode mode seeks to segment start and forces keyframes', () => {
     const a = buildTranscodeArgs({ ...base, mode: 'transcode', startSegment: 2 })
@@ -32,7 +32,13 @@ describe('buildTranscodeArgs', () => {
     expect(i).toBeGreaterThanOrEqual(0)
     expect(Number(a[i + 1])).toBeCloseTo(8)
     expect(a.indexOf('-ss')).toBeLessThan(a.indexOf('-i'))
-    expect(a.join(' ')).toContain('-force_key_frames expr:gte(t,n_forced*4)')
+    expect(a.join(' ')).toContain('-force_key_frames expr:gte(t,n_forced*4+8.000000)')
     expect(a.join(' ')).toContain('-start_number 2')
+  })
+  it('seeks to the midpoint, not to the boundary, when real keyframes are known', () => {
+    const segments = planSegments(20, [0, 2, 4, 6, 8, 10, 12])
+    const a = buildTranscodeArgs({ ...base, segments, mode: 'copy', startSegment: 1 })
+    expect(segments[1].start).toBe(4)
+    expect(Number(a[a.indexOf('-ss') + 1])).toBeCloseTo(5) // (4 + 6) / 2
   })
 })

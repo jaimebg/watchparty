@@ -16,19 +16,22 @@ const ENCODER_FLAGS: Record<string, string[]> = {
 export function buildTranscodeArgs(x: TranscodeArgsInput): string[] {
   const seg = x.segments[x.startSegment]
   const args = ['-hide_banner', '-loglevel', 'warning', '-nostdin', '-y']
-  if (seg.start > 0) args.push('-ss', seg.start.toFixed(6))
+  if (seg.start > 0) args.push('-ss', seg.seekAt.toFixed(6))
   args.push('-i', x.input, '-map', '0:v:0')
   if (x.mode === 'copy') args.push('-c:v', 'copy')
   else args.push('-c:v', x.encoder, ...(ENCODER_FLAGS[x.encoder] ?? []),
-    '-force_key_frames', 'expr:gte(t,n_forced*4)', '-pix_fmt', 'yuv420p')
+    // Con -copyts, `t` es absoluto: sin sumar el arranque, n_forced*4 iría muy
+    // por detrás del t real y forzaría un keyframe en cada fotograma.
+    '-force_key_frames', `expr:gte(t,n_forced*4+${seg.start.toFixed(6)})`,
+    '-pix_fmt', 'yuv420p')
   for (let i = 0; i < x.audioCount; i++) args.push('-map', `0:a:${i}`)
   args.push('-c:a', 'aac', '-ac', '2', '-b:a', '128k')
   const vsm = ['v:0,agroup:aud', ...Array.from({ length: x.audioCount }, (_, i) => `a:${i},agroup:aud`)].join(' ')
-  // -ss antes de -i resetea los timestamps de salida a ~0: sin este offset, un
-  // reinicio a mitad de película (seek) produce segmentos cuyo tfdt contradice
-  // la playlist, hls.js los bufferiza en la posición 0 y el vídeo se queda
-  // cargando. Con el offset, el tfdt vuelve a coincidir con la línea de tiempo.
-  if (seg.start > 0) args.push('-output_ts_offset', seg.start.toFixed(6))
+  // Re-anclar con -output_ts_offset daba por hecho que ffmpeg caía exactamente
+  // donde se le pedía, y en Matroska no es así. -copyts no asume nada: conserva
+  // el tiempo absoluto de la fuente, de modo que todos los reinicios comparten
+  // una sola línea de tiempo y el tfdt siempre concuerda con la playlist.
+  if (seg.start > 0) args.push('-copyts')
   args.push(
     '-f', 'hls', '-hls_time', '4', '-hls_segment_type', 'fmp4',
     '-hls_playlist_type', 'vod', '-hls_flags', 'independent_segments+temp_file',

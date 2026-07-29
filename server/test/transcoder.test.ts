@@ -2,10 +2,12 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { mkdtempSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import ffprobeStatic from 'ffprobe-static'
 import { makeFixtureMkv } from './support/fixture.js'
 import { extractKeyframes, probeFile } from '../src/media/probe.js'
 import { planSegments } from '../src/media/planner.js'
 import { TranscodeSession } from '../src/media/transcoder.js'
+import { run } from './support/run.js'
 
 let fixture: string, session: TranscodeSession, outDir: string
 
@@ -184,4 +186,31 @@ describe('TranscodeSession', () => {
 
     await s.stop()
   }, 60_000)
+
+  it('a segment produced by a mid-film start carries the correct absolute timestamp', async () => {
+    // Si el tfdt del segmento no coincide con lo que dice la playlist, hls.js lo
+    // bufferiza en el sitio equivocado: el vídeo no aparece pero los subtítulos,
+    // que son <track> nativos guiados por currentTime, sí siguen pintándose.
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-ts-'))
+    const tsOutDir = join(dir, 'out'); mkdirSync(tsOutDir)
+    const segments = session['segments']
+    const mid = Math.floor(segments.length / 2)
+    const s = new TranscodeSession({
+      input: fixture, mode: 'copy', encoder: 'libx264', segments, audioCount: 2, outDir: tsOutDir,
+    })
+    s.start(mid)
+    const segPath = await s.requestSegment(0, mid, 30_000)
+    const initPath = await s.requestInit(0, 30_000)
+
+    // Un fMP4 suelto no es reproducible: hay que anteponerle su init.
+    const joined = join(dir, 'joined.mp4')
+    writeFileSync(joined, Buffer.concat([readFileSync(initPath), readFileSync(segPath)]))
+    const { stdout } = await run(ffprobeStatic.path, [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=start_time', '-of', 'csv=p=0', joined,
+    ])
+
+    expect(Math.abs(Number(stdout.trim()) - segments[mid].start)).toBeLessThan(0.1)
+    await s.stop()
+  }, 90_000)
 })

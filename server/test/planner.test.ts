@@ -11,6 +11,19 @@ describe('planSegments', () => {
     expect(segs.map(s => s.start)).toEqual([0, 4.5, 9.1])
     expect(segs.at(-1)!.duration).toBeCloseTo(2.9)
   })
+  it('aims the seek at the midpoint to the next keyframe, not at the boundary itself', () => {
+    // Matroska retrocedería un GOP si el -ss cayera exacto sobre el keyframe.
+    const segs = planSegments(12, [0, 2, 4.5, 6, 9.1, 11])
+    expect(segs.map(s => s.start)).toEqual([0, 4.5, 9.1])
+    expect(segs.map(s => s.seekAt)).toEqual([0, 5.25, 10.05]) // (4.5+6)/2, (9.1+11)/2
+  })
+  it('falls back to the segment start when there is no keyframe list (transcode mode seeks exactly)', () => {
+    expect(planSegments(10, null).map(s => s.seekAt)).toEqual([0, 4, 8])
+  })
+  it('uses the file end as the next boundary for a last segment with no later keyframe', () => {
+    const segs = planSegments(10, [0, 5])
+    expect(segs.at(-1)!.seekAt).toBeCloseTo(7.5) // (5 + 10) / 2
+  })
 })
 
 describe('segmentForTime', () => {
