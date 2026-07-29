@@ -3,6 +3,9 @@ const TAGS = /\b(2160p|1080p|720p|480p|4k|uhd|bluray|blu-ray|brrip|bdrip|webrip|
 export function cleanName(filename: string): string {
   let s = filename.replace(/\.[^.]+$/, '')
   s = s.replace(/[._]/g, ' ')
+  // Rescata el año de "(2026)"/"[2026]" antes de tirar los grupos entre
+  // paréntesis/corchetes: es la señal más valiosa para los metadatos.
+  s = s.replace(/[[(]\s*((?:19|20)\d{2})\s*[\])]/g, ' $1 ')
   s = s.replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
   const hadTags = TAGS.test(s)
   TAGS.lastIndex = 0 // regex global: resetear tras test()
