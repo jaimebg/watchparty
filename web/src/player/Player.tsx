@@ -59,6 +59,12 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
   // del reloj de sala reescribe la posición bajo el pulgar y el thumb se escapa.
   const [drag, setDrag] = useState<number | null>(null)
   const draggingRef = useRef(false)
+  // Evita reemitir el mismo seek si un keyup ajeno a la barra (p. ej. el espacio
+  // que reanuda la reproducción justo después de soltar el pulgar) vuelve a
+  // entrar en commitSeek antes de que llegue el estado nuevo que limpia `drag`.
+  // Se reinicia al empezar cada interacción nueva y cuando el efecto de abajo
+  // por fin limpia `drag`.
+  const committedRef = useRef(false)
 
   const paused = lastState?.state.paused ?? true
   const pausedRef = useRef(paused)
@@ -97,8 +103,13 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
   // Al soltar, la barra se queda donde la dejó el pulgar hasta que llega el
   // estado nuevo: devolverla antes al valor viejo del reloj de sala daría un
   // salto atrás visible durante el viaje de ida y vuelta. Mientras el pulgar
-  // siga abajo no se toca.
-  useEffect(() => { if (!draggingRef.current) setDrag(null) }, [lastState])
+  // siga abajo no se toca. Junto con `drag` se reinicia `committedRef`: aquí
+  // termina el ciclo de la interacción que lo puso a true.
+  useEffect(() => {
+    if (draggingRef.current) return
+    setDrag(null)
+    committedRef.current = false
+  }, [lastState])
 
   // The socket outlives this component: Room.tsx unmounts Player (and this
   // 500ms tick) to show the recovery screen on a `{t:'error'}` broadcast, but
@@ -271,7 +282,12 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
 
   const commitSeek = () => {
     draggingRef.current = false
-    if (drag === null) return
+    // El `keyup` de una tecla que no toca la barra (el espacio que reanuda tras
+    // soltar el pulgar, por ejemplo) también llega aquí porque el foco se queda
+    // en el input. `committedRef` corta ese reenvío: solo se emite una vez por
+    // interacción, aunque el evento de soltar se dispare de más.
+    if (drag === null || committedRef.current) return
+    committedRef.current = true
     sendRef.current({ t: 'seek', position: clampPosition(drag, info.durationSec) })
   }
 
@@ -316,10 +332,26 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
           aria-valuetext={`${formatClock(shownPosition)} de ${formatClock(info.durationSec)}`}
           style={{ background: positionGradient(shownPosition, info.durationSec) }}
           value={Math.round(shownPosition)}
-          onPointerDown={() => { draggingRef.current = true }}
-          onChange={e => setDrag(Number(e.target.value))}
+          onPointerDown={() => { draggingRef.current = true; committedRef.current = false }}
+          // Un pointercancel (el gesto táctil se reinterpreta como scroll de la
+          // página, por ejemplo) no trae pointerup: sin esto el pulgar quedaría
+          // marcado como bajado para siempre y el efecto de arriba nunca
+          // volvería a soltar `drag`. No comitea: un gesto cancelado no es una
+          // intención de salto.
+          onPointerCancel={() => { draggingRef.current = false }}
+          // El input nativo solo dispara `change` con las flechas/Home/End/
+          // PageUp/PageDown, que son las únicas teclas que mueven el valor de
+          // un range — así que esto ya cubre el arrastre por teclado sin
+          // necesidad de un onKeyDown aparte. Un onKeyDown que marcara *toda*
+          // tecla confundiría al espacio (que en este control global sigue
+          // siendo play/pausa, no pertenece a la barra) con el inicio de un
+          // arrastre, reabriendo el mismo reenvío que commitSeek evita arriba.
+          onChange={e => { draggingRef.current = true; committedRef.current = false; setDrag(Number(e.target.value)) }}
           onPointerUp={commitSeek}
-          onKeyUp={commitSeek} />
+          onKeyUp={commitSeek}
+          // Si el foco se va a media pulsación (raro, pero posible) tampoco
+          // llega un keyup a este input: mismo motivo que pointercancel.
+          onBlur={() => { draggingRef.current = false }} />
         <span className="time-label" title={`Duración total ${formatClock(info.durationSec)}`}>−{formatClock(remaining)}</span>
         <form className="jump-group" onSubmit={e => { e.preventDefault(); jump() }}>
           <label className="jump-label" htmlFor="jump-to">Ir a</label>
