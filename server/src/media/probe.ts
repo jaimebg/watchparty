@@ -7,7 +7,7 @@ const FFPROBE = ffprobeStatic.path
 
 export interface AudioTrack { index: number; codec: string; lang: string; label: string; channels: number }
 export interface SubTrack { index: number; codec: string; lang: string; label: string; textBased: boolean }
-export interface MediaInfo { durationSec: number; videoCodec: string; width: number; height: number; audio: AudioTrack[]; subs: SubTrack[] }
+export interface MediaInfo { durationSec: number; videoCodec: string; pixFmt: string; width: number; height: number; audio: AudioTrack[]; subs: SubTrack[] }
 
 const TEXT_SUB_CODECS = new Set(['subrip', 'ass', 'ssa', 'webvtt', 'mov_text'])
 
@@ -22,6 +22,7 @@ export async function probeFile(path: string): Promise<MediaInfo> {
   return {
     durationSec: Number(json.format?.duration ?? 0),
     videoCodec: video.codec_name,
+    pixFmt: video.pix_fmt ?? '',
     width: video.width, height: video.height,
     audio: audioStreams.map((s, i) => ({
       index: i, codec: s.codec_name, lang: s.tags?.language ?? 'und',

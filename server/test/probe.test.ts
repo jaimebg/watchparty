@@ -13,6 +13,7 @@ describe('probeFile', () => {
     const info = await probeFile(fixture)
     expect(info.durationSec).toBeGreaterThan(9)
     expect(info.videoCodec).toBe('h264')
+    expect(info.pixFmt).toBe('yuv420p') // fixture is encoded with -pix_fmt yuv420p; copy mode requires this
     expect(info.audio).toHaveLength(2)
     expect(info.audio[0]).toMatchObject({ index: 0, lang: 'spa', channels: 1 })
     expect(info.audio[1].lang).toBe('eng')

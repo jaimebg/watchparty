@@ -17,7 +17,11 @@ mkdirSync(cacheDir(), { recursive: true })
 const encoder = await detectEncoder()
 const rooms = new RoomManager({
   createSession: (item, info, segments, roomDir, forceTranscode) => new TranscodeSession({
-    input: item.path, mode: !forceTranscode && info.videoCodec === 'h264' ? 'copy' : 'transcode',
+    input: item.path,
+    // Copy-remux only when we know the browser can decode the source as-is:
+    // h264 in 8-bit 4:2:0 (yuv420p). Anything else (e.g. Hi10P's yuv420p10le)
+    // must be transcoded, or it renders as a black screen in most browsers.
+    mode: !forceTranscode && info.videoCodec === 'h264' && info.pixFmt === 'yuv420p' ? 'copy' : 'transcode',
     encoder, segments, audioCount: info.audio.length, outDir: roomDir,
   }),
 })
