@@ -66,4 +66,16 @@ describe('api', () => {
     expect((await app.inject({ url: `/stream/${token}/evil.txt` })).statusCode).toBe(404)
     expect((await app.inject({ url: `/stream/NOEXISTE/master.m3u8` })).statusCode).toBe(404)
   })
+
+  it('404s (without leaking the filesystem path) for roomDir files missing on disk', async () => {
+    // sub id that was never extracted to disk (extractSubtitle failed silently, or id simply doesn't exist)
+    const missingSub = await app.inject({ url: `/stream/${token}/sub_999.vtt` })
+    expect(missingSub.statusCode).toBe(404)
+    expect(missingSub.body).not.toContain(process.env.JBG_DATA_DIR!)
+
+    // init file: the fake session never writes one, so this always misses on disk
+    const missingInit = await app.inject({ url: `/stream/${token}/init_0.mp4` })
+    expect(missingInit.statusCode).toBe(404)
+    expect(missingInit.body).not.toContain(process.env.JBG_DATA_DIR!)
+  })
 })
