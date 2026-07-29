@@ -12,6 +12,7 @@ export function Player({ token, info, send, lastState }: {
   const hlsRef = useRef<Hls | null>(null)
   const [audioTracks, setAudioTracks] = useState<{ id: number; name: string }[]>([])
   const [sub, setSub] = useState<number>(-1)
+  const [dragValue, setDragValue] = useState<number | null>(null)
   const [, tick] = useReducer((x: number) => x + 1, 0)
 
   useEffect(() => {
@@ -60,7 +61,16 @@ export function Player({ token, info, send, lastState }: {
     for (let i = 0; i < tracks.length; i++) tracks[i].mode = i === sub ? 'showing' : 'hidden'
   }, [sub])
 
-  const seekTo = (pos: number) => send({ t: 'seek', position: pos })
+  // Dragging the slider must not spam a `seek` per pixel: onChange only updates
+  // the locally-displayed position (dragValue), and a single seek is sent when
+  // the interaction ends (pointer/touch release or keyboard commit).
+  const commitSeek = (pos: number) => {
+    send({ t: 'seek', position: pos })
+    setDragValue(null)
+  }
+  const displayedPosition = lastState
+    ? Math.min(info.durationSec, targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now()))
+    : 0
 
   return (
     <div className="player">
@@ -74,8 +84,11 @@ export function Player({ token, info, send, lastState }: {
           {lastState?.state.paused ? '▶️' : '⏸'}
         </button>
         <input type="range" min={0} max={info.durationSec} step={1}
-          value={lastState ? Math.min(info.durationSec, targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now())) : 0}
-          onChange={e => seekTo(Number(e.target.value))} />
+          value={dragValue ?? displayedPosition}
+          onChange={e => setDragValue(Number(e.target.value))}
+          onPointerUp={e => commitSeek(Number(e.currentTarget.value))}
+          onTouchEnd={e => commitSeek(Number(e.currentTarget.value))}
+          onKeyUp={e => commitSeek(Number(e.currentTarget.value))} />
         <select onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
           {audioTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
