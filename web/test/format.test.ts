@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatClock, parseStoredVolume, spaceBelongsTo } from '../src/player/format'
+import { formatClock, parseStoredVolume, spaceBelongsTo, volumeGradient } from '../src/player/format'
 
 describe('parseStoredVolume', () => {
   it.each([
@@ -9,10 +9,33 @@ describe('parseStoredVolume', () => {
     ['0.5', 0.5],
     ['0', 0],
     ['1', 1],
-    ['1.7', 1],
+    ['1.7', 1.7],
+    ['2', 2],
+    ['3', 2],
     ['-3', 0],
   ])('%s -> %d', (raw, expected) => {
     expect(parseStoredVolume(raw as string | null)).toBe(expected)
+  })
+})
+
+describe('volumeGradient', () => {
+  it('below unity paints only the normal fill', () => {
+    expect(volumeGradient(0.5)).toBe('linear-gradient(90deg, var(--seek-fill) 25%, var(--seek-track) 25%)')
+  })
+
+  it('at unity stops exactly at the halfway mark, still without boost colour', () => {
+    expect(volumeGradient(1)).toBe('linear-gradient(90deg, var(--seek-fill) 50%, var(--seek-track) 50%)')
+  })
+
+  it('above unity paints the amplified stretch in the boost colour', () => {
+    expect(volumeGradient(1.5)).toBe(
+      'linear-gradient(90deg, var(--seek-fill) 50%, var(--boost-fill) 50%, var(--boost-fill) 75%, var(--seek-track) 75%)',
+    )
+  })
+
+  it('clamps out-of-range values instead of overflowing the track', () => {
+    expect(volumeGradient(9)).toContain('var(--seek-track) 100%')
+    expect(volumeGradient(-1)).toBe('linear-gradient(90deg, var(--seek-fill) 0%, var(--seek-track) 0%)')
   })
 })
 

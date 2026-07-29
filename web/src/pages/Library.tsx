@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { addMediaFolder, bootstrapAdmin, createRoom, getLibrary, getMediaFolders, getStatus, pickMediaFolder, removeMediaFolder } from '../api'
 import type { LibraryItem } from '../types'
-import { parseRoomToken } from './roomToken'
+import { parseRoomToken, roomLink } from './roomToken'
 
 export function Library() {
   const [items, setItems] = useState<LibraryItem[] | null>(null)
@@ -31,8 +31,7 @@ export function Library() {
     try {
       const { token } = await createRoom(item.id)
       const { tunnelUrl } = await getStatus()
-      const url = `${tunnelUrl ?? location.origin}/room/${token}`
-      await navigator.clipboard.writeText(url).catch(() => {})
+      await navigator.clipboard.writeText(roomLink(tunnelUrl ?? location.origin, token)).catch(() => {})
       location.pathname = `/room/${token}`
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

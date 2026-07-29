@@ -2,7 +2,7 @@ import Hls from 'hls.js'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, PlaybackState, RoomInfo } from '../types'
 import { bufferedAhead, computeCorrection, targetPosition } from '../sync/driftControl'
-import { formatClock, parseStoredVolume, spaceBelongsTo } from './format'
+import { formatClock, MAX_VOLUME, parseStoredVolume, spaceBelongsTo, volumeGradient } from './format'
 
 export interface LastState { state: PlaybackState; serverNow: number; receivedAt: number }
 
@@ -39,8 +39,6 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
   const hlsRef = useRef<Hls | null>(null)
   const [audioTracks, setAudioTracks] = useState<{ id: number; name: string }[]>([])
   const [sub, setSub] = useState<number>(-1)
-  const [dragValue, setDragValue] = useState<number | null>(null)
-  const [hover, setHover] = useState<{ x: number; t: number } | null>(null)
   // Volumen y silencio son POR ESPECTADOR (no se sincronizan) y persisten.
   const [volume, setVolume] = useState(() => parseStoredVolume(localStorage.getItem(VOLUME_KEY)))
   const [muted, setMuted] = useState(() => localStorage.getItem(MUTED_KEY) === '1')
@@ -50,6 +48,9 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
   // 'unsupported': neither works; show a clear message instead of a dead player.
   const [mode, setMode] = useState<'hls' | 'native' | 'unsupported'>('hls')
   const [, tick] = useReducer((x: number) => x + 1, 0)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const gainRef = useRef<GainNode | null>(null)
+  const [gesture, setGesture] = useState(0)
 
   const paused = lastState?.state.paused ?? true
   const pausedRef = useRef(paused)
@@ -181,26 +182,64 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
     for (let i = 0; i < tracks.length; i++) tracks[i].mode = i === sub ? 'showing' : 'hidden'
   }, [sub])
 
+  // `video.volume` está topado al 100% por spec, así que pasar de ahí exige
+  // enrutar el elemento por un GainNode de Web Audio. El grafo se monta perezoso
+  // — solo cuando alguien pide más del 100% — porque enrutar el elemento es
+  // irreversible y no hay motivo para meter en el grafo a quien nunca amplifica.
+  //
+  // Y se monta solo con la página ya "activada": un AudioContext creado antes de
+  // que el usuario toque nada nace suspendido, y un <video> enrutado a un
+  // contexto parado se queda MUDO. Ante la duda se cierra el contexto y el
+  // volumen se queda en su tope nativo, que es el fallo inofensivo.
+  const applyBoost = (v: number) => {
+    const video = videoRef.current
+    if (!video) return
+    if (!gainRef.current) {
+      if (v <= 1) return
+      try {
+        const ctx = new AudioContext()
+        if (ctx.state === 'suspended') { void ctx.close().catch(() => {}); return }
+        const gain = ctx.createGain()
+        ctx.createMediaElementSource(video).connect(gain).connect(ctx.destination)
+        audioCtxRef.current = ctx
+        gainRef.current = gain
+      } catch { return }
+    }
+    gainRef.current.gain.value = Math.max(1, v)
+  }
+
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    video.volume = volume
+    video.volume = Math.min(1, volume)
     video.muted = muted
+    applyBoost(volume)
     localStorage.setItem(VOLUME_KEY, String(volume))
     localStorage.setItem(MUTED_KEY, muted ? '1' : '0')
-  }, [volume, muted])
+  }, [volume, muted, gesture])
 
-  // Dragging the slider must not spam a `seek` per pixel: onChange only updates
-  // the locally-displayed position (dragValue), and a single seek is sent when
-  // the interaction ends (pointer/touch release or keyboard commit).
-  const commitSeek = (pos: number) => {
-    send({ t: 'seek', position: pos })
-    setDragValue(null)
-  }
-  const displayedPosition = lastState
+  // Con un volumen guardado por encima del 100%, el efecto de arriba corre al
+  // montar —antes de cualquier gesto— y se rinde sin montar el grafo. Este
+  // contador lo despierta en cuanto llega la primera interacción, para que la
+  // amplificación guardada se aplique sin obligar a tocar el slider.
+  useEffect(() => {
+    if (volume <= 1 || gainRef.current) return
+    const onGesture = () => setGesture(g => g + 1)
+    window.addEventListener('pointerdown', onGesture, { once: true })
+    window.addEventListener('keydown', onGesture, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', onGesture)
+      window.removeEventListener('keydown', onGesture)
+    }
+  }, [volume, gesture])
+
+  useEffect(() => () => { void audioCtxRef.current?.close().catch(() => {}) }, [])
+
+  // El seek está desactivado: la barra solo informa de por dónde va la sala.
+  const shownPosition = lastState
     ? Math.min(info.durationSec, targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now()))
     : 0
-  const shownPosition = dragValue ?? displayedPosition
+  const remaining = Math.max(0, info.durationSec - shownPosition)
   const pct = info.durationSec > 0 ? (shownPosition / info.durationSec) * 100 : 0
 
   if (mode === 'unsupported') {
@@ -228,33 +267,22 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
             title={muted ? 'Quitar silencio' : 'Silenciar'} onClick={() => setMuted(m => !m)}>
             {muted || volume === 0 ? <MutedIcon /> : <VolumeIcon />}
           </button>
-          <input className="seek volume" type="range" min={0} max={1} step={0.01}
+          <input className="seek volume" type="range" min={0} max={MAX_VOLUME} step={0.01}
             aria-label="Volumen"
-            style={{ background: `linear-gradient(90deg, var(--seek-fill) ${(muted ? 0 : volume) * 100}%, var(--seek-track) ${(muted ? 0 : volume) * 100}%)` }}
+            aria-valuetext={`${Math.round((muted ? 0 : volume) * 100)}%`}
+            title={`Volumen ${Math.round((muted ? 0 : volume) * 100)}%`}
+            style={{ background: volumeGradient(muted ? 0 : volume) }}
             value={muted ? 0 : volume}
             onChange={e => { setVolume(Number(e.target.value)); if (muted) setMuted(false) }} />
+          {!muted && volume > 1 && <span className="volume-pct">{Math.round(volume * 100)}%</span>}
         </div>
         <span className="time-label">{formatClock(shownPosition)}</span>
-        <div className="seek-wrap"
-          onMouseMove={e => {
-            const r = e.currentTarget.getBoundingClientRect()
-            const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
-            setHover({ x: e.clientX - r.left, t: frac * info.durationSec })
-          }}
-          onMouseLeave={() => setHover(null)}>
-          {hover !== null && (
-            <div className="seek-tooltip" style={{ left: `${hover.x}px` }}>{formatClock(hover.t)}</div>
-          )}
-          <input className="seek" type="range" min={0} max={info.durationSec} step={0.1}
-            aria-label="Posición del vídeo"
-            style={{ background: `linear-gradient(90deg, var(--seek-fill) ${pct}%, var(--seek-track) ${pct}%)` }}
-            value={shownPosition}
-            onChange={e => setDragValue(Number(e.target.value))}
-            onPointerUp={e => commitSeek(Number(e.currentTarget.value))}
-            onTouchEnd={e => commitSeek(Number(e.currentTarget.value))}
-            onKeyUp={e => commitSeek(Number(e.currentTarget.value))} />
+        <div className="progress" role="progressbar" aria-label="Progreso del vídeo"
+          aria-valuemin={0} aria-valuemax={Math.round(info.durationSec)}
+          aria-valuenow={Math.round(shownPosition)} aria-valuetext={`Quedan ${formatClock(remaining)}`}>
+          <div className="progress-fill" style={{ width: `${pct}%` }} />
         </div>
-        <span className="time-label">{formatClock(info.durationSec)}</span>
+        <span className="time-label" title={`Duración total ${formatClock(info.durationSec)}`}>−{formatClock(remaining)}</span>
         {mode === 'hls' && (
           <select aria-label="Pista de audio" onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
             {audioTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseRoomToken } from '../src/pages/roomToken'
+import { parseRoomToken, roomLink } from '../src/pages/roomToken'
 
 const TOKEN = 'AbC123_xY-z9QwErTyUi'
 
@@ -27,5 +27,21 @@ describe('parseRoomToken', () => {
   })
   it('rejects a URL that is not a room link', () => {
     expect(parseRoomToken('https://x.test/library')).toBeNull()
+  })
+})
+
+describe('roomLink', () => {
+  it('joins origin and token', () => {
+    expect(roomLink('https://x.trycloudflare.com', TOKEN)).toBe(`https://x.trycloudflare.com/room/${TOKEN}`)
+  })
+  it('drops a hand-typed trailing slash instead of emitting //room/', () => {
+    expect(roomLink('https://watchparty.example.com/', TOKEN)).toBe(`https://watchparty.example.com/room/${TOKEN}`)
+    expect(roomLink('https://watchparty.example.com///', TOKEN)).toBe(`https://watchparty.example.com/room/${TOKEN}`)
+  })
+  it('trims surrounding whitespace from a config-file origin', () => {
+    expect(roomLink('  https://x.test  ', TOKEN)).toBe(`https://x.test/room/${TOKEN}`)
+  })
+  it('round-trips through parseRoomToken', () => {
+    expect(parseRoomToken(roomLink('https://x.test/', TOKEN))).toBe(TOKEN)
   })
 })

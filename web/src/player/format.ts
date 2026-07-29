@@ -8,11 +8,25 @@ export function formatClock(sec: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`
 }
 
-// Volumen guardado en localStorage → número seguro en [0,1] (default 1).
+// Tope del slider de volumen: el 100% es el volumen nativo del <video> y de ahí
+// al 200% amplifica un GainNode de Web Audio.
+export const MAX_VOLUME = 2
+
+// Volumen guardado en localStorage → número seguro en [0, MAX_VOLUME] (default 1).
 export function parseStoredVolume(raw: string | null): number {
   const n = Number(raw)
   if (raw === null || raw === '' || Number.isNaN(n)) return 1
-  return Math.min(1, Math.max(0, n))
+  return Math.min(MAX_VOLUME, Math.max(0, n))
+}
+
+// Relleno del slider de volumen. El tramo amplificado (>100%) se pinta en otro
+// color para que se vea de un vistazo que el audio ya no está en su nivel nativo.
+export function volumeGradient(v: number): string {
+  const pct = (Math.min(MAX_VOLUME, Math.max(0, v)) / MAX_VOLUME) * 100
+  const unity = 100 / MAX_VOLUME
+  return pct <= unity
+    ? `linear-gradient(90deg, var(--seek-fill) ${pct}%, var(--seek-track) ${pct}%)`
+    : `linear-gradient(90deg, var(--seek-fill) ${unity}%, var(--boost-fill) ${unity}%, var(--boost-fill) ${pct}%, var(--seek-track) ${pct}%)`
 }
 
 // ¿La tecla espacio pertenece al elemento con foco (escribir/activar) en vez de

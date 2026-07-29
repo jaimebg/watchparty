@@ -7,25 +7,26 @@ import { ReactionsBar } from '../chat/ReactionsBar'
 import { ReactionOverlay } from '../chat/ReactionOverlay'
 import { chatReducer, dropReaction, initialChat, type ChatState } from '../chat/chatStore'
 import { MetaModal } from '../MetaModal'
+import { roomLink } from './roomToken'
 import type { ClientMsg, RoomInfo, ServerMsg } from '../types'
 
 const NAME_KEY = 'jbg-name'
-const THEATER_KEY = 'jbg-theater'
 const STATUS_POLL_MS = 30_000
+const COPIED_FEEDBACK_MS = 2000
 
 const InfoIcon = () => (
   <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden>
     <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
   </svg>
 )
-const TheaterEnterIcon = () => (
+const LinkIcon = () => (
   <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden>
-    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+    <path d="M3.9 12a3.1 3.1 0 0 1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7A3.1 3.1 0 0 1 3.9 12zM8 13h8v-2H8v2zm9-6h-4v1.9h4a3.1 3.1 0 0 1 0 6.2h-4V17h4a5 5 0 0 0 0-10z" />
   </svg>
 )
-const TheaterExitIcon = () => (
+const CheckIcon = () => (
   <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden>
-    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+    <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
   </svg>
 )
 
@@ -51,17 +52,35 @@ export function Room({ token }: { token: string }) {
   // the server's stall-tracking set was just rebuilt empty for this socket.
   const [welcomeCount, setWelcomeCount] = useState(0)
   const [tunnelDown, setTunnelDown] = useState(false)
+  // Solo el host la conoce: /api/status responde 401 a los invitados. Por eso
+  // el botón de copiar aparece únicamente en la pestaña del host (localhost),
+  // que es justo la que necesita el enlace del túnel en vez de su propia URL.
+  const [tunnelUrl, setTunnelUrl] = useState<string | null>(null)
+  const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle')
   const [wsError, setWsError] = useState<string[] | null>(null)
   const [chat, dispatchChat] = useReducer(roomChatReducer, initialChat)
-  const [theater, setTheater] = useState(() => localStorage.getItem(THEATER_KEY) === '1')
   const [showMeta, setShowMeta] = useState(false)
   const sendRef = useRef<(m: ClientMsg) => void>(() => {})
 
-  const toggleTheater = () => {
-    const next = !theater
-    setTheater(next)
-    localStorage.setItem(THEATER_KEY, next ? '1' : '0')
+  const shareUrl = tunnelUrl ? roomLink(tunnelUrl, token) : null
+
+  const copyLink = async () => {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied('ok')
+    } catch {
+      // Sin portapapeles (contexto no seguro, permiso denegado): se enseña el
+      // enlace para copiarlo a mano en vez de fallar en silencio.
+      setCopied('fail')
+    }
   }
+
+  useEffect(() => {
+    if (copied !== 'ok') return
+    const id = setTimeout(() => setCopied('idle'), COPIED_FEEDBACK_MS)
+    return () => clearTimeout(id)
+  }, [copied])
 
   useEffect(() => {
     let cancelled = false
@@ -101,7 +120,11 @@ export function Room({ token }: { token: string }) {
     const poll = () => {
       if (!isHost || cancelled) return
       getStatus()
-        .then(s => { if (!cancelled) setTunnelDown(s.tunnelUrl === null) })
+        .then(s => {
+          if (cancelled) return
+          setTunnelUrl(s.tunnelUrl)
+          setTunnelDown(s.tunnelUrl === null)
+        })
         .catch(() => { isHost = false })
     }
     poll()
@@ -169,7 +192,7 @@ export function Room({ token }: { token: string }) {
   }
 
   return (
-    <main className={`page page--room${theater ? ' theater' : ''}`}>
+    <main className="page page--room">
       {tunnelDown && (
         <div className="banner">
           <span className="banner-dot" aria-hidden="true" />
@@ -178,22 +201,31 @@ export function Room({ token }: { token: string }) {
       )}
       <div className="room-head">
         <div className="room-head-titles">
-          <p className="eyebrow">En proyección</p>
           <h1>{info.title}</h1>
         </div>
         <div className="room-head-actions">
+          {shareUrl && (
+            <button type="button" className="btn-head" onClick={() => void copyLink()}
+              title={`Copiar el enlace público de la sala (${shareUrl})`}>
+              {copied === 'ok' ? <CheckIcon /> : <LinkIcon />} {copied === 'ok' ? '¡Copiado!' : 'Copiar enlace'}
+            </button>
+          )}
           {info.meta && (
-            <button type="button" className="btn-theater" onClick={() => setShowMeta(true)} title="Información de la película">
+            <button type="button" className="btn-head" onClick={() => setShowMeta(true)} title="Información de la película">
               <InfoIcon /> Info
             </button>
           )}
-          <button type="button" className="btn-theater" onClick={toggleTheater} title={theater ? 'Salir del modo teatro' : 'Modo teatro'}>
-            {theater ? <TheaterExitIcon /> : <TheaterEnterIcon />} {theater ? 'Salir del teatro' : 'Modo teatro'}
-          </button>
         </div>
       </div>
+      {copied === 'fail' && shareUrl && (
+        <p className="share-fallback">
+          <span>No se pudo copiar solo. Cópialo a mano:</span>
+          <input readOnly autoFocus value={shareUrl} aria-label="Enlace público de la sala"
+            onFocus={e => e.currentTarget.select()} />
+        </p>
+      )}
       {showMeta && info.meta && <MetaModal meta={info.meta} onClose={() => setShowMeta(false)} />}
-      <div className={`room-grid${theater ? ' room-grid--theater' : ''}`}>
+      <div className="room-grid">
         <div className="video-stage">
           <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount} />
           <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />

@@ -12,3 +12,10 @@ export function parseRoomToken(input: string): string | null {
   const candidate = fromUrl ? fromUrl[1] : trimmed
   return TOKEN_RE.test(candidate) ? candidate : null
 }
+
+// Enlace que el host comparte. El origen puede venir de config.json escrito a
+// mano (túnel con nombre), así que la barra final se normaliza aquí en vez de
+// colar un `//room/…` en el enlace que se reparte por WhatsApp.
+export function roomLink(origin: string, token: string): string {
+  return `${origin.trim().replace(/\/+$/, '')}/room/${token}`
+}

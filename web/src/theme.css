@@ -29,6 +29,7 @@
 
   --seek-fill: var(--marquee);
   --seek-track: oklch(30% 0.02 68);
+  --boost-fill: oklch(68% 0.16 40); /* tramo de volumen amplificado (>100%) */
 
   --font-display: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
   --font-body: 'Instrument Sans Variable', system-ui, sans-serif;
@@ -558,7 +559,7 @@ details summary:hover { color: var(--marquee); }
 }
 
 .seek.volume {
-  width: 90px;
+  width: 110px; /* el recorrido llega al 200%, necesita algo más de pista */
   height: 5px;
 }
 
@@ -572,21 +573,36 @@ details summary:hover { color: var(--marquee); }
   height: 11px;
 }
 
+.volume-pct {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--boost-fill);
+  min-width: 2.6em;
+}
+
 @media (max-width: 560px) {
-  .seek.volume {
+  .seek.volume,
+  .volume-pct {
     display: none; /* en pantallas muy estrechas queda solo el botón de mute */
   }
 }
 
-/* Barra de seek precisa: gran zona de click, relleno de progreso y tooltip de tiempo. */
+/* Barra de progreso: solo lectura, el seek está desactivado. */
 
-.seek-wrap {
-  position: relative;
+.progress {
   flex: 1;
-  min-width: 160px; /* nunca colapsar aunque la fila vaya justa */
-  display: flex;
-  align-items: center;
-  padding: 8px 0; /* zona de click generosa alrededor de la pista */
+  min-width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--seek-track);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--seek-fill);
+  transition: width 1s linear; /* el tick de posición es de 1s: avance continuo */
 }
 
 .seek {
@@ -626,46 +642,36 @@ details summary:hover { color: var(--marquee); }
   border: 2px solid var(--marquee);
 }
 
-.seek-tooltip {
-  position: absolute;
-  bottom: 26px;
-  transform: translateX(-50%);
-  background: var(--raised);
-  border: 1px solid var(--line-soft);
-  border-radius: 6px;
-  padding: 0.15rem 0.45rem;
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-  white-space: nowrap;
-}
 
 /* ─── Sala: vídeo + chat ─── */
 
-.page--room { max-width: 1280px; }
+/* La sala es siempre modo teatro: a todo el ancho, vídeo protagonista y el
+   resto del chrome en susurro. */
+.page--room {
+  max-width: none;
+  padding: 0.75rem 1.25rem;
+}
 
 .room-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.4rem;
 }
 
 .room-head-titles { min-width: 0; }
-
-.room-head-titles .eyebrow { margin-bottom: 0.15rem; }
 
 .room-head h1 {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: clamp(1.3rem, 1.1rem + 1vw, 1.8rem);
-  margin: 0;
+  font-size: 1.05rem;
+  margin: 0.3rem 0;
 }
 
-.btn-theater {
+.btn-head {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -674,7 +680,7 @@ details summary:hover { color: var(--marquee); }
   padding: 0.45rem 0.85rem;
 }
 
-.btn-theater svg { display: block; }
+.btn-head svg { display: block; }
 
 .room-head-actions {
   display: flex;
@@ -682,9 +688,27 @@ details summary:hover { color: var(--marquee); }
   flex-shrink: 0;
 }
 
+/* Solo aparece si el portapapeles falla: el enlace, listo para seleccionar. */
+.share-fallback {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.share-fallback input {
+  flex: 1;
+  min-width: 260px;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+}
+
 .room-grid {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 1fr minmax(280px, 340px);
   grid-template-areas: 'video chat';
   gap: 1rem;
   align-items: start;
@@ -697,39 +721,17 @@ details summary:hover { color: var(--marquee); }
 
 .room-grid .chat-panel { grid-area: chat; }
 
-/* Modo teatro: página a todo el ancho, vídeo protagonista, chrome en susurro. */
-
-.page--room.theater {
-  max-width: none;
-  padding: 0.75rem 1.25rem;
-}
-
-.page--room.theater .room-head { margin-bottom: 0.4rem; }
-
-.page--room.theater .room-head-titles .eyebrow { display: none; }
-
-.page--room.theater .room-head h1 {
-  font-size: 1.05rem;
-  margin: 0.3rem 0;
-}
-
-.room-grid--theater {
-  grid-template-columns: 1fr minmax(280px, 340px);
-  grid-template-areas: 'video chat';
-}
-
-.room-grid--theater video {
+.room-grid video {
   max-height: calc(100vh - 190px);
   object-fit: contain;
 }
 
-.room-grid--theater .chat-entries {
+.room-grid .chat-entries {
   max-height: calc(100vh - 330px);
 }
 
 @media (max-width: 800px) {
-  .room-grid,
-  .room-grid--theater {
+  .room-grid {
     grid-template-columns: 1fr;
     grid-template-areas: 'video' 'chat';
   }
