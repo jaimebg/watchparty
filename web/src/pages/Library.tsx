@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { addMediaFolder, createRoom, getLibrary, getStatus } from '../api'
+import { addMediaFolder, bootstrapAdmin, createRoom, getLibrary, getStatus } from '../api'
 import type { LibraryItem } from '../types'
 
 export function Library() {
@@ -9,7 +9,14 @@ export function Library() {
   const [folderError, setFolderError] = useState<string | null>(null)
   const [addingFolder, setAddingFolder] = useState(false)
 
-  const load = () => getLibrary().then(setItems).catch(e => setError(String(e)))
+  const load = async () => {
+    try {
+      if (await bootstrapAdmin(location.search)) history.replaceState(null, '', location.pathname)
+      setItems(await getLibrary())
+    } catch (e) {
+      setError(String(e))
+    }
+  }
 
   const start = async (item: LibraryItem) => {
     try {
@@ -41,7 +48,12 @@ export function Library() {
 
   useEffect(() => { load() }, [])
 
-  if (error) return <main className="page"><p>Solo el host puede ver la biblioteca. ({error})</p></main>
+  if (error) return (
+    <main className="page">
+      <p>Solo el host puede ver la biblioteca. ({error})</p>
+      <p>Abre la URL con <code>?key=…</code> que imprime la terminal al arrancar el servidor.</p>
+    </main>
+  )
   if (!items) return <main className="page"><p>Cargando…</p></main>
 
   if (items.length === 0) {

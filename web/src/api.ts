@@ -5,6 +5,15 @@ const json = async <T>(r: Response): Promise<T> => {
   return r.json() as Promise<T>
 }
 
+// La página se sirve como estático, así que el ?key= de la URL de arranque no pasa por
+// el hook admin del servidor: hay que canjearlo por la cookie con una llamada a la API.
+export const bootstrapAdmin = async (search: string): Promise<boolean> => {
+  const key = new URLSearchParams(search).get('key')
+  if (!key) return false
+  await fetch(`/api/status?key=${encodeURIComponent(key)}`)
+  return true
+}
+
 export const getLibrary = () => fetch('/api/library').then(r => json<LibraryItem[]>(r))
 export const createRoom = (itemId: string) =>
   fetch('/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ itemId }) }).then(r => json<{ token: string }>(r))

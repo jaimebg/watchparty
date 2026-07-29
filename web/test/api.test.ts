@@ -1,7 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
-import { getLibrary, createRoom } from '../src/api'
+import { bootstrapAdmin, getLibrary, createRoom } from '../src/api'
 
 describe('api client', () => {
+  it('bootstrapAdmin exchanges ?key= for the admin cookie via /api/status', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    expect(await bootstrapAdmin('?key=abc%20d')).toBe(true)
+    expect(spy).toHaveBeenCalledWith('/api/status?key=abc%20d')
+    spy.mockRestore()
+  })
+  it('bootstrapAdmin is a no-op without key', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    expect(await bootstrapAdmin('')).toBe(false)
+    expect(await bootstrapAdmin('?other=1')).toBe(false)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
   it('getLibrary GETs /api/library', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('[]'))
     await getLibrary()
