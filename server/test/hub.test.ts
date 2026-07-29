@@ -71,4 +71,29 @@ describe('hub', () => {
     expect(rB).toMatchObject({ t: 'reaction', emoji: '🔥', from: 'Ana' })
     a.ws.close(); b.ws.close()
   })
+
+  it('malformed client messages are ignored, not fatal, and later valid messages still work', async () => {
+    const a = await connect('Mara')
+    await a.recv() // welcome
+    await a.recv() // presence propio
+    await a.recv() // system "Mara se unió"
+    const b = await connect('Nico')
+    await b.recv() // welcome de Nico
+    await a.recv(); await a.recv() // presence + system de Nico en A
+    await b.recv(); await b.recv() // presence + system en B
+
+    // Each of these has a wrong/missing shape for its type and must be ignored in
+    // silence (no throw, no crash, no broadcast) rather than kill the process.
+    a.ws.send(JSON.stringify({ t: 'join' })) // missing name
+    a.ws.send(JSON.stringify({ t: 'chat' })) // missing text
+    a.ws.send(JSON.stringify({ t: 'seek', position: 'x' })) // wrong type
+    a.ws.send(JSON.stringify({ t: 'desconocido' })) // unknown type
+
+    // The server must still be alive and functional after the garbage above.
+    a.ws.send(JSON.stringify({ t: 'chat', text: 'sigo vivo' }))
+    const chatB = await b.recv()
+    expect(chatB.entry.text).toBe('sigo vivo')
+
+    a.ws.close(); b.ws.close()
+  })
 })

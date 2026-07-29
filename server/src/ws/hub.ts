@@ -36,46 +36,69 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
     socket.on('message', (raw: Buffer) => {
       let msg: ClientMsg
       try { msg = JSON.parse(raw.toString()) } catch { return }
-      const now = Date.now()
 
-      if (msg.t === 'join') {
-        me = { id: randomBytes(6).toString('hex'), name: msg.name.slice(0, 30) || 'Anónimo', color: COLORS[peers.size % COLORS.length] }
-        peers.set(socket, me)
-        send(socket, { t: 'welcome', self: me, participants: [...peers.values()], state: room.state, serverNow: now, history: room.chat })
-        broadcast({ t: 'presence', participants: [...peers.values()] })
-        system(`${me.name} se unió`)
-        return
-      }
-      if (!me) return
+      // Defensive: the payload above is attacker-controlled and only shape-checked
+      // field-by-field below, not schema-validated. This try/catch is a second
+      // belt so that no malformed message or unforeseen edge case can throw out of
+      // this listener and take down the whole process for every room.
+      try {
+        const now = Date.now()
 
-      switch (msg.t) {
-        case 'play': case 'pause': {
-          room.state = apply(room.state, { type: msg.t, at: now })
-          broadcast({ t: 'state', state: room.state, serverNow: now })
-          system(msg.t === 'play' ? `${me.name} reanudó` : `${me.name} pausó`)
-          break
+        if (msg.t === 'join') {
+          if (typeof msg.name !== 'string') return
+          me = { id: randomBytes(6).toString('hex'), name: msg.name.slice(0, 30) || 'Anónimo', color: COLORS[peers.size % COLORS.length] }
+          peers.set(socket, me)
+          send(socket, { t: 'welcome', self: me, participants: [...peers.values()], state: room.state, serverNow: now, history: room.chat })
+          broadcast({ t: 'presence', participants: [...peers.values()] })
+          system(`${me.name} se unió`)
+          return
         }
-        case 'seek': {
-          room.state = apply(room.state, { type: 'seek', position: msg.position, at: now })
-          room.session.seekTo(segmentForTime(room.segments, msg.position))
-          broadcast({ t: 'state', state: room.state, serverNow: now })
-          system(`${me.name} saltó a ${formatTime(msg.position)}`)
-          break
-        }
-        case 'chat': case 'gif': {
-          const entry: ChatEntry = {
-            id: randomBytes(6).toString('hex'), from: me, at: now,
-            kind: msg.t === 'gif' ? 'gif' : 'text',
-            text: msg.t === 'chat' ? msg.text.slice(0, 1000) : '',
-            gifUrl: msg.t === 'gif' ? msg.url : undefined,
+        if (!me) return
+
+        switch (msg.t) {
+          case 'play': case 'pause': {
+            room.state = apply(room.state, { type: msg.t, at: now })
+            broadcast({ t: 'state', state: room.state, serverNow: now })
+            system(msg.t === 'play' ? `${me.name} reanudó` : `${me.name} pausó`)
+            break
           }
-          room.chat.push(entry)
-          room.chat = room.chat.slice(-500)
-          broadcast({ t: 'chat', entry })
-          break
+          case 'seek': {
+            if (typeof msg.position !== 'number' || !Number.isFinite(msg.position)) return
+            room.state = apply(room.state, { type: 'seek', position: msg.position, at: now })
+            room.session.seekTo(segmentForTime(room.segments, msg.position))
+            broadcast({ t: 'state', state: room.state, serverNow: now })
+            system(`${me.name} saltó a ${formatTime(msg.position)}`)
+            break
+          }
+          case 'chat': {
+            if (typeof msg.text !== 'string') return
+            const entry: ChatEntry = { id: randomBytes(6).toString('hex'), from: me, at: now, kind: 'text', text: msg.text.slice(0, 1000) }
+            room.chat.push(entry)
+            room.chat = room.chat.slice(-500)
+            broadcast({ t: 'chat', entry })
+            break
+          }
+          case 'gif': {
+            if (typeof msg.url !== 'string') return
+            const entry: ChatEntry = { id: randomBytes(6).toString('hex'), from: me, at: now, kind: 'gif', text: '', gifUrl: msg.url }
+            room.chat.push(entry)
+            room.chat = room.chat.slice(-500)
+            broadcast({ t: 'chat', entry })
+            break
+          }
+          case 'reaction': {
+            if (typeof msg.emoji !== 'string') return
+            broadcast({ t: 'reaction', emoji: msg.emoji.slice(0, 8), from: me.name })
+            break
+          }
+          case 'buffering': {
+            if (typeof msg.value !== 'boolean') return
+            broadcast({ t: 'buffering', name: me.name, value: msg.value })
+            break
+          }
         }
-        case 'reaction': broadcast({ t: 'reaction', emoji: msg.emoji.slice(0, 8), from: me.name }); break
-        case 'buffering': broadcast({ t: 'buffering', name: me.name, value: msg.value }); break
+      } catch {
+        // swallow: a malformed or unexpected message must never crash the hub
       }
     })
 
