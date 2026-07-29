@@ -144,9 +144,10 @@ Sin API key, el chat funciona perfectamente; solo no está disponible el botón 
   `server/src/media/hlsLayout.ts`.
 
   Además, el servidor fija la línea de tiempo del medio en vez de heredarla de
-  ffmpeg: sirve un init canónico (sin el *edit list* donde ffmpeg guarda en qué
-  punto arrancó ese proceso) y ancla la cabecera de cada segmento al instante que
-  la playlist ya declara. Sin eso, un salto de posición solo aterrizaba bien
+  ffmpeg: sirve un init canónico (sin las entradas del *edit list* que dependen
+  del proceso concreto que arrancó ffmpeg; el resto, como el trim del retardo del
+  códec, se conserva) y ancla la cabecera de cada segmento al instante que la
+  playlist ya declara. Sin eso, un salto de posición solo aterrizaba bien
   mientras la sala siguiera corriendo sobre el ffmpeg que produjo el primer init.
   La edición de cajas MP4 vive en `server/src/media/fmp4.ts`.
 
