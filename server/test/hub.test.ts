@@ -31,7 +31,7 @@ beforeAll(async () => {
   const rooms = new RoomManager({ createSession: () => fakeSession })
   app = await buildApp({
     config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'H', cacheLimitGB: 10 },
-    library: () => scanLibrary([mediaDir]), rooms, adminToken: 'a',
+    library: () => scanLibrary([mediaDir]), rooms, adminToken: 'a', tunnel: { url: null },
   })
   await app.listen({ port: 0 })
   const port = (app.server.address() as any).port

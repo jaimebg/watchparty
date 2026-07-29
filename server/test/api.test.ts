@@ -26,7 +26,7 @@ beforeAll(async () => {
     config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 },
     library: () => scanLibrary([mediaDir]),
     rooms,
-    adminToken: ADMIN,
+    adminToken: ADMIN, tunnel: { url: null },
   })
 })
 afterAll(async () => { await app.close() })
@@ -111,7 +111,7 @@ describe('api', () => {
       config: { mediaFolders: [mediaDir], klipyApiKey: 'fake-key', port: 8400, hostName: 'Host', cacheLimitGB: 10 },
       library: () => scanLibrary([mediaDir]),
       rooms,
-      adminToken: ADMIN,
+      adminToken: ADMIN, tunnel: { url: null },
       fetchImpl: (async () => new Response(JSON.stringify({}))) as unknown as typeof fetch,
     })
     const res = await gifApp.inject({ url: '/api/gifs/search?q=lol&room=NOEXISTE' })
@@ -137,7 +137,7 @@ describe('api', () => {
       config: { mediaFolders: [mediaDir], klipyApiKey: 'fake-key', port: 8400, hostName: 'Host', cacheLimitGB: 10 },
       library: () => scanLibrary([mediaDir]),
       rooms,
-      adminToken: ADMIN,
+      adminToken: ADMIN, tunnel: { url: null },
       fetchImpl: (async () => new Response(JSON.stringify(sample))) as unknown as typeof fetch,
     })
     const res = await gifApp.inject({ url: `/api/gifs/search?q=lol&room=${token}` })

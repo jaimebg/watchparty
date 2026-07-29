@@ -1,6 +1,9 @@
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import Fastify, { FastifyInstance } from 'fastify'
 import cookie from '@fastify/cookie'
 import websocket from '@fastify/websocket'
+import fastifyStatic from '@fastify/static'
 import type { Config } from './config.js'
 import type { LibraryItem } from './library/scanner.js'
 import type { RoomManager } from './rooms/roomManager.js'
@@ -13,6 +16,7 @@ export interface AppDeps {
   library: () => Promise<LibraryItem[]>
   rooms: RoomManager
   adminToken: string
+  tunnel: { url: string | null }
   fetchImpl?: typeof fetch
 }
 
@@ -24,5 +28,17 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerApi(app, deps)
   registerHub(app, deps)
   registerKlipy(app, deps)
+
+  const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url))
+  if (existsSync(webDist)) {
+    await app.register(fastifyStatic, { root: webDist, wildcard: false })
+    app.setNotFoundHandler((req, reply) => {
+      if (req.url.startsWith('/api') || req.url.startsWith('/stream') || req.url.startsWith('/ws')) {
+        return reply.code(404).send({ error: 'not found' })
+      }
+      return reply.sendFile('index.html', webDist)
+    })
+  }
+
   return app
 }

@@ -13,6 +13,11 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   app.get('/api/library', { preHandler: requireAdmin }, async () => deps.library())
   app.post('/api/library/rescan', { preHandler: requireAdmin }, async () => deps.library())
 
+  app.get('/api/status', { preHandler: requireAdmin }, async () => ({
+    tunnelUrl: deps.tunnel.url,
+    rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.item.title })),
+  }))
+
   app.post('/api/rooms', { preHandler: requireAdmin }, async (req, reply) => {
     const { itemId } = req.body as { itemId: string }
     const item = (await deps.library()).find(i => i.id === itemId)
