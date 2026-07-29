@@ -13,21 +13,42 @@ export function Player({ token, info, send, lastState }: {
   const [audioTracks, setAudioTracks] = useState<{ id: number; name: string }[]>([])
   const [sub, setSub] = useState<number>(-1)
   const [dragValue, setDragValue] = useState<number | null>(null)
+  // 'hls': hls.js/MSE (per-viewer audio track selection available).
+  // 'native': no MSE, but the <video> element itself plays HLS (Safari/iOS) —
+  // audio track selection has no native equivalent, so that selector hides.
+  // 'unsupported': neither works; show a clear message instead of a dead player.
+  const [mode, setMode] = useState<'hls' | 'native' | 'unsupported'>('hls')
   const [, tick] = useReducer((x: number) => x + 1, 0)
 
   useEffect(() => {
     const video = videoRef.current!
-    const hls = new Hls()
-    hlsRef.current = hls
-    hls.loadSource(`/stream/${token}/master.m3u8`)
-    hls.attachMedia(video)
-    hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () =>
-      setAudioTracks(hls.audioTracks.map((t, id) => ({ id, name: t.name }))))
     const onWaiting = () => send({ t: 'buffering', value: true })
     const onPlaying = () => send({ t: 'buffering', value: false })
     video.addEventListener('waiting', onWaiting)
     video.addEventListener('playing', onPlaying)
-    return () => { hls.destroy(); video.removeEventListener('waiting', onWaiting); video.removeEventListener('playing', onPlaying) }
+
+    let hls: Hls | null = null
+    if (Hls.isSupported()) {
+      hls = new Hls()
+      hlsRef.current = hls
+      hls.loadSource(`/stream/${token}/master.m3u8`)
+      hls.attachMedia(video)
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () =>
+        setAudioTracks(hls!.audioTracks.map((t, id) => ({ id, name: t.name }))))
+      setMode('hls')
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = `/stream/${token}/master.m3u8`
+      setMode('native')
+    } else {
+      setMode('unsupported')
+    }
+
+    return () => {
+      video.removeEventListener('waiting', onWaiting)
+      video.removeEventListener('playing', onPlaying)
+      if (hls) { hls.destroy(); hlsRef.current = null }
+      else video.removeAttribute('src')
+    }
   }, [token])
 
   useEffect(() => {
@@ -72,6 +93,14 @@ export function Player({ token, info, send, lastState }: {
     ? Math.min(info.durationSec, targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now()))
     : 0
 
+  if (mode === 'unsupported') {
+    return (
+      <div className="player">
+        <p className="field-error">Este navegador no puede reproducir HLS. Prueba con una versión reciente de Chrome, Firefox o Safari.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="player">
       <video ref={videoRef} playsInline>
@@ -89,9 +118,11 @@ export function Player({ token, info, send, lastState }: {
           onPointerUp={e => commitSeek(Number(e.currentTarget.value))}
           onTouchEnd={e => commitSeek(Number(e.currentTarget.value))}
           onKeyUp={e => commitSeek(Number(e.currentTarget.value))} />
-        <select onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
-          {audioTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        {mode === 'hls' && (
+          <select onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
+            {audioTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        )}
         <select value={sub} onChange={e => setSub(Number(e.target.value))}>
           <option value={-1}>Sin subtítulos</option>
           {info.subtitles.map((s, i) => <option key={s.id} value={i}>{s.label}</option>)}
