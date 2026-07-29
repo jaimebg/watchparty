@@ -9,15 +9,17 @@ import { makeFixtureMkv } from './support/fixture.js'
 import { scanLibrary } from '../src/library/scanner.js'
 
 let app: Awaited<ReturnType<typeof buildApp>>, url: string, token: string
+let rooms: RoomManager
+let items: Awaited<ReturnType<typeof scanLibrary>>
 
 const fakeSession = {
   start: () => {}, seekTo: () => {}, stop: async () => {}, onError: () => {}, lastLog: [],
   requestSegment: async () => '/dev/null',
 }
 
-function connect(name: string): Promise<{ ws: WebSocket; recv: () => Promise<any> }> {
+function connect(name: string, tok = token): Promise<{ ws: WebSocket; recv: () => Promise<any> }> {
   return new Promise((res) => {
-    const ws = new WebSocket(`${url}/ws/${token}`)
+    const ws = new WebSocket(`${url}/ws/${tok}`)
     const queue: any[] = []; const waiters: ((m: any) => void)[] = []
     ws.on('message', d => { const m = JSON.parse(d.toString()); const w = waiters.shift(); w ? w(m) : queue.push(m) })
     ws.on('open', () => { ws.send(JSON.stringify({ t: 'join', name })); res({ ws, recv: () => queue.length ? Promise.resolve(queue.shift()) : new Promise(r => waiters.push(r)) }) })
@@ -28,7 +30,7 @@ beforeAll(async () => {
   process.env.JBG_DATA_DIR = mkdtempSync(join(tmpdir(), 'hub-'))
   const mediaDir = mkdtempSync(join(tmpdir(), 'hubmedia-'))
   await makeFixtureMkv(mediaDir)
-  const rooms = new RoomManager({ createSession: () => fakeSession })
+  rooms = new RoomManager({ createSession: () => fakeSession })
   app = await buildApp({
     config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'H', cacheLimitGB: 10 },
     library: () => scanLibrary([mediaDir]), rooms, adminToken: 'a', tunnel: { url: null },
@@ -36,7 +38,7 @@ beforeAll(async () => {
   await app.listen({ port: 0 })
   const port = (app.server.address() as any).port
   url = `ws://127.0.0.1:${port}`
-  const items = await scanLibrary([mediaDir])
+  items = await scanLibrary([mediaDir])
   token = (await rooms.create(items[0])).token
 })
 afterAll(async () => { await app.close() })
@@ -95,5 +97,23 @@ describe('hub', () => {
     expect(chatB.entry.text).toBe('sigo vivo')
 
     a.ws.close(); b.ws.close()
+  })
+
+  it('seek position is clamped to [0, durationSec] before being applied', async () => {
+    const duration = rooms.get(token)!.info.durationSec
+    const a = await connect('Clara')
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
+
+    a.ws.send(JSON.stringify({ t: 'seek', position: 999999 }))
+    const overMsgs = [await a.recv(), await a.recv()]
+    const overState = overMsgs.find(m => m.t === 'state')!
+    expect(overState.state.positionBase).toBeCloseTo(duration)
+
+    a.ws.send(JSON.stringify({ t: 'seek', position: -5 }))
+    const underMsgs = [await a.recv(), await a.recv()]
+    const underState = underMsgs.find(m => m.t === 'state')!
+    expect(underState.state.positionBase).toBe(0)
+
+    a.ws.close()
   })
 })

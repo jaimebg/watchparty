@@ -11,7 +11,8 @@ const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c'
 const conns = new Map<Room, Map<WebSocket, Participant>>()
 
 export function formatTime(sec: number): string {
-  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60)
+  const clamped = Math.max(0, sec)
+  const h = Math.floor(clamped / 3600), m = Math.floor((clamped % 3600) / 60), s = Math.floor(clamped % 60)
   const mm = String(m).padStart(2, '0'), ss = String(s).padStart(2, '0')
   return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`
 }
@@ -64,10 +65,11 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
           }
           case 'seek': {
             if (typeof msg.position !== 'number' || !Number.isFinite(msg.position)) return
-            room.state = apply(room.state, { type: 'seek', position: msg.position, at: now })
-            room.session.seekTo(segmentForTime(room.segments, msg.position))
+            const position = Math.min(Math.max(msg.position, 0), room.info.durationSec)
+            room.state = apply(room.state, { type: 'seek', position, at: now })
+            room.session.seekTo(segmentForTime(room.segments, position))
             broadcast({ t: 'state', state: room.state, serverNow: now })
-            system(`${me.name} saltó a ${formatTime(msg.position)}`)
+            system(`${me.name} saltó a ${formatTime(position)}`)
             break
           }
           case 'chat': {
