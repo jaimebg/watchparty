@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { dataDir, loadConfig, saveConfig, cacheDir } from '../src/config.js'
@@ -17,5 +17,13 @@ describe('config', () => {
     expect(c).toEqual({ mediaFolders: [], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 })
     saveConfig({ ...c, mediaFolders: ['/pelis'] })
     expect(loadConfig().mediaFolders).toEqual(['/pelis'])
+  })
+
+  it('loadConfig throws a clear, actionable error when config.json is corrupted', () => {
+    const dir = dataDir()
+    mkdirSync(dir, { recursive: true })
+    const path = join(dir, 'config.json')
+    writeFileSync(path, '{ not valid json')
+    expect(() => loadConfig()).toThrow(new RegExp(`config\\.json inválido en ${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
   })
 })

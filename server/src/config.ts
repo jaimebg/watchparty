@@ -25,7 +25,15 @@ const configPath = () => join(dataDir(), 'config.json')
 export function loadConfig(): Config {
   mkdirSync(dataDir(), { recursive: true })
   if (!existsSync(configPath())) writeFileSync(configPath(), JSON.stringify(DEFAULTS, null, 2))
-  return { ...DEFAULTS, ...JSON.parse(readFileSync(configPath(), 'utf8')) }
+  const raw = readFileSync(configPath(), 'utf8')
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    throw new Error(`config.json inválido en ${configPath()}: ${msg}`)
+  }
+  return { ...DEFAULTS, ...(parsed as Partial<Config>) }
 }
 
 export function saveConfig(c: Config): void {
