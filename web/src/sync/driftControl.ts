@@ -16,3 +16,16 @@ const positionAt = (s: PlaybackState, now: number) =>
 export function targetPosition(state: PlaybackState, serverNow: number, receivedAt: number, now: number): number {
   return positionAt(state, serverNow + (now - receivedAt))
 }
+
+// Tipado estructural en vez de `TimeRanges` para poder testearlo sin DOM.
+export interface Ranges { length: number; start(i: number): number; end(i: number): number }
+
+// Segundos contiguos ya descargados a partir de `t`; 0 si `t` cae fuera de todo
+// rango. La tolerancia en el borde inicial evita que un `t` justo en la frontera
+// de un rango se lea como «nada bufferizado» por un error de coma flotante.
+export function bufferedAhead(ranges: Ranges, t: number): number {
+  for (let i = 0; i < ranges.length; i++) {
+    if (ranges.start(i) - 0.1 <= t && t < ranges.end(i)) return ranges.end(i) - t
+  }
+  return 0
+}

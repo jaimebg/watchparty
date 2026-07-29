@@ -1,13 +1,15 @@
 import Hls from 'hls.js'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, PlaybackState, RoomInfo } from '../types'
-import { computeCorrection, targetPosition } from '../sync/driftControl'
+import { bufferedAhead, computeCorrection, targetPosition } from '../sync/driftControl'
 import { formatClock, parseStoredVolume, spaceBelongsTo } from './format'
 
 export interface LastState { state: PlaybackState; serverNow: number; receivedAt: number }
 
 const VOLUME_KEY = 'jbg-volume'
 const MUTED_KEY = 'jbg-muted'
+const READY_AHEAD_S = 2
+const HARD_SEEK_MIN_INTERVAL_MS = 3000
 
 const PlayIcon = () => (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
@@ -54,14 +56,14 @@ export function Player({ token, info, send, lastState }: {
   pausedRef.current = paused
   const sendRef = useRef(send)
   sendRef.current = send
+  const lastHardSeekRef = useRef(0)
+  const bufferingRef = useRef(false)
+  const infoRef = useRef(info)
+  infoRef.current = info
   const togglePlay = () => sendRef.current({ t: pausedRef.current ? 'play' : 'pause' })
 
   useEffect(() => {
     const video = videoRef.current!
-    const onWaiting = () => send({ t: 'buffering', value: true })
-    const onPlaying = () => send({ t: 'buffering', value: false })
-    video.addEventListener('waiting', onWaiting)
-    video.addEventListener('playing', onPlaying)
 
     let hls: Hls | null = null
     if (Hls.isSupported()) {
@@ -80,8 +82,6 @@ export function Player({ token, info, send, lastState }: {
     }
 
     return () => {
-      video.removeEventListener('waiting', onWaiting)
-      video.removeEventListener('playing', onPlaying)
       if (hls) { hls.destroy(); hlsRef.current = null }
       else video.removeAttribute('src')
     }
@@ -101,20 +101,47 @@ export function Player({ token, info, send, lastState }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Un estado nuevo del servidor (seek, play/pausa, congelar/reanudar) desbloquea
+  // una corrección inmediata: el límite de abajo solo debe frenar al bucle de
+  // deriva, nunca a una orden explícita del usuario.
+  useEffect(() => { lastHardSeekRef.current = 0 }, [lastState?.state.updatedAt])
+
   useEffect(() => {
     const id = setInterval(() => {
       const video = videoRef.current
       if (!video || !lastState) return
       const target = targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now())
-      if (lastState.state.paused) {
+
+      // La señal de carga se calcula, no se escucha: con el vídeo pausado porque
+      // la sala está congelada, `playing` no dispararía nunca y la sala se
+      // quedaría esperándonos hasta agotar el tope. Cerca del final nunca habrá
+      // READY_AHEAD_S por delante, así que ese tramo cuenta siempre como listo.
+      const nearEnd = target >= infoRef.current.durationSec - READY_AHEAD_S
+      const starved = !nearEnd && bufferedAhead(video.buffered, target) < READY_AHEAD_S
+      if (starved !== bufferingRef.current) {
+        bufferingRef.current = starved
+        sendRef.current({ t: 'buffering', value: starved })
+      }
+
+      // Cada corrección dura tira el buffer que hls.js está llenando. Sin este
+      // límite, un hipo pasa a bloqueo permanente: se resiembra el buffer cada
+      // 500 ms y nunca llega a haber suficiente para reproducir.
+      const hardSeek = (to: number) => {
+        if (video.readyState < HTMLMediaElement.HAVE_METADATA) return
+        if (Date.now() - lastHardSeekRef.current < HARD_SEEK_MIN_INTERVAL_MS) return
+        lastHardSeekRef.current = Date.now()
+        video.currentTime = to
+      }
+
+      if (lastState.state.paused || lastState.state.stalled) {
         if (!video.paused) video.pause()
-        if (Math.abs(video.currentTime - target) > 0.5) video.currentTime = target
+        if (Math.abs(video.currentTime - target) > 0.5) hardSeek(target)
         return
       }
       if (video.paused) void video.play().catch(() => {})
       const c = computeCorrection(target, video.currentTime)
       if (c.kind === 'rate') video.playbackRate = c.rate
-      else if (c.kind === 'seek') { video.currentTime = c.to; video.playbackRate = 1 }
+      else if (c.kind === 'seek') { hardSeek(c.to); video.playbackRate = 1 }
       else video.playbackRate = 1
     }, 500)
     return () => clearInterval(id)
