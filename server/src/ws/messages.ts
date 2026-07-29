@@ -1,6 +1,6 @@
 import type { PlaybackState } from '../rooms/syncState.js'
 
-export interface Participant { id: string; name: string; color: string }
+export interface Participant { id: string; name: string; color: string; active: boolean }
 export interface ChatEntry { id: string; from: Participant; kind: 'text' | 'gif' | 'system'; text: string; gifUrl?: string; at: number }
 
 export type ClientMsg =
@@ -10,6 +10,7 @@ export type ClientMsg =
   | { t: 'gif'; url: string }
   | { t: 'reaction'; emoji: string }
   | { t: 'buffering'; value: boolean }
+  | { t: 'visibility'; active: boolean }
 
 export type ServerMsg =
   | { t: 'welcome'; self: Participant; participants: Participant[]; state: PlaybackState; serverNow: number; history: ChatEntry[] }

@@ -184,4 +184,35 @@ describe('hub', () => {
 
     b.ws.close()
   })
+
+  it('a visibility message updates the participant and rebroadcasts full presence', async () => {
+    // Sala propia para no correr contra los close handlers de tests anteriores
+    // (mismo motivo que el test de seek clamp).
+    const room = await rooms.create(items[0])
+    const a = await connect('Vera', room.token)
+    const wA = await a.recv()
+    expect(wA.t).toBe('welcome')
+    expect(wA.self.active).toBe(true)
+    await a.recv(); await a.recv() // presence propio + system "se unió"
+    const b = await connect('Beto', room.token)
+    const wB = await b.recv() // welcome de Beto
+    expect(wB.participants.every((p: any) => p.active === true)).toBe(true)
+    await a.recv(); await a.recv() // presence + system de Beto, en A
+    await b.recv(); await b.recv() // presence + system, en B
+
+    a.ws.send(JSON.stringify({ t: 'visibility', active: false }))
+    const presB = await b.recv()
+    expect(presB.t).toBe('presence')
+    expect(presB.participants.find((p: any) => p.name === 'Vera').active).toBe(false)
+    expect(presB.participants.find((p: any) => p.name === 'Beto').active).toBe(true)
+
+    // Un payload malformado se ignora en silencio; el siguiente válido sí llega.
+    a.ws.send(JSON.stringify({ t: 'visibility', active: 'x' }))
+    a.ws.send(JSON.stringify({ t: 'visibility', active: true }))
+    const presB2 = await b.recv()
+    expect(presB2.t).toBe('presence')
+    expect(presB2.participants.find((p: any) => p.name === 'Vera').active).toBe(true)
+
+    a.ws.close(); b.ws.close()
+  })
 })

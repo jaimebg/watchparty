@@ -62,6 +62,14 @@ export function Room({ token }: { token: string }) {
     return () => conn.close()
   }, [token, name, notFound])
 
+  // Presencia: avisa cuando la pestaña pasa a segundo plano o vuelve (Page
+  // Visibility API; ver spec 2026-07-29-presence-visibility-design.md).
+  useEffect(() => {
+    const onVis = () => sendRef.current({ t: 'visibility', active: document.visibilityState === 'visible' })
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
   // Banner de túnel caído: solo el host recibe respuesta de /api/status
   // (a los invitados les da 401, así que se omite silenciosamente).
   useEffect(() => {

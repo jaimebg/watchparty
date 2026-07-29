@@ -891,6 +891,11 @@ details summary:hover { color: var(--marquee); }
   background: var(--raised);
   border-radius: 999px;
   padding: 0.18rem 0.6rem;
+  transition: opacity 0.3s ease;
+}
+
+.participants li.away {
+  opacity: 0.45;
 }
 
 .participants .dot {
