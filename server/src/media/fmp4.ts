@@ -58,3 +58,85 @@ export function headerLength(buf: Buffer): number {
   }
   return -1
 }
+
+export interface CanonicalInit { init: Buffer; timescales: Map<number, number> }
+
+// Contenedores que hay que reconstruir para poder tirar un hijo: al quitar el
+// `edts` cambia el tamaño de su `trak` y, en cascada, el del `moov`.
+const REBUILD_PARENTS = new Set(['moov', 'trak', 'mdia'])
+
+function rebuildWithout(buf: Buffer, start: number, end: number, drop: string): Buffer {
+  const parts: Buffer[] = []
+  for (const b of parseBoxes(buf, start, end)) {
+    if (b.type === drop) continue
+    if (!REBUILD_PARENTS.has(b.type)) {
+      parts.push(buf.subarray(b.start, b.start + b.size))
+      continue
+    }
+    const kids = rebuildWithout(buf, b.start + b.hdr, b.start + b.size, drop)
+    const head = Buffer.from(buf.subarray(b.start, b.start + b.hdr))
+    const total = b.hdr + kids.length
+    if (b.hdr === 16) head.writeBigUInt64BE(BigInt(total), 8)
+    else head.writeUInt32BE(total, 0)
+    parts.push(head, kids)
+  }
+  return Buffer.concat(parts)
+}
+
+// mvhd/tkhd/mdhd comparten prólogo (creation, modification) pero tkhd mete
+// track_id y un reservado antes de la duración; y la v1 usa 64 bits para las
+// fechas y la duración. Offsets contados desde el final de version+flags.
+function durationOffset(type: string, version: number): number {
+  if (type === 'tkhd') return version === 1 ? 28 : 20
+  return version === 1 ? 24 : 16
+}
+
+function zeroDuration(buf: Buffer, b: Box): void {
+  const version = buf[b.start + b.hdr]
+  const at = b.start + b.hdr + durationOffset(b.type, version)
+  if (version === 1) buf.writeBigUInt64BE(0n, at)
+  else buf.writeUInt32BE(0, at)
+}
+
+// `track_id` en tkhd y `timescale` en mdhd caen en el mismo offset: tras el
+// prólogo de fechas, que es lo único que cambia entre v0 y v1.
+function readAfterDates(buf: Buffer, b: Box): number {
+  const version = buf[b.start + b.hdr]
+  return buf.readUInt32BE(b.start + b.hdr + (version === 1 ? 20 : 12))
+}
+
+/**
+ * Init reproducible: sin `edts` y con las duraciones a cero.
+ *
+ * ffmpeg guarda en el `edts` de cada pista un «empty edit» con la posición
+ * absoluta donde arrancó ese proceso (medido: dur=20000 ms al reiniciar con
+ * `-ss 20`). Como el servidor fija UN snapshot del init para toda la sala, ese
+ * offset acabaría aplicándose a segmentos de cualquier otro reinicio. Sin
+ * `edts`, la línea de tiempo sale solo del `tfdt`, que sí controlamos
+ * (retimeHeader). Las duraciones se ponen a cero por la misma razón: un run
+ * reiniciado codifica menos metraje y las escribiría distintas.
+ */
+export function canonicalizeInit(raw: Buffer): CanonicalInit {
+  // Buffer.concat copia, así que `init` es propio y se puede mutar sin tocar `raw`.
+  const init = rebuildWithout(raw, 0, raw.length, 'edts')
+  const timescales = new Map<number, number>()
+  const moov = parseBoxes(init).find(b => b.type === 'moov')
+  if (!moov) throw new Error('init de fMP4 sin moov')
+  for (const b of parseBoxes(init, moov.start + moov.hdr, moov.start + moov.size)) {
+    if (b.type === 'mvhd') zeroDuration(init, b)
+    if (b.type !== 'trak') continue
+    let trackId = 0
+    for (const t of parseBoxes(init, b.start + b.hdr, b.start + b.size)) {
+      // tkhd va antes que mdia dentro de trak, así que para cuando se lee el
+      // timescale el trackId ya está puesto.
+      if (t.type === 'tkhd') { trackId = readAfterDates(init, t); zeroDuration(init, t) }
+      if (t.type !== 'mdia') continue
+      for (const m of parseBoxes(init, t.start + t.hdr, t.start + t.size)) {
+        if (m.type !== 'mdhd') continue
+        timescales.set(trackId, readAfterDates(init, m))
+        zeroDuration(init, m)
+      }
+    }
+  }
+  return { init, timescales }
+}
