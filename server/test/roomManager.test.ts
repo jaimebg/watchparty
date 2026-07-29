@@ -10,7 +10,6 @@ import { makeFixtureMkv } from './support/fixture.js'
 const fakeSession = () => ({
   start: () => {}, seekTo: () => {}, stop: async () => {}, onError: () => {},
   lastLog: [] as string[],
-  requestSegment: async () => '',
   openSegment: async () => Readable.from([]),
   requestInit: async () => '',
 })

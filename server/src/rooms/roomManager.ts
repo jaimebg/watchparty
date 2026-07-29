@@ -15,9 +15,11 @@ import type { ChatEntry } from '../ws/messages.js'
 
 export interface SessionLike {
   start(fromSegment?: number): void
-  requestSegment(variant: number, index: number, timeoutMs?: number): Promise<string>
-  // Los bytes listos para servir: requestSegment da la ruta del archivo tal cual
-  // lo escribió ffmpeg, y openSegment lo ancla en el tiempo de la playlist.
+  // requestSegment (la ruta cruda tal cual la escribió ffmpeg, sin reanclar) ya
+  // no está aquí: solo openSegment forma parte del contrato que RoomManager
+  // expone hacia fuera. Sigue existiendo como primitiva interna de
+  // TranscodeSession (openSegment la llama para localizar el archivo antes de
+  // reanclarlo), pero ningún llamador desde src/ la necesita ya directamente.
   openSegment(variant: number, index: number, timeoutMs?: number): Promise<Readable>
   requestInit(variant: number, timeoutMs?: number): Promise<string>
   seekTo(segmentIndex: number): void

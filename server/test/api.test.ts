@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -14,9 +14,6 @@ const ADMIN = 'test-admin-token'
 
 const fakeSession = {
   start: () => {}, seekTo: () => {}, stop: async () => {}, onError: () => {}, lastLog: [] as string[],
-  requestSegment: vi.fn(async (_v: number, _i: number) => {
-    const p = join(process.env.JBG_DATA_DIR!, 'fake.m4s'); writeFileSync(p, 'seg'); return p
-  }),
   openSegment: vi.fn(async (_v: number, _i: number) => Readable.from([Buffer.from('seg-retimed')])),
   requestInit: vi.fn(async () => { throw new Error('sin init') }),
 }
@@ -223,6 +220,19 @@ describe('api', () => {
   it('rejects a segment variant outside the real range (0..audioCount) without touching the session', async () => {
     fakeSession.openSegment.mockClear()
     const res = await app.inject({ url: `/stream/${token}/seg_99_00000.m4s` })
+    expect(res.statusCode).toBe(404)
+    expect(fakeSession.openSegment).not.toHaveBeenCalled()
+  })
+
+  // Con el proceso de ffmpeg ya terminado, requestSegment resuelve mirando
+  // solo existsSync: una petición a un índice fuera del plan se resolvería y
+  // caería en el fallback silencioso que este arreglo existe para matar. Un
+  // índice inventado tiene que 404 sin tocar la sesión, igual que la variante.
+  it('rejects a segment index outside the plan (0..segments.length) without touching the session', async () => {
+    fakeSession.openSegment.mockClear()
+    const room = rooms.get(token)!
+    const outOfRange = String(room.segments.length).padStart(5, '0')
+    const res = await app.inject({ url: `/stream/${token}/seg_0_${outOfRange}.m4s` })
     expect(res.statusCode).toBe(404)
     expect(fakeSession.openSegment).not.toHaveBeenCalled()
   })

@@ -23,7 +23,6 @@ function makeFakeSession() {
     onError: (cb: (log: string[]) => void) => { errorCb = cb },
     triggerError: (log: string[]) => errorCb?.(log),
     lastLog: [] as string[],
-    requestSegment: async () => '/dev/null',
     openSegment: async () => Readable.from([]),
     requestInit: async () => '/dev/null',
   }

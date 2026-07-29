@@ -156,7 +156,8 @@ function rebuildEdits(buf: Buffer, start: number, end: number): Buffer {
 
 // mvhd/tkhd/mdhd comparten prólogo (creation, modification) pero tkhd mete
 // track_id y un reservado antes de la duración; y la v1 usa 64 bits para las
-// fechas y la duración. Offsets contados desde el final de version+flags.
+// fechas y la duración. Offsets contados desde el INICIO del payload (incluye
+// version+flags: mvhd v0 → 16 = 4+4+4+4), no desde su final.
 function durationOffset(type: string, version: number): number {
   if (type === 'tkhd') return version === 1 ? 28 : 20
   return version === 1 ? 24 : 16

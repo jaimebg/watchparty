@@ -126,8 +126,15 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     if (seg) {
       const variant = Number(seg[1])
       if (variant < 0 || variant >= variants) return reply.code(404).send()
+      const index = Number(seg[2])
+      // Un índice fuera del plan es una petición inventada, no un fallo del
+      // servidor: con el proceso de ffmpeg ya terminado, requestSegment lo
+      // resolvería mirando solo existsSync y acabaría sirviendo bytes sin
+      // reanclar en silencio (el fallo que openSegment existe para matar). Se
+      // rechaza aquí, sin tocar la sesión, igual que la variante de arriba.
+      if (index < 0 || index >= room.segments.length) return reply.code(404).send()
       try {
-        return reply.type('video/mp4').send(await room.session.openSegment(variant, Number(seg[2])))
+        return reply.type('video/mp4').send(await room.session.openSegment(variant, index))
       } catch { return reply.code(504).send() }
     }
     const sub = file.match(/^sub_(\d+)\.vtt$/)

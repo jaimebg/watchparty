@@ -367,6 +367,32 @@ describe('TranscodeSession', () => {
     await s.stop()
   }, 90_000)
 
+  it('openSegment sobre una variante de solo-audio (audioCount:2) también ancla al instante correcto', async () => {
+    // Las tres medidas de arriba solo pasan por la variante 0. Con
+    // audioCount:2 hay variantes 1..N, una por pista de audio -cada una con su
+    // propio init y sus propios timescales (requestInit/canonicalizeInit)-, y
+    // ese camino no tenía ni una medida. El fallo ahí sería silencioso: si el
+    // track_id no calzara entre el init de esta variante y el tfhd de su
+    // segmento, retimeHeader no lanza -se salta la pista
+    // (`if (timescale === undefined) continue`)- y sirve el segmento con el
+    // tfdt original, resucitando el bug solo en salas multi-audio.
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-ts-audio-'))
+    const audioOutDir = join(dir, 'out'); mkdirSync(audioOutDir)
+    const segments = session['segments']
+    const mid = Math.floor(segments.length / 2)
+    const s = new TranscodeSession({
+      input: fixture, mode: 'copy', encoder: 'libx264', segments, audioCount: 2, outDir: audioOutDir,
+    })
+    s.start(mid)
+    const seg = await drain(await s.openSegment(1, mid, 30_000))
+    const init = readFileSync(await s.requestInit(1, 30_000))
+
+    const times = await startTimes(dir, init, seg)
+    expect(times).toHaveLength(1) // v1 es solo audio: una pista, no dos
+    expect(Math.abs(times[0] - segments[mid].start)).toBeLessThan(0.05)
+    await s.stop()
+  }, 90_000)
+
   it('a segment produced by a mid-film start in TRANSCODE mode carries the correct absolute timestamp', async () => {
     // Same measurement, transcode mode: -ss must be seg.start (the boundary),
     // not seg.seekAt (the copy-mode keyframe midpoint), or the first output

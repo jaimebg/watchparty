@@ -206,7 +206,12 @@ export class TranscodeSession {
     await this.requestInit(variant, timeoutMs)
     const timescales = this.timescales.get(variant)
     const start = this.segments[index]?.start
-    if (!timescales || start === undefined) return createReadStream(path)
+    // `start === undefined` pasa con un índice fuera del plan (>= this.segments.length):
+    // api.ts ya valida esto antes de llegar aquí, pero si algún día dejara de
+    // hacerlo, servir el archivo tal cual sin reanclar sería resucitar en
+    // silencio el fallo que existe esta clase para matar (mismo espíritu que
+    // el throw de «sin mdat» más abajo: se prefiere el 504 al bug mudo).
+    if (!timescales || start === undefined) throw new Error(`Sin plan para reanclar v${variant}#${index}`)
 
     const fh = await open(path, 'r')
     let head: Buffer
