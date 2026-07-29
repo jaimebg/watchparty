@@ -7,6 +7,7 @@ import { buildApp } from '../src/app.js'
 import { RoomManager } from '../src/rooms/roomManager.js'
 import { makeFixtureMkv } from './support/fixture.js'
 import { scanLibrary } from '../src/library/scanner.js'
+import { stallTiming } from '../src/rooms/stallControl.js'
 
 let app: Awaited<ReturnType<typeof buildApp>>, url: string, token: string
 let rooms: RoomManager
@@ -175,14 +176,61 @@ describe('hub', () => {
     await b.recv(); await b.recv() // presence + system, en B
 
     a.ws.send(JSON.stringify({ t: 'buffering', value: true }))
-    const bufOnB = await b.recv()
-    expect(bufOnB).toEqual({ t: 'buffering', name: 'Pau', value: true })
+    const onMsgs = [await b.recv(), await b.recv()] // buffering + state (la sala se congela)
+    expect(onMsgs.find(m => m.t === 'buffering')).toEqual({ t: 'buffering', name: 'Pau', value: true })
 
     a.ws.close()
-    const bufOffB = await b.recv()
-    expect(bufOffB).toEqual({ t: 'buffering', name: 'Pau', value: false })
+    const offMsgs = [await b.recv(), await b.recv()] // buffering + state (la sala se reanuda)
+    expect(offMsgs.find(m => m.t === 'buffering')).toEqual({ t: 'buffering', name: 'Pau', value: false })
 
     b.ws.close()
+  })
+
+  it('a buffering viewer freezes the room clock and the last ready one resumes it', async () => {
+    // Sala propia: reusar una de otro test corre contra sus close handlers.
+    const room = await rooms.create(items[0])
+    const a = await connect('Iker', room.token)
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system
+    const b = await connect('Sol', room.token)
+    await b.recv() // welcome de Sol
+    await a.recv(); await a.recv() // presence + system de Sol, en A
+    await b.recv(); await b.recv() // presence + system, en B
+
+    a.ws.send(JSON.stringify({ t: 'buffering', value: true }))
+    const afterBuf = [await b.recv(), await b.recv()]
+    expect(afterBuf.find(m => m.t === 'buffering')).toEqual({ t: 'buffering', name: 'Iker', value: true })
+    expect(afterBuf.find(m => m.t === 'state')!.state.stalled).toBe(true)
+
+    a.ws.send(JSON.stringify({ t: 'buffering', value: false }))
+    const afterReady = [await b.recv(), await b.recv()]
+    expect(afterReady.find(m => m.t === 'state')!.state.stalled).toBe(false)
+
+    a.ws.close(); b.ws.close()
+  })
+
+  it('the room resumes on its own once the stall cap expires', async () => {
+    const cap = stallTiming.capMs, cooldown = stallTiming.cooldownMs
+    stallTiming.capMs = 150
+    stallTiming.cooldownMs = 150
+    try {
+      const room = await rooms.create(items[0])
+      const a = await connect('Noa', room.token)
+      await a.recv(); await a.recv(); await a.recv() // welcome, presence, system
+
+      a.ws.send(JSON.stringify({ t: 'buffering', value: true }))
+      const frozen = [await a.recv(), await a.recv()]
+      expect(frozen.find(m => m.t === 'state')!.state.stalled).toBe(true)
+
+      // Nunca envía buffering:false: la sala debe salir sola por el tope.
+      const resumed = await a.recv()
+      expect(resumed.t).toBe('state')
+      expect(resumed.state.stalled).toBe(false)
+
+      a.ws.close()
+    } finally {
+      stallTiming.capMs = cap
+      stallTiming.cooldownMs = cooldown
+    }
   })
 
   it('a visibility message updates the participant and rebroadcasts full presence', async () => {

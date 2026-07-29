@@ -4,6 +4,7 @@ import type { WebSocket } from 'ws'
 import type { AppDeps } from '../app.js'
 import type { Room } from '../rooms/roomManager.js'
 import { apply } from '../rooms/syncState.js'
+import * as stall from '../rooms/stallControl.js'
 import { segmentForTime } from '../media/planner.js'
 import type { ChatEntry, ClientMsg, Participant, ServerMsg } from './messages.js'
 
@@ -44,6 +45,7 @@ export function closeRoomSockets(room: Room): void {
   for (const ws of peers.keys()) {
     try { ws.close(4001, 'room closed') } catch { /* already closing */ }
   }
+  stall.detach(room)
   conns.delete(room)
 }
 
@@ -58,6 +60,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
       // every socket once the room itself is torn down.
       room.errorListeners.add(log => broadcast(room, { t: 'error', log }))
       room.closeListeners.add(() => closeRoomSockets(room))
+      stall.attach(room, () => broadcast(room, { t: 'state', state: room.state, serverNow: Date.now() }))
     }
     const peers = conns.get(room)!
     let me: Participant | null = null
@@ -90,6 +93,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
             room.state = apply(room.state, { type: msg.t, at: now })
             broadcast(room, { t: 'state', state: room.state, serverNow: now })
             system(room, msg.t === 'play' ? `${me.name} reanudó` : `${me.name} pausó`)
+            if (msg.t === 'play') stall.refresh(room, now)
             break
           }
           case 'seek': {
@@ -99,6 +103,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
             room.session.seekTo(segmentForTime(room.segments, position))
             broadcast(room, { t: 'state', state: room.state, serverNow: now })
             system(room, `${me.name} saltó a ${formatTime(position)}`)
+            stall.refresh(room, now)
             break
           }
           case 'chat': {
@@ -126,6 +131,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
             if (typeof msg.value !== 'boolean') return
             bufferingActive = msg.value
             broadcast(room, { t: 'buffering', name: me.name, value: msg.value })
+            stall.setBuffering(room, socket, msg.value, now)
             break
           }
           case 'visibility': {
@@ -146,6 +152,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
       // A participant who disconnects mid-buffer must not leave a stale
       // "X está cargando…" indicator behind for everyone else.
       if (bufferingActive) broadcast(room, { t: 'buffering', name: me.name, value: false })
+      stall.forget(room, socket, Date.now())
       broadcast(room, { t: 'presence', participants: [...peers.values()] })
       system(room, `${me.name} salió`)
     })
