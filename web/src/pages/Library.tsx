@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { addMediaFolder, bootstrapAdmin, createRoom, getLibrary, getMediaFolders, getStatus, pickMediaFolder, removeMediaFolder } from '../api'
 import type { LibraryItem } from '../types'
+import { parseRoomToken } from './roomToken'
 
 export function Library() {
   const [items, setItems] = useState<LibraryItem[] | null>(null)
@@ -10,6 +11,8 @@ export function Library() {
   const [folderPath, setFolderPath] = useState('')
   const [folderError, setFolderError] = useState<string | null>(null)
   const [busyFolders, setBusyFolders] = useState(false)
+  const [roomInput, setRoomInput] = useState('')
+  const [roomError, setRoomError] = useState<string | null>(null)
 
   const load = async () => {
     try {
@@ -66,6 +69,11 @@ export function Library() {
 
   if (guest) {
     const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname)
+    const enterRoom = () => {
+      const token = parseRoomToken(roomInput)
+      if (!token) { setRoomError('Eso no parece un código de sala. Pega el enlace completo o el código que va tras /room/.'); return }
+      location.pathname = `/room/${token}`
+    }
     return (
       <main className="page page--gate">
         <header className="masthead">
@@ -75,6 +83,16 @@ export function Library() {
         </header>
         <p>Para ver la sesión necesitas el <strong>enlace de sala</strong> que comparte el host
           — termina en <code>/room/…</code>. Pídeselo y ábrelo tal cual.</p>
+        <form className="name-form" onSubmit={e => { e.preventDefault(); enterRoom() }}>
+          <input
+            value={roomInput}
+            onChange={e => { setRoomInput(e.target.value); setRoomError(null) }}
+            placeholder="Código o enlace de la sala"
+            aria-label="Código o enlace de la sala"
+          />
+          <button type="submit" className="btn-primary">Entrar</button>
+        </form>
+        {roomError && <p className="field-error">{roomError}</p>}
         {isLocal && (
           <p className="hint">¿Eres el host? Entra con la URL con <code>?key=…</code> que imprime la
             terminal al arrancar el servidor (se abre sola en el navegador).</p>
