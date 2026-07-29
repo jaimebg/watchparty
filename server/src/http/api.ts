@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs'
+import { createReadStream, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import type { AppDeps } from '../app.js'
@@ -54,7 +54,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     const init = file.match(/^init_(\d+)\.mp4$/)
     if (init) {
       const p = join(room.roomDir, file)
-      if (!isPathInside(room.roomDir, p)) return reply.code(404).send()
+      if (!isPathInside(room.roomDir, p) || !existsSync(p)) return reply.code(404).send()
       return reply.type('video/mp4').send(createReadStream(p))
     }
     const seg = file.match(/^seg_(\d+)_(\d+)\.m4s$/)
@@ -67,7 +67,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     const sub = file.match(/^sub_(\d+)\.vtt$/)
     if (sub) {
       const p = join(room.roomDir, file)
-      if (!isPathInside(room.roomDir, p)) return reply.code(404).send()
+      if (!isPathInside(room.roomDir, p) || !existsSync(p)) return reply.code(404).send()
       return reply.type('text/vtt').send(createReadStream(p))
     }
     return reply.code(404).send()
