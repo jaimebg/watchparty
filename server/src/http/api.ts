@@ -7,9 +7,11 @@ import { buildMasterPlaylist, buildMediaPlaylist } from '../media/planner.js'
 import { isPathInside, makeRequireAdmin } from './security.js'
 
 const M3U8 = 'application/vnd.apple.mpegurl'
+const RETRY_COOLDOWN_MS = 10_000
 
 export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   const requireAdmin = makeRequireAdmin(deps.adminToken)
+  const lastRetryAt = new Map<string, number>()
 
   app.get('/api/library', { preHandler: requireAdmin }, async () => deps.library())
   app.post('/api/library/rescan', { preHandler: requireAdmin }, async () => deps.library())
@@ -58,6 +60,10 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   app.post('/api/rooms/:token/retry', async (req, reply) => {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) return reply.code(404).send()
+    const now = Date.now()
+    const last = lastRetryAt.get(room.token)
+    if (last !== undefined && now - last < RETRY_COOLDOWN_MS) return reply.code(429).send({ error: 'retry cooldown' })
+    lastRetryAt.set(room.token, now)
     await deps.rooms.retry(room.token)
     return { ok: true }
   })

@@ -105,6 +105,23 @@ describe('api', () => {
     expect(info.subtitles.length).toBeGreaterThanOrEqual(1)
   })
 
+  it('rate-limits /retry to one call per room per 10s', async () => {
+    const nowSpy = vi.spyOn(Date, 'now')
+    nowSpy.mockReturnValue(1_000_000)
+    const first = await app.inject({ method: 'POST', url: `/api/rooms/${token}/retry` })
+    expect(first.statusCode).toBe(200)
+
+    nowSpy.mockReturnValue(1_005_000) // 5s later: still within the 10s cooldown
+    const second = await app.inject({ method: 'POST', url: `/api/rooms/${token}/retry` })
+    expect(second.statusCode).toBe(429)
+
+    nowSpy.mockReturnValue(1_010_001) // just past the cooldown
+    const third = await app.inject({ method: 'POST', url: `/api/rooms/${token}/retry` })
+    expect(third.statusCode).toBe(200)
+
+    nowSpy.mockRestore()
+  })
+
   it('serves master and media playlists', async () => {
     const m = await app.inject({ url: `/stream/${token}/master.m3u8` })
     expect(m.statusCode).toBe(200)
