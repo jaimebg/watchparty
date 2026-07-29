@@ -66,10 +66,10 @@ describe('TranscodeSession', () => {
     expect(p).toBe(earlierPath) // restarted numbering at earlierIndex via -start_number
     expect(existsSync(p)).toBe(true)
     expect(seekSession['proc']).not.toBe(oldProc) // old process was replaced
-    expect(oldProc?.killed).toBe(true) // we sent it SIGKILL
-    // A signal-killed child gets exitCode=null + signalCode set (Node semantics,
-    // not a normal exit(0)), so "died" means either field is non-null.
-    expect(oldProc?.exitCode !== null || oldProc?.signalCode !== null).toBe(true)
+    // The old process is dead either because seekTo SIGKILLed it or because a
+    // fast copy-mode remux finished on its own before the seek arrived — both
+    // are valid; asserting killed===true races against ffmpeg's own exit.
+    expect(oldProc?.killed || oldProc?.exitCode !== null || oldProc?.signalCode !== null).toBe(true)
 
     await seekSession.stop()
   }, 90_000)
