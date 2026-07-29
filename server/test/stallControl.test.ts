@@ -84,4 +84,18 @@ describe('stallControl', () => {
     await sleep(CAP + 40)
     expect(room.state.stalled).toBe(true) // nadie lo tocó tras el detach
   })
+
+  it('a seek mid-wait restarts the cap window instead of inheriting what was left of it', async () => {
+    stallTiming.capMs = 300
+    setBuffering(room, ana, true, 1_000)
+    expect(room.state.stalled).toBe(true)
+
+    await sleep(200)
+    refresh(room, Date.now()) // reinicia la ventana: quedaban 100 ms, ahora vuelven a ser 300
+    await sleep(200)
+    expect(room.state.stalled).toBe(true) // el tope original (300 ms) ya habría expirado
+
+    await sleep(200)
+    expect(room.state.stalled).toBe(false) // el tope nuevo sí ha expirado
+  })
 })

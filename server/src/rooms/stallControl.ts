@@ -18,6 +18,9 @@ interface Entry {
 const entries = new Map<StallRoom, Entry>()
 
 export function attach(room: StallRoom, onState: () => void): void {
+  // Re-registrar sin limpiar dejaría vivo el timer de la entrada anterior,
+  // disparando contra `room.state` a través de un `onState` obsoleto.
+  detach(room)
   entries.set(room, { buffering: new Set(), timer: null, cooldownUntil: 0, onState })
 }
 
