@@ -7,7 +7,7 @@ import { RoomManager } from '../src/rooms/roomManager.js'
 import { makeFixtureMkv } from './support/fixture.js'
 import { scanLibrary } from '../src/library/scanner.js'
 
-let app: Awaited<ReturnType<typeof buildApp>>, mediaDir: string, token: string
+let app: Awaited<ReturnType<typeof buildApp>>, mediaDir: string, token: string, rooms: RoomManager
 const ADMIN = 'test-admin-token'
 
 const fakeSession = {
@@ -21,10 +21,11 @@ beforeAll(async () => {
   process.env.JBG_DATA_DIR = mkdtempSync(join(tmpdir(), 'api-'))
   mediaDir = mkdtempSync(join(tmpdir(), 'apimedia-'))
   await makeFixtureMkv(mediaDir)
+  rooms = new RoomManager({ createSession: () => fakeSession })
   app = await buildApp({
     config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 },
     library: () => scanLibrary([mediaDir]),
-    rooms: new RoomManager({ createSession: () => fakeSession }),
+    rooms,
     adminToken: ADMIN,
   })
 })
@@ -97,5 +98,52 @@ describe('api', () => {
     const missingInit = await app.inject({ url: `/stream/${token}/init_0.mp4` })
     expect(missingInit.statusCode).toBe(404)
     expect(missingInit.body).not.toContain(process.env.JBG_DATA_DIR!)
+  })
+
+  it('gif search is disabled (404) when no klipyApiKey is configured', async () => {
+    const res = await app.inject({ url: `/api/gifs/search?q=lol&room=${token}` })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ gifsDisabled: true })
+  })
+
+  it('gif search rejects an invalid room token even when a key is configured', async () => {
+    const gifApp = await buildApp({
+      config: { mediaFolders: [mediaDir], klipyApiKey: 'fake-key', port: 8400, hostName: 'Host', cacheLimitGB: 10 },
+      library: () => scanLibrary([mediaDir]),
+      rooms,
+      adminToken: ADMIN,
+      fetchImpl: (async () => new Response(JSON.stringify({}))) as unknown as typeof fetch,
+    })
+    const res = await gifApp.inject({ url: '/api/gifs/search?q=lol&room=NOEXISTE' })
+    expect(res.statusCode).toBe(401)
+    await gifApp.close()
+  })
+
+  it('gif search proxies klipy via fetchImpl and maps the results', async () => {
+    const sample = {
+      result: true,
+      data: {
+        data: [{
+          id: 123, title: 'lol',
+          files: {
+            sm: { gif: { url: 'https://k/sm.gif', width: 100, height: 80 } },
+            md: { gif: { url: 'https://k/md.gif', width: 200, height: 160 } },
+          },
+        }],
+        has_next: false,
+      },
+    }
+    const gifApp = await buildApp({
+      config: { mediaFolders: [mediaDir], klipyApiKey: 'fake-key', port: 8400, hostName: 'Host', cacheLimitGB: 10 },
+      library: () => scanLibrary([mediaDir]),
+      rooms,
+      adminToken: ADMIN,
+      fetchImpl: (async () => new Response(JSON.stringify(sample))) as unknown as typeof fetch,
+    })
+    const res = await gifApp.inject({ url: `/api/gifs/search?q=lol&room=${token}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().results).toHaveLength(1)
+    expect(res.json().results[0]).toEqual({ id: '123', title: 'lol', previewUrl: 'https://k/sm.gif', url: 'https://k/md.gif', width: 200, height: 160 })
+    await gifApp.close()
   })
 })
