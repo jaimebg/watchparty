@@ -32,9 +32,17 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url))
   if (existsSync(webDist)) {
-    await app.register(fastifyStatic, { root: webDist, wildcard: false })
+    // wildcard:true resuelve los archivos EN CADA PETICIÓN (no con un glob al
+    // arrancar): un rebuild de web/dist con hashes nuevos funciona sin reiniciar.
+    await app.register(fastifyStatic, { root: webDist, wildcard: true })
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api') || req.url.startsWith('/stream') || req.url.startsWith('/ws')) {
+        return reply.code(404).send({ error: 'not found' })
+      }
+      // Un asset ausente (p. ej. bundle con hash viejo) debe fallar con 404 de
+      // verdad: servir index.html como si fuera JS mata la app en silencio.
+      const path = req.url.split('?')[0]
+      if (path.startsWith('/assets/') || /\.[a-z0-9]+$/i.test(path)) {
         return reply.code(404).send({ error: 'not found' })
       }
       return reply.sendFile('index.html', webDist)

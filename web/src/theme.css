@@ -260,8 +260,8 @@ details summary {
 }
 
 .room-grid--theater {
-  grid-template-columns: minmax(280px, 340px) 1fr;
-  grid-template-areas: 'chat video';
+  grid-template-columns: 1fr minmax(280px, 340px);
+  grid-template-areas: 'video chat';
 }
 
 .room-grid--theater video {
