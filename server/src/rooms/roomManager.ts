@@ -82,9 +82,18 @@ export class RoomManager {
     const room = this.rooms.get(token)
     if (!room) return
     await room.session.stop()
-    // Un snapshot de la ejecución rota no debe sobrevivir al reintento.
+    // El set entero de segmentos de la ejecución rota no debe sobrevivir al
+    // reintento: un .m4s o init_*.mp4 viejo en disco puede hacer creer a
+    // requestInit() de la sesión nueva que su propio init ya está completo
+    // (ver transcoder.ts) y, si el reintento pasó de copy a transcode, ese
+    // init viejo trae el SPS/PPS de la fuente mientras los segmentos nuevos
+    // llevan los de libx264: un desajuste de decodificador permanente. Los
+    // subtítulos extraídos (sub_*.vtt) siguen siendo válidos — un reintento no
+    // los regenera — así que esos se conservan.
     for (const f of readdirSync(room.roomDir)) {
-      if (f.endsWith('.stable.mp4')) rmSync(join(room.roomDir, f), { force: true })
+      if (f.endsWith('.stable.mp4') || f.endsWith('.m4s') || f.startsWith('init_')) {
+        rmSync(join(room.roomDir, f), { force: true })
+      }
     }
     room.error = null
     room.session = this.deps.createSession(room.item, room.info, room.segments, room.roomDir, true)

@@ -213,4 +213,32 @@ describe('TranscodeSession', () => {
     expect(Math.abs(Number(stdout.trim()) - segments[mid].start)).toBeLessThan(0.1)
     await s.stop()
   }, 90_000)
+
+  it('a segment produced by a mid-film start in TRANSCODE mode carries the correct absolute timestamp', async () => {
+    // Same measurement, transcode mode: -ss must be seg.start (the boundary),
+    // not seg.seekAt (the copy-mode keyframe midpoint), or the first output
+    // frame lands half a GOP late — invisible in copy mode because ffmpeg
+    // there can't discard frames, but a real regression in transcode mode
+    // where it decodes and discards up to whatever instant -ss names.
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-ts-transcode-'))
+    const tsOutDir = join(dir, 'out'); mkdirSync(tsOutDir)
+    const segments = session['segments']
+    const mid = Math.floor(segments.length / 2)
+    const s = new TranscodeSession({
+      input: fixture, mode: 'transcode', encoder: 'libx264', segments, audioCount: 2, outDir: tsOutDir,
+    })
+    s.start(mid)
+    const segPath = await s.requestSegment(0, mid, 30_000)
+    const initPath = await s.requestInit(0, 30_000)
+
+    const joined = join(dir, 'joined.mp4')
+    writeFileSync(joined, Buffer.concat([readFileSync(initPath), readFileSync(segPath)]))
+    const { stdout } = await run(ffprobeStatic.path, [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=start_time', '-of', 'csv=p=0', joined,
+    ])
+
+    expect(Math.abs(Number(stdout.trim()) - segments[mid].start)).toBeLessThan(0.1)
+    await s.stop()
+  }, 90_000)
 })

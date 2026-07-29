@@ -14,7 +14,10 @@ export function resetReactionIds(): void {
 
 export function chatReducer(s: ChatState, m: ServerMsg): ChatState {
   switch (m.t) {
-    case 'welcome': return { ...s, entries: m.history, participants: m.participants }
+    // Reset buffering too: a `buffering:false` broadcast missed while
+    // disconnected would otherwise leave a stale "X está cargando…" forever,
+    // since welcome is the only signal that we're rejoining from scratch.
+    case 'welcome': return { ...s, entries: m.history, participants: m.participants, buffering: [] }
     case 'chat': return { ...s, entries: [...s.entries, m.entry].slice(-500) }
     case 'presence': return { ...s, participants: m.participants }
     case 'buffering': return { ...s, buffering: m.value ? [...new Set([...s.buffering, m.name])] : s.buffering.filter(n => n !== m.name) }

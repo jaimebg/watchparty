@@ -32,8 +32,8 @@ const MutedIcon = () => (
   </svg>
 )
 
-export function Player({ token, info, send, lastState }: {
-  token: string; info: RoomInfo; send: (m: ClientMsg) => void; lastState: LastState | null
+export function Player({ token, info, send, lastState, welcomeCount }: {
+  token: string; info: RoomInfo; send: (m: ClientMsg) => void; lastState: LastState | null; welcomeCount: number
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -61,6 +61,25 @@ export function Player({ token, info, send, lastState }: {
   const infoRef = useRef(info)
   infoRef.current = info
   const togglePlay = () => sendRef.current({ t: pausedRef.current ? 'play' : 'pause' })
+
+  // `welcome` is the one message meaning "the server just learned about me
+  // from scratch": a fresh join, or ws.ts's transparent reconnect after a
+  // drop. Either way the server's stall-tracking set was just rebuilt empty
+  // for this socket, so a client that is still starved must re-send the true
+  // edge next tick — without this, `bufferingRef.current` stays true from
+  // before the drop and the room stops waiting for exactly the viewer whose
+  // network just failed.
+  useEffect(() => { bufferingRef.current = false }, [welcomeCount])
+
+  // The socket outlives this component: Room.tsx unmounts Player (and this
+  // 500ms tick) to show the recovery screen on a `{t:'error'}` broadcast, but
+  // the socket stays open. Without this, a viewer who was mid-buffer when the
+  // error hit stays pinned in the server's buffering set forever, and every
+  // later play/seek re-freezes the room for the full 20s cap for a socket
+  // that will never emit `false` again.
+  useEffect(() => () => {
+    if (bufferingRef.current) sendRef.current({ t: 'buffering', value: false })
+  }, [])
 
   useEffect(() => {
     const video = videoRef.current!

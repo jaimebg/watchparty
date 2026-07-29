@@ -10,8 +10,12 @@ export interface Segment { index: number; start: number; duration: number; seekA
 // bufferiza el segmento en el sitio equivocado. Apuntar al punto medio hasta el
 // siguiente keyframe acierta sin depender de adivinar ese margen; un epsilon
 // pequeño y fijo no basta (medido: +0,05 s sigue cayendo un GOP antes).
-// Sin lista de keyframes es modo transcode: ahí el seek decodifica y descarta
-// hasta el instante pedido, así que ya cae exacto y no hay nada que corregir.
+// Lo que decide si hace falta este punto medio es el MODO, no si hay lista de
+// keyframes: en copy no se puede descartar fotogramas, así que el seek tiene
+// que apuntar más allá del keyframe. En transcode ffmpeg decodifica y descarta
+// hasta el instante pedido, así que debe apuntar al límite mismo (seg.start) —
+// buildTranscodeArgs es quien elige entre seekAt y start según el modo; esta
+// función solo calcula el valor por si hace falta.
 function seekPoint(start: number, keyframes: number[] | null, durationSec: number): number {
   if (start === 0 || !keyframes || keyframes.length === 0) return start
   const next = keyframes.find(k => k > start) ?? durationSec

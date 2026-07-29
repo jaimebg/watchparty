@@ -44,6 +44,12 @@ export function Room({ token }: { token: string }) {
   const [info, setInfo] = useState<RoomInfo | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [lastState, setLastState] = useState<LastState | null>(null)
+  // Counts every `welcome`, the one message meaning "the server just learned
+  // about me from scratch" (fresh join, or a transparent ws.ts reconnect).
+  // Player resets its buffering edge-detector on every bump so a client still
+  // starved after a reconnect re-announces itself instead of staying silent —
+  // the server's stall-tracking set was just rebuilt empty for this socket.
+  const [welcomeCount, setWelcomeCount] = useState(0)
   const [tunnelDown, setTunnelDown] = useState(false)
   const [wsError, setWsError] = useState<string[] | null>(null)
   const [chat, dispatchChat] = useReducer(roomChatReducer, initialChat)
@@ -72,6 +78,7 @@ export function Room({ token }: { token: string }) {
       if (m.t === 'welcome' || m.t === 'state') {
         setLastState({ state: m.state, serverNow: m.serverNow, receivedAt: Date.now() })
       }
+      if (m.t === 'welcome') setWelcomeCount(c => c + 1)
       if (m.t === 'error') setWsError(m.log)
     })
     sendRef.current = conn.send
@@ -188,7 +195,7 @@ export function Room({ token }: { token: string }) {
       {showMeta && info.meta && <MetaModal meta={info.meta} onClose={() => setShowMeta(false)} />}
       <div className={`room-grid${theater ? ' room-grid--theater' : ''}`}>
         <div className="video-stage">
-          <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} />
+          <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount} />
           <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />
           <ReactionsBar send={m => sendRef.current(m)} />
         </div>

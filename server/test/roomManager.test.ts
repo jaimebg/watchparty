@@ -38,4 +38,26 @@ describe('RoomManager.retry', () => {
     expect(existsSync(stale)).toBe(false)
     expect(room.session).not.toBe(previous)
   })
+
+  // Un .m4s o un init_*.mp4 vivo de la ejecución rota puede hacer creer a
+  // requestInit() de la sesión nueva que su propio init ya está completo (ver
+  // transcoder.ts), y si el reintento pasó de copy a transcode ese init viejo
+  // trae el SPS/PPS de la fuente mientras los segmentos nuevos llevan los de
+  // libx264. Los subtítulos extraídos siguen siendo válidos: un reintento no
+  // los regenera, así que deben sobrevivir.
+  it('deletes stale segments and init files but keeps extracted subtitles', async () => {
+    const room = await rooms.create(items[0])
+    const staleSegment = join(room.roomDir, 'seg_0_00000.m4s')
+    const staleInit = join(room.roomDir, 'init_0.mp4')
+    const staleSub = join(room.roomDir, 'sub_0.vtt')
+    writeFileSync(staleSegment, 'roto')
+    writeFileSync(staleInit, 'roto')
+    writeFileSync(staleSub, 'WEBVTT\n')
+
+    await rooms.retry(room.token)
+
+    expect(existsSync(staleSegment)).toBe(false)
+    expect(existsSync(staleInit)).toBe(false)
+    expect(existsSync(staleSub)).toBe(true)
+  })
 })

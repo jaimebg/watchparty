@@ -41,4 +41,16 @@ describe('buildTranscodeArgs', () => {
     expect(segments[1].start).toBe(4)
     expect(Number(a[a.indexOf('-ss') + 1])).toBeCloseTo(5) // (4 + 6) / 2
   })
+  it('transcode mode seeks to the boundary, not the midpoint, even when real keyframes are known', () => {
+    // Transcode decodes and discards up to the requested instant, so -ss must
+    // land on seg.start; feeding it seg.seekAt (the copy-mode midpoint) would
+    // start the output half a GOP late. base's planSegments(20, null) can't
+    // exercise this because there seekAt === start, so the divergence would be
+    // invisible — this needs a real keyframe list, like planner.ts's own test.
+    const segments = planSegments(20, [0, 2, 4, 6, 8, 10, 12])
+    const a = buildTranscodeArgs({ ...base, segments, mode: 'transcode', startSegment: 1 })
+    expect(segments[1].start).toBe(4)
+    expect(segments[1].seekAt).toBeCloseTo(5) // (4 + 6) / 2 — must NOT be what -ss gets
+    expect(Number(a[a.indexOf('-ss') + 1])).toBeCloseTo(segments[1].start)
+  })
 })

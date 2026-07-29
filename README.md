@@ -267,7 +267,7 @@ Compila el cliente React para producción en `web/dist/`.
 - Si es HEVC/x265, ffmpeg está transcodificando; puede tomar varios minutos en hardware antiguo
 - Si hay error, la sala muestra el log de ffmpeg con un botón «Reintentar»
 - Si tras un salto la posición se queda quieta y aparece «X está cargando…», es el comportamiento esperado: la sala espera al rezagado hasta 20 s
-- Antes, saltar a mitad de un MKV a veces dejaba solo los subtítulos sobre una imagen en negro; era un bug de sincronización ya corregido. Si lo vuelves a ver, repórtalo — no es una limitación conocida
+- Antes, saltar a mitad de un MKV siempre dejaba solo los subtítulos sobre una imagen en negro; era un bug de sincronización ya corregido. Si lo vuelves a ver, repórtalo — no es una limitación conocida
 
 ### El audio no cambia en algunos espectadores
 - Es comportamiento esperado: cada usuario elige su pista de forma independiente

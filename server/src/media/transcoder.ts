@@ -1,5 +1,5 @@
 import { spawn, ChildProcess } from 'node:child_process'
-import { copyFileSync, existsSync, renameSync } from 'node:fs'
+import { copyFileSync, existsSync, renameSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegPath from 'ffmpeg-static'
 import { buildTranscodeArgs } from './ffmpegArgs.js'
@@ -31,6 +31,12 @@ export class TranscodeSession {
   // closed would respawn ffmpeg against a directory that no longer exists.
   private closed = false
   private initCopies = 0
+  // When the currently-running process was spawned. requestInit's proof below
+  // ("seeing the segment proves the init is whole") only holds for a segment
+  // the CURRENT process wrote: a leftover *.m4s from a previous run (still on
+  // disk after a frontier seek, or surviving retry()'s cache wipe) proves
+  // nothing about the init this process just started rewriting.
+  private procStartedAt = 0
 
   constructor(private opts: Opts) { this.segments = opts.segments }
 
@@ -41,6 +47,7 @@ export class TranscodeSession {
     const args = buildTranscodeArgs({ ...this.opts, startSegment: fromSegment })
     const proc = spawn(ffmpegPath as unknown as string, args, { stdio: ['ignore', 'ignore', 'pipe'] })
     this.proc = proc
+    this.procStartedAt = Date.now()
     proc.stderr!.on('data', (d: Buffer) => {
       this.lastLog.push(...d.toString().split('\n').filter(Boolean))
       this.lastLog = this.lastLog.slice(-50)
@@ -83,6 +90,21 @@ export class TranscodeSession {
     return this.finished || existsSync(this.segPath(variant, index + 1))
   }
 
+  // A leftover segment from a previous run (frontier seek: the new process
+  // restarts exactly where an old segment already sits; retry(): the old
+  // run's numbering starts at 0 too) proves nothing about the CURRENT
+  // process's init file. Only a segment written at or after this process's
+  // own spawn time is proof the muxer has already flushed this process's
+  // init. Missing or unstattable (e.g. a race with pruning) counts as "not
+  // proof yet", not an error.
+  private segFreshEnough(path: string): boolean {
+    try {
+      return statSync(path).mtimeMs >= this.procStartedAt
+    } catch {
+      return false
+    }
+  }
+
   // El init de fMP4 se reescribe entero en cada reinicio de ffmpeg. Un cliente
   // que lo descargue en ese instante se lleva un archivo truncado: el vídeo no
   // decodifica pero los <track> nativos siguen pintando subtítulos, que es
@@ -100,8 +122,11 @@ export class TranscodeSession {
       if (this.closed) throw new Error(`Sesión cerrada esperando init v${variant}`)
       // El muxer HLS escribe y cierra el init antes de cerrar el primer
       // segmento, así que ver el segmento —que con temp_file solo aparece ya
-      // completo— prueba que el init está entero.
-      if (existsSync(live) && (this.finished || existsSync(this.segPath(variant, this.startSegment)))) {
+      // completo— prueba que el init está entero. Pero eso solo vale si ESE
+      // segmento lo escribió el proceso actual: uno que sobrevive de una
+      // ejecución anterior (frontier seek, o retry() reanudando en 0) no
+      // demuestra nada sobre el init que este proceso acaba de reescribir.
+      if (existsSync(live) && (this.finished || this.segFreshEnough(this.segPath(variant, this.startSegment)))) {
         const tmp = `${stable}.${this.initCopies++}.tmp`
         copyFileSync(live, tmp)
         renameSync(tmp, stable)

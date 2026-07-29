@@ -14,6 +14,11 @@ describe('chatReducer', () => {
     expect(s.entries).toHaveLength(1)
     expect(s.participants).toEqual([p])
   })
+  it('welcome resets buffering so a stale indicator does not survive a reconnect', () => {
+    const withStaleBuffering: ChatState = { ...initialChat, buffering: ['Ana'] }
+    const s = chatReducer(withStaleBuffering, { t: 'welcome', self: p, participants: [p], state: { paused: true, positionBase: 0, updatedAt: 0 }, serverNow: 0, history: [] } as any)
+    expect(s.buffering).toEqual([])
+  })
   it('chat appends capped at 500', () => {
     let s: ChatState = { ...initialChat, entries: Array.from({ length: 500 }, (_, i) => entry(String(i))) }
     s = chatReducer(s, { t: 'chat', entry: entry('nuevo') } as any)

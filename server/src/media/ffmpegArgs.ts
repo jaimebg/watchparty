@@ -16,7 +16,12 @@ const ENCODER_FLAGS: Record<string, string[]> = {
 export function buildTranscodeArgs(x: TranscodeArgsInput): string[] {
   const seg = x.segments[x.startSegment]
   const args = ['-hide_banner', '-loglevel', 'warning', '-nostdin', '-y']
-  if (seg.start > 0) args.push('-ss', seg.seekAt.toFixed(6))
+  // Copy mode can't discard frames, so the seek has to overshoot past the
+  // keyframe (seg.seekAt) to defeat Matroska backing up a GOP. Transcode mode
+  // decodes and discards up to the requested instant, so -ss must be aimed at
+  // the boundary itself (seg.start); feeding it seekAt there starts the output
+  // half a GOP late.
+  if (seg.start > 0) args.push('-ss', (x.mode === 'copy' ? seg.seekAt : seg.start).toFixed(6))
   args.push('-i', x.input, '-map', '0:v:0')
   if (x.mode === 'copy') args.push('-c:v', 'copy')
   else args.push('-c:v', x.encoder, ...(ENCODER_FLAGS[x.encoder] ?? []),
