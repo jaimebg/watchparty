@@ -666,9 +666,15 @@ details summary:hover { color: var(--marquee); }
 }
 
 .btn-theater {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   flex-shrink: 0;
   font-size: 0.88rem;
+  padding: 0.45rem 0.85rem;
 }
+
+.btn-theater svg { display: block; }
 
 .room-head-actions {
   display: flex;

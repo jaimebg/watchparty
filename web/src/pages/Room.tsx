@@ -13,6 +13,22 @@ const NAME_KEY = 'jbg-name'
 const THEATER_KEY = 'jbg-theater'
 const STATUS_POLL_MS = 30_000
 
+const InfoIcon = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden>
+    <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+  </svg>
+)
+const TheaterEnterIcon = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden>
+    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+  </svg>
+)
+const TheaterExitIcon = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden>
+    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+  </svg>
+)
+
 // Superset of ServerMsg with a UI-only action to retire a reaction once its
 // float-up animation finishes. Keeps chatReducer's exported signature (tested
 // directly in chatStore.test.ts) limited to ServerMsg, as the brief requires.
@@ -161,11 +177,11 @@ export function Room({ token }: { token: string }) {
         <div className="room-head-actions">
           {info.meta && (
             <button type="button" className="btn-theater" onClick={() => setShowMeta(true)} title="Información de la película">
-              ℹ️ Info
+              <InfoIcon /> Info
             </button>
           )}
           <button type="button" className="btn-theater" onClick={toggleTheater} title={theater ? 'Salir del modo teatro' : 'Modo teatro'}>
-            {theater ? '⊡ Salir del teatro' : '🎭 Modo teatro'}
+            {theater ? <TheaterExitIcon /> : <TheaterEnterIcon />} {theater ? 'Salir del teatro' : 'Modo teatro'}
           </button>
         </div>
       </div>
