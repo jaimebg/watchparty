@@ -4,6 +4,7 @@ Servidor local multiplataforma para ver películas y series en grupo de forma si
 
 **Características:**
 - 🎬 Sincronización de reproducción en tiempo real (pausa, play, seek)
+- ⏳ La sala espera al espectador que se queda cargando (con tope de 20 s, para que una conexión mala no pare la sesión)
 - 🎙️ Selección independiente de pista de audio y subtítulos por espectador
 - 💬 Chat en vivo con reacciones flotantes y búsqueda de GIFs
 - 🔗 Acceso remoto automático via túnel HTTPS seguro (cloudflared)
@@ -217,7 +218,6 @@ Compila el cliente React para producción en `web/dist/`.
 - **Subtítulos de imagen** (PGS/VobSub) — no soportados; se omiten en silencio (no aparecen como opción en el selector)
 - **Persistencia** — el chat e historial de salas se pierden al cerrar la sala
 - **Metadatos externos** — sin carátulas ni información de TMDB
-- **Pausa automática global** — si alguien se queda cargando, no se pausa automáticamente al resto
 - **Cuentas de usuario** — sin autenticación; solo roles host/invitado básicos
 - **Empaquetado nativo** — v1 requiere Node.js y `npm start`; Electron/instalador quedan para futuras versiones
 
@@ -266,6 +266,8 @@ Compila el cliente React para producción en `web/dist/`.
 - Verifica que el archivo está en una carpeta configurada en `mediaFolders`
 - Si es HEVC/x265, ffmpeg está transcodificando; puede tomar varios minutos en hardware antiguo
 - Si hay error, la sala muestra el log de ffmpeg con un botón «Reintentar»
+- Si tras un salto la posición se queda quieta y aparece «X está cargando…», es el comportamiento esperado: la sala espera al rezagado hasta 20 s
+- Antes, saltar a mitad de un MKV a veces dejaba solo los subtítulos sobre una imagen en negro; era un bug de sincronización ya corregido. Si lo vuelves a ver, repórtalo — no es una limitación conocida
 
 ### El audio no cambia en algunos espectadores
 - Es comportamiento esperado: cada usuario elige su pista de forma independiente
