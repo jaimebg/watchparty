@@ -164,4 +164,24 @@ describe('hub', () => {
     expect(code).toBe(4001)
     expect(reason).toBe('room closed')
   })
+
+  it('a disconnect while buffering broadcasts buffering:false so the indicator does not stick', async () => {
+    const room = await rooms.create(items[0])
+    const a = await connect('Pau', room.token)
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
+    const b = await connect('Rita', room.token)
+    await b.recv() // welcome
+    await a.recv(); await a.recv() // presence + system de Rita, en A
+    await b.recv(); await b.recv() // presence + system, en B
+
+    a.ws.send(JSON.stringify({ t: 'buffering', value: true }))
+    const bufOnB = await b.recv()
+    expect(bufOnB).toEqual({ t: 'buffering', name: 'Pau', value: true })
+
+    a.ws.close()
+    const bufOffB = await b.recv()
+    expect(bufOffB).toEqual({ t: 'buffering', name: 'Pau', value: false })
+
+    b.ws.close()
+  })
 })

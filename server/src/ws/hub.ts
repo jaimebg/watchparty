@@ -61,6 +61,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
     }
     const peers = conns.get(room)!
     let me: Participant | null = null
+    let bufferingActive = false
 
     socket.on('message', (raw: Buffer) => {
       let msg: ClientMsg
@@ -123,6 +124,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
           }
           case 'buffering': {
             if (typeof msg.value !== 'boolean') return
+            bufferingActive = msg.value
             broadcast(room, { t: 'buffering', name: me.name, value: msg.value })
             break
           }
@@ -135,6 +137,9 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
     socket.on('close', () => {
       if (!me) return
       peers.delete(socket)
+      // A participant who disconnects mid-buffer must not leave a stale
+      // "X está cargando…" indicator behind for everyone else.
+      if (bufferingActive) broadcast(room, { t: 'buffering', name: me.name, value: false })
       broadcast(room, { t: 'presence', participants: [...peers.values()] })
       system(room, `${me.name} salió`)
     })
