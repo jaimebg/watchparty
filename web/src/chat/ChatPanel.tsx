@@ -15,6 +15,7 @@ export function ChatPanel({
   const [gifOpen, setGifOpen] = useState(false)
   const [gifsDisabled, setGifsDisabled] = useState(false)
   const entriesRef = useRef<HTMLDivElement>(null)
+  const entriesInnerRef = useRef<HTMLDivElement>(null)
 
   // Probe once whether GIFs are configured server-side, so the button never
   // flashes on for a deployment without a Klipy API key.
@@ -26,10 +27,19 @@ export function ChatPanel({
     return () => { cancelled = true }
   }, [token])
 
+  // Por altura y no por entrada nueva: cuando llega el mensaje, la <img> de un
+  // GIF aún mide 0 px y scrollHeight es el de antes, así que la lista se queda
+  // arriba en cuanto la imagen carga. Observar el contenido cubre de una vez el
+  // GIF tardío, el mensaje multilínea y el cambio de tamaño del panel.
   useEffect(() => {
-    const el = entriesRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [state.entries])
+    const box = entriesRef.current
+    const inner = entriesInnerRef.current
+    if (!box || !inner) return
+    const toBottom = () => { box.scrollTop = box.scrollHeight }
+    const ro = new ResizeObserver(toBottom)
+    ro.observe(inner)
+    return () => ro.disconnect()
+  }, [])
 
   const submit = () => {
     const trimmed = text.trim()
@@ -50,23 +60,25 @@ export function ChatPanel({
       </ul>
 
       <div className="chat-entries" ref={entriesRef}>
-        {state.entries.map(e => (
-          <div key={e.id} className={`chat-entry chat-entry--${e.kind}`}>
-            {e.kind === 'system' ? (
-              <em>{e.text}</em>
-            ) : e.kind === 'gif' ? (
-              <>
-                <span style={{ color: e.from.color }}>{e.from.name}</span>
-                <img src={e.gifUrl ?? ''} alt="gif" />
-              </>
-            ) : (
-              <>
-                <span style={{ color: e.from.color }}>{e.from.name}: </span>
-                {e.text}
-              </>
-            )}
-          </div>
-        ))}
+        <div className="chat-entries-inner" ref={entriesInnerRef}>
+          {state.entries.map(e => (
+            <div key={e.id} className={`chat-entry chat-entry--${e.kind}`}>
+              {e.kind === 'system' ? (
+                <em>{e.text}</em>
+              ) : e.kind === 'gif' ? (
+                <>
+                  <span style={{ color: e.from.color }}>{e.from.name}</span>
+                  <img src={e.gifUrl ?? ''} alt="gif" />
+                </>
+              ) : (
+                <>
+                  <span style={{ color: e.from.color }}>{e.from.name}: </span>
+                  {e.text}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {state.buffering.map(n => (

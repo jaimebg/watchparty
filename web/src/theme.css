@@ -916,13 +916,16 @@ details summary:hover { color: var(--marquee); }
   min-height: 240px;
   max-height: 50vh;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
   border-top: 1px solid var(--line-soft);
   border-bottom: 1px solid var(--line-soft);
   padding: 0.6rem 0.1rem;
   overscroll-behavior: contain;
+}
+
+.chat-entries-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
 }
 
 .chat-entries::-webkit-scrollbar { width: 8px; }
