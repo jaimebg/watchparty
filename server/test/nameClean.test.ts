@@ -8,6 +8,9 @@ describe('cleanName', () => {
     ['Otra_Peli_[2160p]_(HDR10).mkv', 'Otra Peli'],
     ['simple.mp4', 'simple'],
     ['Peli.Con.Puntos.mkv', 'Peli Con Puntos'],
+    ['Spider-Man.mkv', 'Spider-Man'],
+    ['otra-peli.mkv', 'otra-peli'],
+    ['Spider-Man.2002.1080p.BluRay.x264-GRUPO.mkv', 'Spider-Man 2002'],
   ])('%s -> %s', (input, expected) => {
     expect(cleanName(input)).toBe(expected)
   })

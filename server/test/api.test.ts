@@ -74,6 +74,32 @@ describe('api', () => {
     expect(res.statusCode).toBe(401)
   })
 
+  it('lists and removes media folders (admin only, persisted)', async () => {
+    const extraDir = mkdtempSync(join(tmpdir(), 'apimedia4-'))
+    await makeFixtureMkv(extraDir)
+    const cfg = { mediaFolders: [mediaDir, extraDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 }
+    const folderApp = await buildApp({
+      config: cfg, library: () => scanLibrary(cfg.mediaFolders), rooms, adminToken: ADMIN, tunnel: { url: null },
+    })
+
+    expect((await folderApp.inject({ url: '/api/config/folders' })).statusCode).toBe(401)
+    const list = await folderApp.inject({ url: '/api/config/folders', ...admin })
+    expect(list.json()).toEqual({ folders: [mediaDir, extraDir] })
+
+    expect((await folderApp.inject({ method: 'DELETE', url: '/api/config/folders', payload: { path: extraDir } })).statusCode).toBe(401)
+    const removed = await folderApp.inject({ method: 'DELETE', url: '/api/config/folders', payload: { path: extraDir }, ...admin })
+    expect(removed.statusCode).toBe(200)
+    expect(removed.json()).toHaveLength(1) // solo queda el item de mediaDir
+    expect(cfg.mediaFolders).toEqual([mediaDir])
+    expect(loadConfig().mediaFolders).toEqual([mediaDir]) // persistido
+
+    // idempotente: quitar de nuevo no falla
+    const again = await folderApp.inject({ method: 'DELETE', url: '/api/config/folders', payload: { path: extraDir }, ...admin })
+    expect(again.statusCode).toBe(200)
+
+    await folderApp.close()
+  })
+
   it('pick-folder uses the injected native picker and adds the chosen dir', async () => {
     const cfg = { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 }
     const pickedDir = mkdtempSync(join(tmpdir(), 'apimedia3-'))

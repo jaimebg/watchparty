@@ -4,7 +4,11 @@ export function cleanName(filename: string): string {
   let s = filename.replace(/\.[^.]+$/, '')
   s = s.replace(/[._]/g, ' ')
   s = s.replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
+  const hadTags = TAGS.test(s)
+  TAGS.lastIndex = 0 // regex global: resetear tras test()
   s = s.replace(TAGS, ' ')
-  s = s.replace(/-\s*[A-Za-z0-9]+\s*$/, ' ')
+  // El sufijo "-GRUPO" solo es grupo de release si el nombre llevaba tags de
+  // calidad/códec; sin ellos, el guion es parte del título ("Spider-Man").
+  if (hadTags) s = s.replace(/-\s*[A-Za-z0-9]+\s*$/, ' ')
   return s.replace(/\s{2,}/g, ' ').trim()
 }

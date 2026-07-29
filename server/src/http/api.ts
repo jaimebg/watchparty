@@ -29,9 +29,20 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     return deps.library()
   }
 
+  app.get('/api/config/folders', { preHandler: requireAdmin }, async () => ({ folders: deps.config.mediaFolders }))
+
   app.post('/api/config/folders', { preHandler: requireAdmin }, async (req, reply) => {
     const { path } = (req.body ?? {}) as { path?: string }
     return addFolder(path, reply)
+  })
+
+  // Idempotente: quitar una carpeta que ya no está sigue devolviendo la biblioteca.
+  // Las salas activas no se tocan (su sesión ya tiene el archivo abierto).
+  app.delete('/api/config/folders', { preHandler: requireAdmin }, async (req) => {
+    const { path } = (req.body ?? {}) as { path?: string }
+    deps.config.mediaFolders = deps.config.mediaFolders.filter(f => f !== path)
+    saveConfig(deps.config)
+    return deps.library()
   })
 
   app.post('/api/config/pick-folder', { preHandler: requireAdmin }, async (_req, reply) => {

@@ -17,6 +17,14 @@ export const bootstrapAdmin = async (search: string): Promise<boolean> => {
 export const getLibrary = () => fetch('/api/library').then(r => json<LibraryItem[]>(r))
 export const createRoom = (itemId: string) =>
   fetch('/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ itemId }) }).then(r => json<{ token: string }>(r))
+export const getMediaFolders = () =>
+  fetch('/api/config/folders').then(r => json<{ folders: string[] }>(r)).then(b => b.folders)
+
+export const removeMediaFolder = async (path: string): Promise<LibraryItem[]> => {
+  const r = await fetch('/api/config/folders', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path }) })
+  return json<LibraryItem[]>(r)
+}
+
 export const addMediaFolder = async (path: string): Promise<LibraryItem[]> => {
   const r = await fetch('/api/config/folders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path }) })
   if (!r.ok) {

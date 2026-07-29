@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
-import { addMediaFolder, bootstrapAdmin, createRoom, getLibrary, getStatus, pickMediaFolder } from '../api'
+import { addMediaFolder, bootstrapAdmin, createRoom, getLibrary, getMediaFolders, getStatus, pickMediaFolder, removeMediaFolder } from '../api'
 import type { LibraryItem } from '../types'
 
 export function Library() {
   const [items, setItems] = useState<LibraryItem[] | null>(null)
+  const [folders, setFolders] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [guest, setGuest] = useState(false)
   const [folderPath, setFolderPath] = useState('')
   const [folderError, setFolderError] = useState<string | null>(null)
-  const [addingFolder, setAddingFolder] = useState(false)
+  const [busyFolders, setBusyFolders] = useState(false)
 
   const load = async () => {
     try {
       if (await bootstrapAdmin(location.search)) history.replaceState(null, '', location.pathname)
       setItems(await getLibrary())
+      setFolders(await getMediaFolders())
     } catch (e) {
       // 401 = visitante sin cookie de admin: típico invitado que abrió la URL
       // pública base en vez del enlace de sala. No es un error, es una portada.
@@ -34,36 +36,33 @@ export function Library() {
     }
   }
 
-  const submitFolder = async () => {
+  // Cualquier operación de carpetas devuelve la biblioteca reescaneada; la
+  // lista de carpetas se refresca aparte (contrato estable con el server).
+  const folderOp = async (op: () => Promise<LibraryItem[] | null>) => {
+    setBusyFolders(true)
+    setFolderError(null)
+    try {
+      const list = await op()
+      if (list) setItems(list)
+      setFolders(await getMediaFolders())
+    } catch (e) {
+      setFolderError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusyFolders(false)
+    }
+  }
+
+  const submitFolder = () => {
     const trimmed = folderPath.trim()
     if (!trimmed) return
-    setAddingFolder(true)
-    setFolderError(null)
-    try {
+    void folderOp(async () => {
       const list = await addMediaFolder(trimmed)
-      setItems(list)
       setFolderPath('')
-    } catch (e) {
-      setFolderError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setAddingFolder(false)
-    }
+      return list
+    })
   }
 
-  const browseFolder = async () => {
-    setAddingFolder(true)
-    setFolderError(null)
-    try {
-      const list = await pickMediaFolder()
-      if (list) setItems(list)
-    } catch (e) {
-      setFolderError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setAddingFolder(false)
-    }
-  }
-
-  useEffect(() => { load() }, [])
+  useEffect(() => { void load() }, [])
 
   if (guest) {
     const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname)
@@ -87,30 +86,47 @@ export function Library() {
   )
   if (!items) return <main className="page"><p>Cargando…</p></main>
 
+  const foldersSection = (
+    <section className="folders-box">
+      {folders.length > 0 && (
+        <ul className="folders-list">
+          {folders.map(f => (
+            <li key={f}>
+              <code>{f}</code>
+              <button className="btn-small" disabled={busyFolders}
+                onClick={() => void folderOp(() => removeMediaFolder(f))}>Quitar</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button onClick={() => void folderOp(pickMediaFolder)} disabled={busyFolders}>
+        {busyFolders ? 'Esperando…' : '📁 Añadir carpeta…'}
+      </button>
+      <p className="hint">Se abre el diálogo de tu sistema (mira el Finder/Explorador si no lo ves).</p>
+      <details>
+        <summary>O escribe la ruta a mano</summary>
+        <form className="name-form" onSubmit={e => { e.preventDefault(); submitFolder() }}>
+          <input
+            value={folderPath}
+            onChange={e => setFolderPath(e.target.value)}
+            placeholder="/ruta/absoluta/a/tus/vídeos"
+          />
+          <button type="submit" disabled={busyFolders}>{busyFolders ? 'Añadiendo…' : 'Añadir carpeta'}</button>
+        </form>
+      </details>
+      {folderError && <p className="field-error">{folderError}</p>}
+    </section>
+  )
+
   if (items.length === 0) {
     return (
       <main className="page">
         <h1>🎬 Biblioteca</h1>
-        <p>Aún no hay carpetas de medios configuradas.</p>
-        <section>
-          <h2>Añade tu primera carpeta de medios</h2>
-          <button onClick={() => void browseFolder()} disabled={addingFolder} autoFocus>
-            {addingFolder ? 'Esperando…' : '📁 Elegir carpeta…'}
-          </button>
-          <p className="hint">Se abre el diálogo de tu sistema (mira el Finder/Explorador si no lo ves).</p>
-          <details>
-            <summary>O escribe la ruta a mano</summary>
-            <form className="name-form" onSubmit={e => { e.preventDefault(); void submitFolder() }}>
-              <input
-                value={folderPath}
-                onChange={e => setFolderPath(e.target.value)}
-                placeholder="/ruta/absoluta/a/tus/vídeos"
-              />
-              <button type="submit" disabled={addingFolder}>{addingFolder ? 'Añadiendo…' : 'Añadir carpeta'}</button>
-            </form>
-          </details>
-          {folderError && <p className="field-error">{folderError}</p>}
-        </section>
+        <p>{folders.length === 0
+          ? 'Aún no hay carpetas de medios configuradas.'
+          : 'Las carpetas configuradas no contienen vídeos (MKV, MP4, AVI, M4V, WebM).'}</p>
+        <h2>{folders.length === 0 ? 'Añade tu primera carpeta de medios' : 'Carpetas de medios'}</h2>
+        {foldersSection}
       </main>
     )
   }
@@ -127,6 +143,10 @@ export function Library() {
           ))}</ul>
         </section>
       ))}
+      <details className="folders-manage">
+        <summary>⚙️ Carpetas de medios ({folders.length})</summary>
+        {foldersSection}
+      </details>
     </main>
   )
 }
