@@ -4,7 +4,17 @@
 
 **Goal:** Que un salto de posición aterrice donde dice la playlist aunque ffmpeg se haya reiniciado, y devolver el seek a la interfaz como barra arrastrable para todos los espectadores.
 
-**Architecture:** Un módulo puro nuevo (`server/src/media/fmp4.ts`) edita cajas MP4 en memoria. `TranscodeSession` lo usa en dos sitios: al fijar el snapshot del init le quita el `edts` (donde ffmpeg guarda *dónde arrancó ese run*) y se queda con los timescales; al servir cada segmento desplaza el `tfdt` al instante absoluto que la playlist ya declara. Así la línea de tiempo la fija el servidor, no el proceso de ffmpeg que casualmente produjera cada archivo.
+**Architecture:** Un módulo puro nuevo (`server/src/media/fmp4.ts`) edita cajas MP4 en memoria. `TranscodeSession` lo usa en dos sitios: al fijar el snapshot del init le quita del `elst` las entradas que dependen del run (los empty edits, donde ffmpeg guarda *dónde arrancó ese run*) y se queda con los timescales; al servir cada segmento desplaza el `tfdt` al instante absoluto que la playlist ya declara. Así la línea de tiempo la fija el servidor, no el proceso de ffmpeg que casualmente produjera cada archivo.
+
+> **Corrección aplicada durante la ejecución (Task 4).** Las Tasks 1-3 se
+> implementaron quitando el `edts` **entero**, como decía este plan. Al llegar a
+> la Task 4 se midió con `libx264` (el encoder de todo host que no sea macOS) y se
+> vio que el `elst` trae dos entradas de las que solo la primera depende del run:
+> la segunda es el trim del retardo del códec y quitarla deja el vídeo 83 ms tarde
+> respecto al audio. `canonicalizeInit` quita ahora **solo** las entradas con
+> `media_time == -1`. Los bloques de código de la Task 2 quedan como registro de
+> lo que se ejecutó entonces; lo que shippeó es lo corregido, y el spec recoge la
+> medición completa.
 
 **Tech Stack:** TypeScript ESM, Node 20+, vitest, ffmpeg-static/ffprobe-static, React 18.
 

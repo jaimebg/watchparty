@@ -46,7 +46,7 @@ Ningún flag de ffmpeg lo evita: `+dash`, `+cmaf`, `+negative_cts_offsets` y
 
 ### Prueba de que el arreglo funciona
 
-Quitando el `edts` del init y fijando `tfdt = start × timescale`:
+Quitando del init lo que depende del run y fijando `tfdt = start × timescale`:
 
 ```
 FIJO  (init canónico + seg5 de B retimed):  video start=20.000000s  audio start=20.000000s
@@ -57,6 +57,31 @@ Clava el límite que declara la playlist y de paso **mejora el lipsync**: la
 referencia sana de hoy tiene vídeo en 20,023 y audio en 20,039 (16 ms de
 desfase), y el retimeado deja las dos pistas en 20,000 exactos.
 
+### Corrección: qué parte del `elst` se quita (medido con `libx264`)
+
+**Las mediciones de arriba se hicieron con `h264_videotoolbox`, y eso escondió un
+caso.** `hwaccel.ts` elige el encoder por plataforma: VideoToolbox en macOS,
+NVENC/QSV en Windows y `libx264` en todo lo demás. Repetida con `libx264`, la
+medición sale así:
+
+```
+run desde 0:      vídeo elst = [[83,   -1], [0, 1024]]   audio elst = [[60,    -1], [0, 0]]
+run desde 16 s:   vídeo elst = [[16000,-1], [0, 1024]]   audio elst = [[15953, -1], [0, 0]]
+```
+
+El `elst` trae **dos** entradas y solo la primera depende del run:
+
+- La de `media_time == -1` es el empty edit: ahí va el offset del `-ss`
+  (16000 ms). Es la que contamina el init.
+- La segunda, con `media_time >= 0`, es el **trim del retardo del códec**, y es
+  idéntica en todos los runs. Con `libx264` el primer sample del `trun` lleva
+  `cts = 1024` (2 fotogramas a 24 fps = 83 ms) y ese trim es lo que lo compensa.
+  Con VideoToolbox vale 0, que es por lo que la primera medición no lo vio.
+
+Quitar el `edts` entero deja por tanto el vídeo **83 ms tarde** respecto al audio
+y respecto a la playlist en cualquier host que no sea macOS. Medido antes de
+corregirlo: vídeo en 16,083333 y audio en 16,000000 contra un objetivo de 16.
+
 ### Datos de formato que condicionan el diseño
 
 - `tfdt` y `sidx` son **versión 1** (64 bits) → parchearlos **no cambia el
@@ -64,8 +89,9 @@ desfase), y el retimeado deja las dos pistas en 20,000 exactos.
   funciones leen y escriben también la versión 0 (32 bits) sin promocionarla,
   que es lo que preserva el tamaño; desbordarla exigiría ~13 h de película a
   timescale 90000, fuera del caso real.
-- Cada pista tiene su **timescale propio** (medido: vídeo 12800, audio 44100),
-  así que el retimeado es por pista, no global.
+- Cada pista tiene su **timescale propio** (medido a 25 fps: vídeo 12800; con la
+  fixture de test a 24 fps: 12288; audio 44100 en ambas), así que el retimeado es
+  por pista, no global.
 - Estructura del segmento: `styp, sidx, sidx, moof, mdat`, con **un solo
   `moof`** y la cabecera en los primeros ~2,5 KB.
 - El handler `seek` del servidor (`hub.ts:99`) **no tiene puerta de host**: ya
@@ -74,9 +100,12 @@ desfase), y el retimeado deja las dos pistas en 20,000 exactos.
 
 ## Decisiones
 
-- **Quitar el `edts` entero**, no intentar distinguir «empty edit intrínseco del
-  códec» de «empty edit por el `-ss`». Medido: sin edit list las dos pistas caen
-  en el mismo instante absoluto, que es mejor lipsync que conservarlo.
+- **Quitar del `elst` solo las entradas con `media_time == -1`** (los empty
+  edits, que es donde vive el offset del `-ss`) y conservar el resto verbatim. La
+  segunda entrada es el trim del retardo del códec, no depende del run, y quitarla
+  descuadra el vídeo respecto al audio en los encoders que la usan (ver la
+  corrección de arriba). Si un `elst` se queda sin entradas, se tira el `edts`
+  entero. Esto sustituye a la decisión original de quitar el `edts` completo.
 - **Desplazar el `tfdt`, no fijarlo**: `delta = objetivo − tfdt del primer moof`,
   aplicado a todos los `tfdt` y `sidx` de esa pista. Con un `moof` por segmento
   da lo mismo, pero mantiene el espaciado interno si algún día hay más.
@@ -96,11 +125,13 @@ desfase), y el retimeado deja las dos pistas en 20,000 exactos.
 Tres funciones sobre `Buffer`, testeables aisladas:
 
 - **`canonicalizeInit(buf)` → `{ init, timescales }`**
-  Reconstruye el árbol de cajas quitando el `edts` de cada `trak` y
-  recalculando los tamaños de `trak`/`moov`. Pone a 0 las `duration` de
-  `mvhd`/`tkhd`/`mdhd`, para que el init resultante sea **byte-idéntico venga
-  del run que venga** (un run reiniciado codifica menos metraje y escribiría
-  otra duración). Devuelve `trackID → mdhd.timescale`.
+  Quita de cada `elst` las entradas con `media_time == -1` (los empty edits, que
+  llevan el offset del `-ss`), conserva el resto verbatim, y recalcula en cascada
+  los tamaños `elst → edts → trak → moov`; si un `elst` se queda sin entradas,
+  tira el `edts` completo. Pone a 0 las `duration` de `mvhd`/`tkhd`/`mdhd`, para
+  que el init resultante sea **byte-idéntico venga del run que venga** (un run
+  reiniciado codifica menos metraje y escribiría otra duración). Devuelve
+  `trackID → mdhd.timescale`.
 - **`retimeHeader(head, timescales, startSec)` → `Buffer`**
   Por pista: `delta = round(startSec × timescale) − tfdt del primer moof`,
   aplicado in situ a todos los `tfdt` y a `sidx.earliest_presentation_time`.
@@ -146,7 +177,8 @@ La ruta `seg_V_NNNNN.m4s` pasa de `requestSegment` + `createReadStream` a
 ### Tests
 
 - **`server/test/fmp4.test.ts`** (unitario, bytes a mano): `canonicalizeInit`
-  quita el `edts` y arregla los tamaños de los padres; `retimeHeader` desplaza
+  quita los empty edits, conserva el trim y arregla los tamaños de los padres en
+  cascada (incluido el caso de un `entry_count` inflado); `retimeHeader` desplaza
   todos los `tfdt` y `sidx` de cada pista por su propio timescale y no cambia la
   longitud del buffer; `headerLength` encuentra el `mdat`.
 - **`server/test/fmp4.integration.test.ts`** (ffmpeg real, sobre la fixture MKV
