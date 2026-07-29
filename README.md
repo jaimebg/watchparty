@@ -1,0 +1,231 @@
+# jbg-watchparty
+
+Servidor local multiplataforma para ver películas y series en grupo de forma sincronizada. El host ejecuta el servidor en su máquina; los invitados entran por navegador desde internet mediante un túnel integrado. Incluye chat en tiempo real con reacciones y GIFs.
+
+**Características:**
+- 🎬 Sincronización de reproducción en tiempo real (pausa, play, seek)
+- 🎙️ Selección independiente de pista de audio y subtítulos por espectador
+- 💬 Chat en vivo con reacciones flotantes y búsqueda de GIFs
+- 🔗 Acceso remoto automático via túnel HTTPS seguro (cloudflared)
+- 🖥️ Soporte multiplataforma (Windows y macOS)
+- 🎯 Grupos pequeños (3–6 personas)
+
+## Requisitos
+
+- **Node.js** ≥ 20
+- **npm** o equivalente
+- Windows o macOS (archivos compilados de ffmpeg y cloudflared incluidos)
+
+## Instalación
+
+### Paso 1: Descargar e instalar dependencias
+
+```bash
+npm install
+```
+
+### Paso 2: Configurar carpetas de medios
+
+Al ejecutar por primera vez, se crea el archivo `config.json` en el directorio de datos de tu plataforma:
+- **macOS:** `~/Library/Application Support/jbg-watchparty/config.json`
+- **Windows:** `%APPDATA%\jbg-watchparty\config.json`
+
+Edita `config.json` y añade las carpetas que contengan tus vídeos. Ejemplo completo:
+
+```json
+{
+  "mediaFolders": [
+    "/Users/tuusuario/Videos/Películas",
+    "/Users/tuusuario/Videos/Series"
+  ],
+  "klipyApiKey": "tu-api-key-aqui-opcional",
+  "port": 8400,
+  "hostName": "localhost",
+  "cacheLimitGB": 10
+}
+```
+
+**Campos de `config.json`:**
+- **`mediaFolders`** (array de strings): Rutas absolutas a carpetas que contengan vídeos (MKV, MP4, AVI, etc.). Obligatorio.
+- **`klipyApiKey`** (string, opcional): API key de Klipy para buscar y enviar GIFs en el chat. Si no está presente, el botón de GIFs se oculta.
+- **`port`** (número): Puerto HTTP del servidor (por defecto: 8400).
+- **`hostName`** (string): Nombre del host visible en el chat (por defecto: "localhost").
+- **`cacheLimitGB`** (número): Límite de caché HLS en GB (por defecto: 10). Se limpia automáticamente al cerrar salas.
+
+### Paso 3: Ejecutar el servidor
+
+```bash
+npm start
+```
+
+El servidor:
+1. Escanea las carpetas de medios configuradas
+2. Lanza automáticamente un túnel HTTPS seguro (cloudflared Quick Tunnel)
+3. Abre tu navegador en `http://localhost:8400/library`
+4. Muestra la URL pública segura para compartir con los invitados
+
+### Paso 4: Compartir el enlace
+
+Copia la URL pública que aparece en la consola o en la interfaz web. Los invitados entran así:
+1. Hacen clic en el enlace HTTPS
+2. Entran con su nombre
+3. Ven la sala en vivo (sin crear una nueva)
+
+## Obtener API Key de Klipy (opcional)
+
+Para usar búsqueda de GIFs en el chat:
+
+1. Ve a [https://klipy.com/developers](https://klipy.com/developers)
+2. Crea una cuenta e inicia sesión
+3. Genera una nueva API key
+4. Copia la key y pégala en el campo `klipyApiKey` de `config.json`
+
+Sin API key, el chat funciona perfectamente; solo no está disponible el botón de GIFs.
+
+## Formatos soportados
+
+**Vídeos:**
+- MKV (Matroska) — múltiples pistas de audio y subtítulos
+- MP4 (H.264)
+- AVI
+- WebM
+
+**Códecs de vídeo:**
+- H.264 (transmitido sin transcodificación)
+- HEVC/x265 (transcodificado automáticamente a H.264)
+- MPEG-4 ASP y otros (transcodificados a H.264)
+
+**Pistas de audio:**
+- Cualquier pista del vídeo fuente se expone como rendition AAC seleccionable independientemente por cada espectador
+
+**Subtítulos:**
+- Pistas de texto incrustadas (SRT, ASS/SSA)
+- Archivos `.srt` externos junto al vídeo (se detectan automáticamente)
+- Conversión a WebVTT para reproducción en navegador
+
+## Características del chat
+
+### Mensajes de texto
+- Cada usuario tiene un color asignado al entrar
+- Mensajes bidireccionales en tiempo real
+
+### Reacciones
+- Barra de emojis rápidos (😂 ❤️ 😱 🔥 👏 😭)
+- Los emojis flotan subiendo sobre el vídeo en ambas pantallas (estilo Instagram Live)
+- No aparecen en el historial del chat
+
+### GIFs
+- Búsqueda integrada contra la API de Klipy (si está configurada)
+- El resultado elegido se embebe como mensaje en el chat
+- Solo visible si la API key está en `config.json`
+
+### Mensajes de sistema
+- Notificaciones cuando alguien se une, sale, pausa, reanuda o cambia de vídeo
+
+## Desarrollo
+
+### Ejecutar en modo desarrollo
+
+Abre dos terminales:
+
+**Terminal 1 — Servidor (con auto-reload):**
+```bash
+npm start -w server
+```
+
+**Terminal 2 — Cliente (con Vite dev server):**
+```bash
+npm run dev -w web
+```
+
+Accede a `http://localhost:5173/` para el cliente en desarrollo.
+
+### Ejecutar tests
+
+```bash
+npm test
+```
+
+Corre unit tests y tests de integración para ambos paquetes (server y web).
+
+### Verificación de tipos
+
+```bash
+npx tsc --noEmit
+```
+
+En server/: verifica tipos TypeScript del servidor.
+
+```bash
+cd web && npx tsc --noEmit
+```
+
+En web/: verifica tipos TypeScript del cliente.
+
+### Build de producción
+
+```bash
+npm run build -w web
+```
+
+Compila el cliente React para producción en `web/dist/`.
+
+## Limitaciones en v1
+
+- **Subtítulos de imagen** (PGS/VobSub) — no soportados; se listan como «no disponibles»
+- **Persistencia** — el chat e historial de salas se pierden al cerrar la sala
+- **Metadatos externos** — sin carátulas ni información de TMDB
+- **Pausa automática global** — si alguien se queda cargando, no se pausa automáticamente al resto
+- **Cuentas de usuario** — sin autenticación; solo roles host/invitado básicos
+- **Empaquetado nativo** — v1 requiere Node.js y `npm start`; Electron/instalador quedan para futuras versiones
+- **URL de túnel estable** — cada reinicio del servidor genera nueva URL (requeriría Cloudflare con dominio propio)
+
+## Estructura del proyecto
+
+```
+.
+├── server/                 # Fastify + Node.js
+│   ├── src/
+│   │   ├── index.ts       # Punto de entrada
+│   │   ├── api/           # Rutas REST (biblioteca, salas)
+│   │   ├── media/         # Escaneo y gestión de vídeos
+│   │   ├── hls/           # Pipeline ffmpeg y generación HLS
+│   │   ├── ws/            # WebSocket (sync, chat, reacciones)
+│   │   └── tunnel/        # Integración cloudflared
+│   └── package.json
+├── web/                    # React + Vite + hls.js
+│   ├── src/
+│   │   ├── App.tsx        # Componente raíz
+│   │   ├── pages/         # Biblioteca, sala
+│   │   ├── components/    # Reproductor, chat, etc.
+│   │   ├── hooks/         # Sincronización, WebSocket
+│   │   └── types/         # TypeScript types compartidos
+│   └── package.json
+├── package.json           # Root workspace
+└── README.md             # Este archivo
+```
+
+## Troubleshooting
+
+### El servidor no arranca
+- Verifica que Node.js ≥ 20 esté instalado: `node --version`
+- Comprueba que `config.json` existe y tiene al menos un `mediaFolder` válido
+- Revisa que no hay otro proceso en el puerto configurado (por defecto 8400)
+
+### Los invitados no pueden conectar
+- La URL pública requiere conexión a internet; usa datos móviles para verificar desde otro dispositivo
+- Si el túnel cae, el servidor lo relanza automáticamente pero la URL cambia; hay que recompartir el nuevo enlace
+- Comprueba que el navegador está actualizado (Chrome, Safari, Firefox recientes)
+
+### El vídeo no reproduce
+- Verifica que el archivo está en una carpeta configurada en `mediaFolders`
+- Si es HEVC/x265, ffmpeg está transcodificando; puede tomar varios minutos en hardware antiguo
+- Si hay error, la sala muestra el log de ffmpeg con un botón «Reintentar»
+
+### El audio no cambia en algunos espectadores
+- Es comportamiento esperado: cada usuario elige su pista de forma independiente
+- Solo la posición de reproducción se sincroniza globalmente
+
+## Licencia
+
+Privado — ver `LICENSE` para detalles.
