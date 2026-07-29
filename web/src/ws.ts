@@ -10,7 +10,14 @@ export function connectRoom(token: string, name: string, onMsg: (m: ServerMsg) =
   const open = () => {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     ws = new WebSocket(`${proto}://${location.host}/ws/${token}`)
-    ws.onopen = () => { attempt = 0; ws!.send(JSON.stringify({ t: 'join', name })) }
+    ws.onopen = () => {
+      attempt = 0
+      ws!.send(JSON.stringify({ t: 'join', name }))
+      // El server nos crea con active:true; si la pestaña ya estaba oculta al
+      // (re)conectar, corregimos de inmediato. Si está visible no hay nada que
+      // corregir (y se evita un broadcast de presence redundante por join).
+      if (document.visibilityState === 'hidden') ws!.send(JSON.stringify({ t: 'visibility', active: false }))
+    }
     ws.onmessage = e => onMsg(JSON.parse(e.data))
     ws.onclose = () => { if (!closed) setTimeout(open, nextDelay(attempt++)) }
   }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { chatReducer, initialChat, dropReaction, resetReactionIds, type ChatState } from '../src/chat/chatStore'
 
-const p = { id: 'u1', name: 'Ana', color: '#f00' }
+const p = { id: 'u1', name: 'Ana', color: '#f00', active: true }
 const entry = (text: string) => ({ id: text, from: p, kind: 'text' as const, text, at: 1 })
 
 describe('chatReducer', () => {
