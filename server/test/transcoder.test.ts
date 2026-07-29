@@ -95,6 +95,51 @@ describe('TranscodeSession', () => {
     await cachedSession.stop()
   }, 60_000)
 
+  it('seekTo to the segment the live process already started from does not restart it', async () => {
+    // Vídeo y audio piden el mismo índice: si cada petición reiniciara ffmpeg,
+    // se matarían entre sí en bucle y no se produciría nunca ese segmento.
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-same-'))
+    const sameOutDir = join(dir, 'out'); mkdirSync(sameOutDir)
+    const segments = session['segments']
+    const mid = Math.floor(segments.length / 2)
+    const s = new TranscodeSession({
+      input: fixture, mode: 'copy', encoder: 'libx264', segments, audioCount: 2, outDir: sameOutDir,
+    })
+    s.start(mid)
+    const proc = s['proc']
+    expect(proc).not.toBeNull()
+
+    s.seekTo(mid)
+    expect(s['proc']).toBe(proc)
+
+    await s.stop()
+  }, 60_000)
+
+  it('a segment far ahead of the working point restarts ffmpeg there instead of timing out', async () => {
+    // Sin esto, el cliente espera los 30 s completos a un segmento que nadie
+    // está produciendo y acaba en 504.
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-fwd-'))
+    const fwdOutDir = join(dir, 'out'); mkdirSync(fwdOutDir)
+    const segments = session['segments']
+    const late = segments.length - 1
+    expect(late).toBeGreaterThan(1)
+    const s = new TranscodeSession({
+      input: fixture, mode: 'copy', encoder: 'libx264', segments, audioCount: 2, outDir: fwdOutDir,
+    })
+    const seekSpy = vi.spyOn(s, 'seekTo')
+    s.start(0)
+    // Se mata el proceso a mano para que nadie avance hacia `late`: es la
+    // situación real en la que ffmpeg quedó muy por detrás del reloj de sala.
+    s['proc']?.kill('SIGKILL')
+    await new Promise(r => setTimeout(r, 300))
+
+    const p = await s.requestSegment(0, late, 45_000)
+    expect(seekSpy).toHaveBeenCalledWith(late)
+    expect(existsSync(p)).toBe(true)
+
+    await s.stop()
+  }, 90_000)
+
   it('stop() closes the session so later start()/seekTo() calls no-op instead of respawning ffmpeg', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tsc-closed-'))
     const closedOutDir = join(dir, 'out'); mkdirSync(closedOutDir)

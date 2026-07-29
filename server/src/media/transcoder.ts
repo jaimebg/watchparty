@@ -5,6 +5,8 @@ import ffmpegPath from 'ffmpeg-static'
 import { buildTranscodeArgs } from './ffmpegArgs.js'
 import type { Segment } from './planner.js'
 
+const FORWARD_GRACE_MS = 6_000
+
 interface Opts { input: string; mode: 'copy' | 'transcode'; encoder: string; segments: Segment[]; audioCount: number; outDir: string }
 
 export class TranscodeSession {
@@ -51,6 +53,10 @@ export class TranscodeSession {
 
   seekTo(segmentIndex: number): void {
     if (this.closed) return
+    // Ya estamos produciendo desde ahí: matar el proceso que justo está llenando
+    // ese hueco solo reiniciaría el trabajo desde cero. Sin esta guarda, las
+    // peticiones de vídeo y de audio del mismo índice se matan entre sí en bucle.
+    if (segmentIndex === this.startSegment && this.proc && this.proc.exitCode === null) return
     // Seek a una zona ya cacheada: reiniciar ffmpeg ahí regeneraría segmentos
     // ya servibles y reescribiría init_*.mp4 mientras algún cliente los
     // descarga, sin producir nada nuevo. Se comprueban todas las variantes
@@ -104,9 +110,18 @@ export class TranscodeSession {
     if (this.isReady(variant, index)) return this.segPath(variant, index)
     if (index < this.startSegment && !existsSync(this.segPath(variant, index))) this.seekTo(index)
     const deadline = Date.now() + timeoutMs
+    const forwardAt = Date.now() + FORWARD_GRACE_MS
+    let restarted = false
     while (Date.now() < deadline) {
       if (this.isReady(variant, index)) return this.segPath(variant, index)
       if (this.finished && existsSync(this.segPath(variant, index))) return this.segPath(variant, index)
+      // Ni siquiera existe el segmento anterior: ffmpeg no viene de camino y
+      // esperar el plazo entero solo acaba en 504. Se reinicia aquí, una vez.
+      if (!restarted && Date.now() >= forwardAt && index > this.startSegment
+          && !existsSync(this.segPath(variant, index - 1))) {
+        restarted = true
+        this.seekTo(index)
+      }
       await new Promise(r => setTimeout(r, 200))
     }
     throw new Error(`Timeout esperando segmento v${variant}#${index}`)
