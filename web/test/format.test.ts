@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatClock, parseClock, parseStoredVolume, spaceBelongsTo, volumeGradient } from '../src/player/format'
+import { clampPosition, formatClock, parseClock, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from '../src/player/format'
 
 describe('parseClock', () => {
   it.each([
@@ -84,5 +84,36 @@ describe('spaceBelongsTo', () => {
     [undefined, undefined, undefined, false],
   ])('tag=%s type=%s editable=%s -> %s', (tag, type, editable, expected) => {
     expect(spaceBelongsTo(tag as string | undefined, type as string | undefined, editable as boolean | undefined)).toBe(expected)
+  })
+})
+
+describe('clampPosition', () => {
+  it('recorta al metraje real por los dos lados', () => {
+    expect(clampPosition(-5, 100)).toBe(0)
+    expect(clampPosition(500, 100)).toBe(100)
+    expect(clampPosition(42, 100)).toBe(42)
+  })
+
+  it('un valor no finito vale 0, no un NaN que viaje por el socket', () => {
+    expect(clampPosition(NaN, 100)).toBe(0)
+    expect(clampPosition(Infinity, 100)).toBe(100)
+  })
+
+  it('con duración desconocida (0) no deja pasar posiciones inventadas', () => {
+    expect(clampPosition(42, 0)).toBe(0)
+  })
+})
+
+describe('positionGradient', () => {
+  it('pinta el relleno hasta el porcentaje visto', () => {
+    expect(positionGradient(25, 100)).toBe(
+      'linear-gradient(90deg, var(--seek-fill) 25%, var(--seek-track) 25%)',
+    )
+  })
+
+  it('sin duración conocida no rellena nada', () => {
+    expect(positionGradient(10, 0)).toBe(
+      'linear-gradient(90deg, var(--seek-fill) 0%, var(--seek-track) 0%)',
+    )
   })
 })

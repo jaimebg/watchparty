@@ -49,3 +49,19 @@ export function spaceBelongsTo(tagName?: string, inputType?: string, isContentEd
   if (tagName === 'INPUT') return inputType !== 'range'
   return false
 }
+
+// Un salto pedido desde la barra, recortado al metraje real antes de viajar por
+// el socket. El servidor también recorta, pero mandar un valor de fuera de rango
+// haría que la sala saltara a un sitio distinto del que soltó el pulgar.
+export function clampPosition(value: number, durationSec: number): number {
+  if (Number.isNaN(value)) return 0
+  return Math.min(Math.max(value, 0), Math.max(0, durationSec))
+}
+
+// Relleno de la barra de posición. Un input[type=range] no admite un hijo que
+// haga de relleno, así que se pinta con un degradado de fondo, igual que el
+// slider de volumen.
+export function positionGradient(position: number, durationSec: number): string {
+  const pct = durationSec > 0 ? (clampPosition(position, durationSec) / durationSec) * 100 : 0
+  return `linear-gradient(90deg, var(--seek-fill) ${pct}%, var(--seek-track) ${pct}%)`
+}
