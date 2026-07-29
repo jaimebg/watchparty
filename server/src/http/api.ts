@@ -113,9 +113,10 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     if (init) {
       const variant = Number(init[1])
       if (variant < 0 || variant > audioCount) return reply.code(404).send()
-      const p = join(room.roomDir, file)
-      if (!isPathInside(room.roomDir, p) || !existsSync(p)) return reply.code(404).send()
-      return reply.type('video/mp4').send(createReadStream(p))
+      try {
+        const p = await room.session.requestInit(variant)
+        return reply.type('video/mp4').send(createReadStream(p))
+      } catch { return reply.code(504).send() }
     }
     const seg = file.match(/^seg_(\d+)_(\d+)\.m4s$/)
     if (seg) {

@@ -16,6 +16,7 @@ const fakeSession = {
   requestSegment: vi.fn(async (_v: number, _i: number) => {
     const p = join(process.env.JBG_DATA_DIR!, 'fake.m4s'); writeFileSync(p, 'seg'); return p
   }),
+  requestInit: vi.fn(async () => { throw new Error('sin init') }),
 }
 
 beforeAll(async () => {
@@ -231,9 +232,11 @@ describe('api', () => {
     expect(missingSub.statusCode).toBe(404)
     expect(missingSub.body).not.toContain(process.env.JBG_DATA_DIR!)
 
-    // init file: the fake session never writes one, so this always misses on disk
+    // El init ya no se busca en disco desde la ruta: se pide a la sesión, que
+    // responde «todavía no» agotando el plazo. Eso es un 504 (no listo), no un
+    // 404 (no existe); el 404 queda para variantes fuera de rango.
     const missingInit = await app.inject({ url: `/stream/${token}/init_0.mp4` })
-    expect(missingInit.statusCode).toBe(404)
+    expect(missingInit.statusCode).toBe(504)
     expect(missingInit.body).not.toContain(process.env.JBG_DATA_DIR!)
   })
 

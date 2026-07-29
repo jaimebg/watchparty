@@ -11,7 +11,7 @@ describe('/api/status', () => {
     const app = await buildApp({
       config: { mediaFolders: [], klipyApiKey: null, port: 8400, hostName: 'H', cacheLimitGB: 10 },
       library: async () => [],
-      rooms: new RoomManager({ createSession: () => ({ start() {}, seekTo() {}, async stop() {}, onError() {}, lastLog: [], requestSegment: async () => '' }) }),
+      rooms: new RoomManager({ createSession: () => ({ start() {}, seekTo() {}, async stop() {}, onError() {}, lastLog: [], requestSegment: async () => '', requestInit: async () => '' }) }),
       adminToken: 'adm', tunnel: { url: 'https://x.trycloudflare.com' },
     })
     expect((await app.inject({ url: '/api/status' })).statusCode).toBe(401)

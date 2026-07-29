@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
-import { mkdtempSync, existsSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { makeFixtureMkv } from './support/fixture.js'
@@ -117,4 +117,26 @@ describe('TranscodeSession', () => {
     closedSession.start(0)
     expect(closedSession['proc']).toBeNull() // no respawn: closed session ignores start()
   })
+
+  it('requestInit hands out a snapshot that survives ffmpeg rewriting the live init file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-init-'))
+    const initOutDir = join(dir, 'out'); mkdirSync(initOutDir)
+    const s = new TranscodeSession({
+      input: fixture, mode: 'copy', encoder: 'libx264',
+      segments: session['segments'], audioCount: 2, outDir: initOutDir,
+    })
+    s.start()
+    const p = await s.requestInit(0, 30_000)
+    expect(p).toBe(join(initOutDir, 'init_0.stable.mp4'))
+    const snapshot = readFileSync(p)
+    expect(snapshot.length).toBeGreaterThan(0)
+
+    // Simula el reinicio de ffmpeg dejando el init vivo a medio escribir: el
+    // snapshot ya entregado no puede verse afectado.
+    writeFileSync(join(initOutDir, 'init_0.mp4'), Buffer.alloc(3))
+    expect(await s.requestInit(0, 5_000)).toBe(p)
+    expect(readFileSync(p).equals(snapshot)).toBe(true)
+
+    await s.stop()
+  }, 60_000)
 })

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { cacheDir } from '../config.js'
 import type { LibraryItem } from '../library/scanner.js'
@@ -14,6 +14,7 @@ import type { ChatEntry } from '../ws/messages.js'
 export interface SessionLike {
   start(fromSegment?: number): void
   requestSegment(variant: number, index: number, timeoutMs?: number): Promise<string>
+  requestInit(variant: number, timeoutMs?: number): Promise<string>
   seekTo(segmentIndex: number): void
   stop(): Promise<void>
   onError(cb: (log: string[]) => void): void
@@ -81,6 +82,10 @@ export class RoomManager {
     const room = this.rooms.get(token)
     if (!room) return
     await room.session.stop()
+    // Un snapshot de la ejecución rota no debe sobrevivir al reintento.
+    for (const f of readdirSync(room.roomDir)) {
+      if (f.endsWith('.stable.mp4')) rmSync(join(room.roomDir, f), { force: true })
+    }
     room.error = null
     room.session = this.deps.createSession(room.item, room.info, room.segments, room.roomDir, true)
     room.session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })

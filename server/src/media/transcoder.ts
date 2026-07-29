@@ -1,5 +1,5 @@
 import { spawn, ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { copyFileSync, existsSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegPath from 'ffmpeg-static'
 import { buildTranscodeArgs } from './ffmpegArgs.js'
@@ -25,6 +25,7 @@ export class TranscodeSession {
   // deleted, cleanup done). Without this, a seek arriving after the room was
   // closed would respawn ffmpeg against a directory that no longer exists.
   private closed = false
+  private initCopies = 0
 
   constructor(private opts: Opts) { this.segments = opts.segments }
 
@@ -68,6 +69,30 @@ export class TranscodeSession {
   private isReady(variant: number, index: number): boolean {
     if (!existsSync(this.segPath(variant, index))) return false
     return this.finished || existsSync(this.segPath(variant, index + 1))
+  }
+
+  // El init de fMP4 se reescribe entero en cada reinicio de ffmpeg. Un cliente
+  // que lo descargue en ese instante se lleva un archivo truncado: el vídeo no
+  // decodifica pero los <track> nativos siguen pintando subtítulos, que es
+  // exactamente el síntoma reportado. Se entrega siempre una copia estable.
+  async requestInit(variant: number, timeoutMs = 30_000): Promise<string> {
+    const stable = join(this.opts.outDir, `init_${variant}.stable.mp4`)
+    if (existsSync(stable)) return stable
+    const live = join(this.opts.outDir, `init_${variant}.mp4`)
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      // El muxer HLS escribe y cierra el init antes de cerrar el primer
+      // segmento, así que ver el segmento —que con temp_file solo aparece ya
+      // completo— prueba que el init está entero.
+      if (existsSync(live) && (this.finished || existsSync(this.segPath(variant, this.startSegment)))) {
+        const tmp = `${stable}.${this.initCopies++}.tmp`
+        copyFileSync(live, tmp)
+        renameSync(tmp, stable)
+        return stable
+      }
+      await new Promise(r => setTimeout(r, 200))
+    }
+    throw new Error(`Timeout esperando init v${variant}`)
   }
 
   async requestSegment(variant: number, index: number, timeoutMs = 30_000): Promise<string> {
