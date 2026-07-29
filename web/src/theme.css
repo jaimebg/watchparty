@@ -501,6 +501,11 @@ details summary {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.85rem;
+  transition: opacity 0.3s ease;
+}
+
+.participants li.away {
+  opacity: 0.45;
 }
 
 .participants .dot {

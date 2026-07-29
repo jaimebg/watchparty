@@ -42,7 +42,7 @@ export function ChatPanel({
     <aside className="chat-panel">
       <ul className="participants">
         {state.participants.map(p => (
-          <li key={p.id}>
+          <li key={p.id} className={p.active ? undefined : 'away'} title={p.active ? undefined : 'ausente'}>
             <span className="dot" style={{ background: p.color }} />
             {p.name}
           </li>
