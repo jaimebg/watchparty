@@ -1,5 +1,5 @@
 import { spawn, execFileSync, ChildProcess } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dataDir } from '../config.js'
 
@@ -29,6 +29,7 @@ export async function ensureBinary(): Promise<string> {
     const tgz = join(binDir, 'cloudflared.tgz')
     writeFileSync(tgz, buf)
     execFileSync('tar', ['-xzf', tgz, '-C', binDir])
+    rmSync(tgz)
   } else {
     writeFileSync(bin, buf)
   }
@@ -41,6 +42,7 @@ export class Tunnel {
   private proc: ChildProcess | null = null
   private stopped = false
   private attempt = 0
+  private starting = false
   private urlCb: ((u: string) => void) | null = null
   private downCb: (() => void) | null = null
 
@@ -49,10 +51,13 @@ export class Tunnel {
   onDown(cb: () => void): void { this.downCb = cb }
 
   start(): void {
+    if (this.proc || this.starting) return
     this.stopped = false
+    this.starting = true
     void ensureBinary().then(bin => {
-      if (this.stopped) return
+      if (this.stopped) { this.starting = false; return }
       this.proc = spawn(bin, ['tunnel', '--url', `http://localhost:${this.port}`], { stdio: ['ignore', 'ignore', 'pipe'] })
+      this.starting = false
       this.proc.stderr!.on('data', (d: Buffer) => {
         for (const line of d.toString().split('\n')) {
           const u = parseTunnelUrl(line)
@@ -62,10 +67,18 @@ export class Tunnel {
       this.proc.on('exit', () => {
         if (this.stopped) return
         this.url = null
+        this.proc = null
         this.downCb?.()
         const delay = Math.min(1000 * 2 ** this.attempt++, 30_000)
         setTimeout(() => this.start(), delay)
       })
+    }).catch(() => {
+      if (this.stopped) { this.starting = false; return }
+      this.url = null
+      this.downCb?.()
+      const delay = Math.min(1000 * 2 ** this.attempt++, 30_000)
+      this.starting = false
+      setTimeout(() => this.start(), delay)
     })
   }
 
