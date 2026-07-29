@@ -5,6 +5,7 @@ import type { LibraryItem } from '../types'
 export function Library() {
   const [items, setItems] = useState<LibraryItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [guest, setGuest] = useState(false)
   const [folderPath, setFolderPath] = useState('')
   const [folderError, setFolderError] = useState<string | null>(null)
   const [addingFolder, setAddingFolder] = useState(false)
@@ -14,7 +15,10 @@ export function Library() {
       if (await bootstrapAdmin(location.search)) history.replaceState(null, '', location.pathname)
       setItems(await getLibrary())
     } catch (e) {
-      setError(String(e))
+      // 401 = visitante sin cookie de admin: típico invitado que abrió la URL
+      // pública base en vez del enlace de sala. No es un error, es una portada.
+      if (e instanceof Error && e.message.includes('401')) setGuest(true)
+      else setError(String(e))
     }
   }
 
@@ -61,10 +65,24 @@ export function Library() {
 
   useEffect(() => { load() }, [])
 
+  if (guest) {
+    const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname)
+    return (
+      <main className="page">
+        <h1>🎬 jbg-watchparty</h1>
+        <p>Para ver la sesión necesitas el <strong>enlace de sala</strong> que comparte el host
+          — termina en <code>/room/…</code>. Pídeselo y ábrelo tal cual.</p>
+        {isLocal && (
+          <p className="hint">¿Eres el host? Entra con la URL con <code>?key=…</code> que imprime la
+            terminal al arrancar el servidor (se abre sola en el navegador).</p>
+        )}
+      </main>
+    )
+  }
+
   if (error) return (
     <main className="page">
-      <p>Solo el host puede ver la biblioteca. ({error})</p>
-      <p>Abre la URL con <code>?key=…</code> que imprime la terminal al arrancar el servidor.</p>
+      <p>No se pudo cargar la biblioteca. ({error})</p>
     </main>
   )
   if (!items) return <main className="page"><p>Cargando…</p></main>
