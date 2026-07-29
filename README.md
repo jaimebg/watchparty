@@ -40,7 +40,7 @@ Edita `config.json` y añade las carpetas que contengan tus vídeos. Ejemplo com
   ],
   "klipyApiKey": "tu-api-key-aqui-opcional",
   "port": 8400,
-  "hostName": "localhost",
+  "hostName": "Host",
   "cacheLimitGB": 10
 }
 ```
@@ -49,7 +49,7 @@ Edita `config.json` y añade las carpetas que contengan tus vídeos. Ejemplo com
 - **`mediaFolders`** (array de strings): Rutas absolutas a carpetas que contengan vídeos (MKV, MP4, AVI, etc.). Obligatorio.
 - **`klipyApiKey`** (string, opcional): API key de Klipy para buscar y enviar GIFs en el chat. Si no está presente, el botón de GIFs se oculta.
 - **`port`** (número): Puerto HTTP del servidor (por defecto: 8400).
-- **`hostName`** (string): Nombre del host visible en el chat (por defecto: "localhost").
+- **`hostName`** (string): Nombre del host visible en el chat (por defecto: "Host").
 - **`cacheLimitGB`** (número): Límite de caché HLS en GB (por defecto: 10). Se limpia automáticamente al cerrar salas.
 
 ### Paso 3: Ejecutar el servidor
