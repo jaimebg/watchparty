@@ -76,11 +76,16 @@ export class TranscodeSession {
   // decodifica pero los <track> nativos siguen pintando subtítulos, que es
   // exactamente el síntoma reportado. Se entrega siempre una copia estable.
   async requestInit(variant: number, timeoutMs = 30_000): Promise<string> {
+    if (this.closed) throw new Error(`Sesión cerrada esperando init v${variant}`)
     const stable = join(this.opts.outDir, `init_${variant}.stable.mp4`)
     if (existsSync(stable)) return stable
     const live = join(this.opts.outDir, `init_${variant}.mp4`)
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
+      // Una sesión parada ya no es dueña de su roomDir: retry() borra los
+      // snapshots y monta una sesión nueva encima, así que copiar aquí
+      // resucitaría el init de la ejecución rota.
+      if (this.closed) throw new Error(`Sesión cerrada esperando init v${variant}`)
       // El muxer HLS escribe y cierra el init antes de cerrar el primer
       // segmento, así que ver el segmento —que con temp_file solo aparece ya
       // completo— prueba que el init está entero.
