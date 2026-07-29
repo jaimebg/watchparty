@@ -7,6 +7,7 @@ import { probeFile, extractKeyframes, type MediaInfo } from '../media/probe.js'
 import { planSegments, type Segment } from '../media/planner.js'
 import { listSubtitleOptions, extractSubtitle, type SubtitleOption } from '../media/subtitles.js'
 import { initialState, type PlaybackState } from './syncState.js'
+import type { ChatEntry } from '../ws/messages.js'
 
 export interface SessionLike {
   start(fromSegment?: number): void
@@ -20,7 +21,7 @@ export interface SessionLike {
 export interface Room {
   token: string; item: LibraryItem; info: MediaInfo; segments: Segment[]
   subtitles: SubtitleOption[]; session: SessionLike; state: PlaybackState
-  chat: unknown[]; error: string[] | null; roomDir: string
+  chat: ChatEntry[]; error: string[] | null; roomDir: string
 }
 
 interface Deps { createSession: (item: LibraryItem, info: MediaInfo, segments: Segment[], roomDir: string, forceTranscode?: boolean) => SessionLike }
