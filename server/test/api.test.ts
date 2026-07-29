@@ -74,6 +74,31 @@ describe('api', () => {
     expect(res.statusCode).toBe(401)
   })
 
+  it('pick-folder uses the injected native picker and adds the chosen dir', async () => {
+    const cfg = { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 }
+    const pickedDir = mkdtempSync(join(tmpdir(), 'apimedia3-'))
+    await makeFixtureMkv(pickedDir)
+    let pick: string | null = pickedDir
+    const pickApp = await buildApp({
+      config: cfg, library: () => scanLibrary(cfg.mediaFolders), rooms, adminToken: ADMIN,
+      tunnel: { url: null }, pickFolder: async () => pick,
+    })
+
+    expect((await pickApp.inject({ method: 'POST', url: '/api/config/pick-folder' })).statusCode).toBe(401)
+
+    const res = await pickApp.inject({ method: 'POST', url: '/api/config/pick-folder', ...admin })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toHaveLength(2)
+    expect(cfg.mediaFolders).toContain(pickedDir)
+
+    pick = null // el usuario cancela el diálogo
+    const cancelled = await pickApp.inject({ method: 'POST', url: '/api/config/pick-folder', ...admin })
+    expect(cancelled.statusCode).toBe(200)
+    expect(cancelled.json()).toEqual({ cancelled: true })
+
+    await pickApp.close()
+  })
+
   it('admits admin via ?key= (setting a hardened cookie) and rejects a wrong cookie value', async () => {
     const viaKey = await app.inject({ url: `/api/library?key=${ADMIN}` })
     expect(viaKey.statusCode).toBe(200)
@@ -133,7 +158,12 @@ describe('api', () => {
   it('serves segments via session and rejects weird paths', async () => {
     const s = await app.inject({ url: `/stream/${token}/seg_0_00000.m4s` })
     expect(s.statusCode).toBe(200)
-    expect((await app.inject({ url: `/stream/${token}/../../etc/passwd` })).statusCode).toBe(404)
+    // Traversal codificado: llega como valor del param :file y debe caer en el 404 del handler.
+    expect((await app.inject({ url: `/stream/${token}/..%2F..%2Fetc%2Fpasswd` })).statusCode).toBe(404)
+    // Traversal sin codificar: la URL se normaliza fuera de /stream (puede acabar en el SPA
+    // fallback si web/dist existe); lo que importa es que el archivo del sistema nunca se sirva.
+    const raw = await app.inject({ url: `/stream/${token}/../../etc/passwd` })
+    expect(raw.body).not.toContain('root:')
     expect((await app.inject({ url: `/stream/${token}/evil.txt` })).statusCode).toBe(404)
     expect((await app.inject({ url: `/stream/NOEXISTE/master.m3u8` })).statusCode).toBe(404)
   })

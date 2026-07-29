@@ -18,6 +18,7 @@ export interface AppDeps {
   adminToken: string
   tunnel: { url: string | null }
   fetchImpl?: typeof fetch
+  pickFolder?: () => Promise<string | null>
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {

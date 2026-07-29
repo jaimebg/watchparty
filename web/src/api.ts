@@ -25,6 +25,18 @@ export const addMediaFolder = async (path: string): Promise<LibraryItem[]> => {
   }
   return r.json() as Promise<LibraryItem[]>
 }
+// Abre el selector nativo de carpetas EN LA MÁQUINA DEL HOST (el navegador no puede
+// dar rutas absolutas). Devuelve la biblioteca actualizada, o null si se canceló.
+export const pickMediaFolder = async (): Promise<LibraryItem[] | null> => {
+  const r = await fetch('/api/config/pick-folder', { method: 'POST' })
+  if (!r.ok) {
+    const body = await r.json().catch(() => null) as { error?: string } | null
+    throw new Error(body?.error ?? `HTTP ${r.status}`)
+  }
+  const body = await r.json() as LibraryItem[] | { cancelled: true }
+  return Array.isArray(body) ? body : null
+}
+
 export const getRoom = (token: string) => fetch(`/api/rooms/${token}`).then(r => json<RoomInfo>(r))
 export const getStatus = () => fetch('/api/status').then(r => json<{ tunnelUrl: string | null }>(r))
 export const searchGifs = async (q: string, room: string) => {

@@ -26,11 +26,16 @@ npm install
 
 ### Paso 2: Configurar carpetas de medios
 
-Al ejecutar por primera vez, se crea el archivo `config.json` en el directorio de datos de tu plataforma:
+La primera vez, la biblioteca te ofrece un botón **«📁 Elegir carpeta…»** que abre el
+diálogo nativo de tu sistema (Finder/Explorador) para elegir la carpeta de tus vídeos —
+no hace falta tocar ningún archivo. Si lo prefieres, también puedes escribir la ruta a
+mano en el mismo asistente, o editar la configuración directamente.
+
+El archivo `config.json` vive en el directorio de datos de tu plataforma:
 - **macOS:** `~/Library/Application Support/jbg-watchparty/config.json`
 - **Windows:** `%APPDATA%\jbg-watchparty\config.json`
 
-Edita `config.json` y añade las carpetas que contengan tus vídeos. Ejemplo completo:
+Ejemplo completo:
 
 ```json
 {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { addMediaFolder, bootstrapAdmin, createRoom, getLibrary, getStatus } from '../api'
+import { addMediaFolder, bootstrapAdmin, createRoom, getLibrary, getStatus, pickMediaFolder } from '../api'
 import type { LibraryItem } from '../types'
 
 export function Library() {
@@ -46,6 +46,19 @@ export function Library() {
     }
   }
 
+  const browseFolder = async () => {
+    setAddingFolder(true)
+    setFolderError(null)
+    try {
+      const list = await pickMediaFolder()
+      if (list) setItems(list)
+    } catch (e) {
+      setFolderError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAddingFolder(false)
+    }
+  }
+
   useEffect(() => { load() }, [])
 
   if (error) return (
@@ -63,15 +76,21 @@ export function Library() {
         <p>Aún no hay carpetas de medios configuradas.</p>
         <section>
           <h2>Añade tu primera carpeta de medios</h2>
-          <form className="name-form" onSubmit={e => { e.preventDefault(); void submitFolder() }}>
-            <input
-              value={folderPath}
-              onChange={e => setFolderPath(e.target.value)}
-              placeholder="/ruta/absoluta/a/tus/vídeos"
-              autoFocus
-            />
-            <button type="submit" disabled={addingFolder}>{addingFolder ? 'Añadiendo…' : 'Añadir carpeta'}</button>
-          </form>
+          <button onClick={() => void browseFolder()} disabled={addingFolder} autoFocus>
+            {addingFolder ? 'Esperando…' : '📁 Elegir carpeta…'}
+          </button>
+          <p className="hint">Se abre el diálogo de tu sistema (mira el Finder/Explorador si no lo ves).</p>
+          <details>
+            <summary>O escribe la ruta a mano</summary>
+            <form className="name-form" onSubmit={e => { e.preventDefault(); void submitFolder() }}>
+              <input
+                value={folderPath}
+                onChange={e => setFolderPath(e.target.value)}
+                placeholder="/ruta/absoluta/a/tus/vídeos"
+              />
+              <button type="submit" disabled={addingFolder}>{addingFolder ? 'Añadiendo…' : 'Añadir carpeta'}</button>
+            </form>
+          </details>
           {folderError && <p className="field-error">{folderError}</p>}
         </section>
       </main>

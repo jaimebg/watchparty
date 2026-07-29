@@ -1,9 +1,10 @@
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { AppDeps } from '../app.js'
 import { saveConfig } from '../config.js'
 import { buildMasterPlaylist, buildMediaPlaylist } from '../media/planner.js'
+import { pickFolderNative } from './folderPicker.js'
 import { isPathInside, makeRequireAdmin } from './security.js'
 
 const M3U8 = 'application/vnd.apple.mpegurl'
@@ -16,8 +17,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   app.get('/api/library', { preHandler: requireAdmin }, async () => deps.library())
   app.post('/api/library/rescan', { preHandler: requireAdmin }, async () => deps.library())
 
-  app.post('/api/config/folders', { preHandler: requireAdmin }, async (req, reply) => {
-    const { path } = (req.body ?? {}) as { path?: string }
+  const addFolder = (path: string | undefined, reply: FastifyReply) => {
     if (typeof path !== 'string' || !path.trim()) return reply.code(400).send({ error: 'ruta requerida' })
     let stat
     try { stat = statSync(path) } catch { return reply.code(400).send({ error: `la ruta no existe: ${path}` }) }
@@ -27,6 +27,17 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
       saveConfig(deps.config)
     }
     return deps.library()
+  }
+
+  app.post('/api/config/folders', { preHandler: requireAdmin }, async (req, reply) => {
+    const { path } = (req.body ?? {}) as { path?: string }
+    return addFolder(path, reply)
+  })
+
+  app.post('/api/config/pick-folder', { preHandler: requireAdmin }, async (_req, reply) => {
+    const picked = await (deps.pickFolder ?? pickFolderNative)()
+    if (!picked) return { cancelled: true }
+    return addFolder(picked, reply)
   })
 
   app.get('/api/status', { preHandler: requireAdmin }, async () => ({
