@@ -40,6 +40,18 @@ describe('api', () => {
     expect(res.json()).toHaveLength(1)
   })
 
+  it('admits admin via ?key= (setting a hardened cookie) and rejects a wrong cookie value', async () => {
+    const viaKey = await app.inject({ url: `/api/library?key=${ADMIN}` })
+    expect(viaKey.statusCode).toBe(200)
+    const set = viaKey.cookies.find(c => c.name === 'admin')
+    expect(set?.value).toBe(ADMIN)
+    expect(set?.httpOnly).toBe(true)
+    expect(set?.sameSite).toBe('Strict')
+
+    const wrongCookie = await app.inject({ url: '/api/library', cookies: { admin: 'nope' } })
+    expect(wrongCookie.statusCode).toBe(401)
+  })
+
   it('creates a room and exposes public room info', async () => {
     const items = (await app.inject({ url: '/api/library', ...admin })).json()
     const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: { itemId: items[0].id }, ...admin })
