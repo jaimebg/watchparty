@@ -26,11 +26,8 @@ export function langLabel(code: string | null | undefined): string | null {
   return LANG_NAMES[code.toLowerCase()] ?? null
 }
 
-// Pista de idioma en el NOMBRE de un .srt: sufijo ".es.srt" / ".spa.srt" o
-// palabras tipo "Spanish"/"castellano" en el nombre.
-export function guessLangFromName(filename: string): string | null {
-  const suffix = filename.match(/\.([a-z]{2,3})\.srt$/i)
-  if (suffix && langLabel(suffix[1])) return suffix[1].toLowerCase()
+// Palabras de idioma dentro de un nombre de archivo ("Spanish", "castellano"...).
+export function guessLangFromWords(filename: string): string | null {
   const lower = filename.toLowerCase()
   const words: [RegExp, string][] = [
     [/spanish|español|espanol|castellano|latino/, 'es'],
@@ -42,6 +39,30 @@ export function guessLangFromName(filename: string): string | null {
   ]
   for (const [re, code] of words) if (re.test(lower)) return code
   return null
+}
+
+// Pista de idioma en el NOMBRE de un .srt: sufijo ".es.srt" / ".spa.srt" o
+// palabras tipo "Spanish"/"castellano" en el nombre.
+export function guessLangFromName(filename: string): string | null {
+  const suffix = filename.match(/\.([a-z]{2,3})\.srt$/i)
+  if (suffix && langLabel(suffix[1])) return suffix[1].toLowerCase()
+  return guessLangFromWords(filename)
+}
+
+// Etiqueta pistas de audio sin idioma declarado ('und'). Con UNA sola pista se
+// puede inferir: palabras del nombre del archivo (un rip "castellano" es doblaje)
+// o, en su defecto, el idioma original según TMDB. Con varias pistas sin
+// etiquetar no se adivina (no hay forma de saber cuál es cuál).
+export function enrichAudioLangs<T extends { lang: string; label: string }>(
+  audio: T[], filename: string, originalLang: string | null,
+): T[] {
+  if (audio.length !== 1) return audio
+  return audio.map(a => {
+    if (a.lang !== 'und') return a
+    const hint = guessLangFromWords(filename) ?? originalLang
+    if (!hint || !langLabel(hint)) return a
+    return { ...a, lang: hint, label: langLabel(hint)! }
+  })
 }
 
 // Heurística de idioma por contenido (stopwords distintivas). Suficiente para

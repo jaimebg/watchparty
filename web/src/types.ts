@@ -48,6 +48,7 @@ export interface RoomMeta {
   posterUrl: string | null
   rating: number | null
   episodeTag: string | null
+  originalLang: string | null
 }
 
 export interface RoomInfo {

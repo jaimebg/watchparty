@@ -9,6 +9,7 @@ export interface RoomMeta {
   posterUrl: string | null
   rating: number | null
   episodeTag: string | null
+  originalLang: string | null
 }
 
 // "La Peli 2023" → query "La Peli" + year 2023. "Serie S01E02" → query "Serie"
@@ -39,6 +40,7 @@ export function mapTmdbResult(json: unknown, episodeTag: string | null): RoomMet
     posterUrl: typeof r.poster_path === 'string' ? `https://image.tmdb.org/t/p/w342${r.poster_path}` : null,
     rating: typeof r.vote_average === 'number' && r.vote_average > 0 ? Math.round(r.vote_average * 10) / 10 : null,
     episodeTag,
+    originalLang: typeof r.original_language === 'string' ? r.original_language : null,
   }
 }
 

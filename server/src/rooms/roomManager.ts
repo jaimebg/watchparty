@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { cacheDir } from '../config.js'
 import type { LibraryItem } from '../library/scanner.js'
 import { probeFile, extractKeyframes, type MediaInfo } from '../media/probe.js'
@@ -8,6 +8,7 @@ import { planSegments, type Segment } from '../media/planner.js'
 import { listSubtitleOptions, extractSubtitle, type SubtitleOption } from '../media/subtitles.js'
 import { initialState, type PlaybackState } from './syncState.js'
 import type { RoomMeta } from '../media/tmdb.js'
+import { enrichAudioLangs } from '../media/lang.js'
 import type { ChatEntry } from '../ws/messages.js'
 
 export interface SessionLike {
@@ -59,6 +60,9 @@ export class RoomManager {
       await extractSubtitle(item.path, info, item.srtFiles, s.id, join(roomDir, `sub_${s.id}.vtt`)).catch(() => {})
     }
     const meta = this.deps.lookupMeta ? await this.deps.lookupMeta(item.title) : null
+    // Pistas de audio sin idioma declarado: se infiere del nombre del archivo o
+    // del idioma original (TMDB) cuando solo hay una pista.
+    info.audio = enrichAudioLangs(info.audio, basename(item.path), meta?.originalLang ?? null)
     const session = this.deps.createSession(item, info, segments, roomDir)
     const room: Room = {
       token, item, info, segments, subtitles, session, state: initialState(Date.now()), chat: [], error: null, roomDir,

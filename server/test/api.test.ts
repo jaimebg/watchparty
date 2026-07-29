@@ -75,7 +75,7 @@ describe('api', () => {
   })
 
   it('room exposes TMDB meta and composed title when lookup succeeds', async () => {
-    const meta = { title: 'La Gran Peli', year: 2020, overview: 'Sinopsis.', posterUrl: null, rating: 7.5, episodeTag: null }
+    const meta = { title: 'La Gran Peli', year: 2020, overview: 'Sinopsis.', posterUrl: null, rating: 7.5, episodeTag: null, originalLang: 'en' }
     const metaRooms = new RoomManager({ createSession: () => fakeSession, lookupMeta: async () => meta })
     const metaApp = await buildApp({
       config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 },

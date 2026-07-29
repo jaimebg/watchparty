@@ -15,10 +15,10 @@ describe('parseTitleYear', () => {
 
 describe('mapTmdbResult', () => {
   it('maps a movie result', () => {
-    const meta = mapTmdbResult({ results: [{ title: 'Interstellar', release_date: '2014-11-05', overview: 'Espacio.', poster_path: '/p.jpg', vote_average: 8.483 }] }, null)
+    const meta = mapTmdbResult({ results: [{ title: 'Interstellar', release_date: '2014-11-05', overview: 'Espacio.', poster_path: '/p.jpg', vote_average: 8.483, original_language: 'en' }] }, null)
     expect(meta).toEqual({
       title: 'Interstellar', year: 2014, overview: 'Espacio.',
-      posterUrl: 'https://image.tmdb.org/t/p/w342/p.jpg', rating: 8.5, episodeTag: null,
+      posterUrl: 'https://image.tmdb.org/t/p/w342/p.jpg', rating: 8.5, episodeTag: null, originalLang: 'en',
     })
   })
   it('maps a tv result with episode tag', () => {
@@ -34,8 +34,8 @@ describe('mapTmdbResult', () => {
 
 describe('displayTitle', () => {
   it('composes title, year and episode', () => {
-    expect(displayTitle({ title: 'Interstellar', year: 2014, overview: '', posterUrl: null, rating: null, episodeTag: null }, 'x')).toBe('Interstellar (2014)')
-    expect(displayTitle({ title: 'La Serie', year: 2019, overview: '', posterUrl: null, rating: null, episodeTag: 'S01E02' }, 'x')).toBe('La Serie (2019) — S01E02')
+    expect(displayTitle({ title: 'Interstellar', year: 2014, overview: '', posterUrl: null, rating: null, episodeTag: null, originalLang: 'en' }, 'x')).toBe('Interstellar (2014)')
+    expect(displayTitle({ title: 'La Serie', year: 2019, overview: '', posterUrl: null, rating: null, episodeTag: 'S01E02', originalLang: 'en' }, 'x')).toBe('La Serie (2019) — S01E02')
     expect(displayTitle(null, 'archivo pelado')).toBe('archivo pelado')
   })
 })
