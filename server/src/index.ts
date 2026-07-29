@@ -35,7 +35,14 @@ setInterval(() => {
 }, 60_000).unref()
 
 const adminToken = randomBytes(12).toString('base64url')
-const tunnel = new Tunnel(config.port)
+const namedTunnel = Boolean(config.tunnelToken && config.tunnelUrl)
+if (Boolean(config.tunnelToken) !== Boolean(config.tunnelUrl))
+  console.log('⚠️  tunnelToken y tunnelUrl deben configurarse juntos; usando Quick Tunnel (URL aleatoria)')
+const tunnel = new Tunnel({
+  port: config.port,
+  token: namedTunnel ? config.tunnelToken : null,
+  publicUrl: namedTunnel ? config.tunnelUrl : null,
+})
 const app = await buildApp({ config, library: () => scanLibrary(config.mediaFolders), rooms, adminToken, tunnel })
 
 await app.listen({ port: config.port, host: '0.0.0.0' })

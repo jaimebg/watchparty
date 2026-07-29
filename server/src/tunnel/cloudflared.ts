@@ -16,6 +16,14 @@ export function parseTunnelUrl(line: string): string | null {
   return line.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)?.[0] ?? null
 }
 
+export function parseNamedReady(line: string): boolean {
+  return line.includes('Registered tunnel connection')
+}
+
+export function tunnelArgs(port: number, token?: string | null): string[] {
+  return token ? ['tunnel', 'run', '--token', token] : ['tunnel', '--url', `http://localhost:${port}`]
+}
+
 export async function ensureBinary(): Promise<string> {
   const binDir = join(dataDir(), 'bin')
   const bin = join(binDir, process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared')
@@ -45,8 +53,16 @@ export class Tunnel {
   private starting = false
   private urlCb: ((u: string) => void) | null = null
   private downCb: (() => void) | null = null
+  private port: number
+  private token: string | null
+  private publicUrl: string | null
 
-  constructor(private port: number) {}
+  constructor(opts: { port: number; token?: string | null; publicUrl?: string | null }) {
+    this.port = opts.port
+    this.token = opts.token ?? null
+    this.publicUrl = opts.publicUrl ?? null
+  }
+
   onUrl(cb: (u: string) => void): void { this.urlCb = cb }
   onDown(cb: () => void): void { this.downCb = cb }
 
@@ -56,11 +72,13 @@ export class Tunnel {
     this.starting = true
     void ensureBinary().then(bin => {
       if (this.stopped) { this.starting = false; return }
-      this.proc = spawn(bin, ['tunnel', '--url', `http://localhost:${this.port}`], { stdio: ['ignore', 'ignore', 'pipe'] })
+      this.proc = spawn(bin, tunnelArgs(this.port, this.token), { stdio: ['ignore', 'ignore', 'pipe'] })
       this.starting = false
       this.proc.stderr!.on('data', (d: Buffer) => {
         for (const line of d.toString().split('\n')) {
-          const u = parseTunnelUrl(line)
+          const u = this.token
+            ? (parseNamedReady(line) ? this.publicUrl : null)
+            : parseTunnelUrl(line)
           if (u && u !== this.url) { this.url = u; this.attempt = 0; this.urlCb?.(u) }
         }
       })

@@ -53,6 +53,8 @@ Ejemplo completo:
 **Campos de `config.json`:**
 - **`mediaFolders`** (array de strings): Rutas absolutas a carpetas que contengan vídeos (MKV, MP4, AVI, etc.). Obligatorio; también se puede añadir la primera carpeta desde el panel del host si arrancas con la biblioteca vacía.
 - **`klipyApiKey`** (string, opcional): API key de Klipy para buscar y enviar GIFs en el chat. Si no está presente, el botón de GIFs se oculta.
+- **`tunnelToken`** (string, opcional): Token de un named tunnel de Cloudflare. Con él (junto a `tunnelUrl`), el servidor usa tu túnel con URL fija en vez del Quick Tunnel aleatorio. Ver [URL fija con tu dominio](#url-fija-con-tu-dominio-named-tunnel).
+- **`tunnelUrl`** (string, opcional): URL pública fija del túnel, p. ej. `https://watchparty.tudominio.com`. Obligatorio si usas `tunnelToken` (deben configurarse juntos).
 - **`tmdbApiKey`** (string, opcional): API key de TMDB (themoviedb.org → Ajustes → API). Con ella, al crear una sala se buscan metadatos por el nombre del archivo: el título de la sala pasa a ser «Título (año)» y aparece un botón **ℹ️ Info** con carátula, nota y sinopsis en español. Los episodios (`S01E02` en el nombre) se buscan como series. Sin key, todo funciona igual pero con el nombre del archivo pelado.
 - **`port`** (número): Puerto HTTP del servidor (por defecto: 8400).
 - **`cacheLimitGB`** (número): Límite de caché HLS en GB (por defecto: 10). Se limpia automáticamente al cerrar salas.
@@ -75,6 +77,28 @@ Copia la URL pública que aparece en la consola o en la interfaz web. Los invita
 1. Hacen clic en el enlace HTTPS
 2. Entran con su nombre
 3. Ven la sala en vivo (sin crear una nueva)
+
+## URL fija con tu dominio (named tunnel)
+
+Por defecto el servidor usa un Quick Tunnel de cloudflared: la URL (`*.trycloudflare.com`)
+cambia en cada arranque. Si tienes un dominio gestionado en Cloudflare, puedes tener una
+URL fija (p. ej. `https://watchparty.tudominio.com`) con un setup único:
+
+1. Entra en [one.dash.cloudflare.com](https://one.dash.cloudflare.com) → **Networks → Tunnels → Create a tunnel** (tipo Cloudflared) y dale un nombre (p. ej. `watchparty`).
+2. En el paso del conector, **no instales nada**: solo copia el token que aparece en el comando (`cloudflared service install <TOKEN>` — el token es la cadena larga).
+3. En **Public Hostnames**, añade `watchparty.tudominio.com` → servicio `http://localhost:8400` (el puerto de tu `config.json`). Cloudflare crea la ruta DNS automáticamente.
+4. En `config.json`, añade:
+
+```json
+{
+  "tunnelToken": "eyJh...tu-token...",
+  "tunnelUrl": "https://watchparty.tudominio.com"
+}
+```
+
+Al arrancar, el servidor lanza tu túnel con esa URL fija (la misma en cada reinicio). Si
+falta alguno de los dos campos, avisa por consola y vuelve al Quick Tunnel. La app usa su
+propio binario de cloudflared; no hace falta instalarlo ni correr ningún servicio del sistema.
 
 ## Obtener API Key de Klipy (opcional)
 
@@ -185,7 +209,6 @@ Compila el cliente React para producción en `web/dist/`.
 - **Pausa automática global** — si alguien se queda cargando, no se pausa automáticamente al resto
 - **Cuentas de usuario** — sin autenticación; solo roles host/invitado básicos
 - **Empaquetado nativo** — v1 requiere Node.js y `npm start`; Electron/instalador quedan para futuras versiones
-- **URL de túnel estable** — cada reinicio del servidor genera nueva URL (requeriría Cloudflare con dominio propio)
 
 ## Estructura del proyecto
 
@@ -225,7 +248,7 @@ Compila el cliente React para producción en `web/dist/`.
 
 ### Los invitados no pueden conectar
 - La URL pública requiere conexión a internet; usa datos móviles para verificar desde otro dispositivo
-- Si el túnel cae, el servidor lo relanza automáticamente pero la URL cambia; hay que recompartir el nuevo enlace
+- Si el túnel cae, el servidor lo relanza automáticamente; con Quick Tunnel la URL cambia y hay que recompartir el enlace (con named tunnel la URL fija se mantiene)
 - Comprueba que el navegador está actualizado (Chrome, Safari, Firefox recientes)
 
 ### El vídeo no reproduce

@@ -14,7 +14,7 @@ describe('config', () => {
 
   it('loadConfig creates defaults and roundtrips', () => {
     const c = loadConfig()
-    expect(c).toEqual({ mediaFolders: [], klipyApiKey: null, tmdbApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 })
+    expect(c).toEqual({ mediaFolders: [], klipyApiKey: null, tmdbApiKey: null, tunnelToken: null, tunnelUrl: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 })
     saveConfig({ ...c, mediaFolders: ['/pelis'] })
     expect(loadConfig().mediaFolders).toEqual(['/pelis'])
   })
