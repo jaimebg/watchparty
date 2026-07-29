@@ -7,6 +7,7 @@ import { probeFile, extractKeyframes, type MediaInfo } from '../media/probe.js'
 import { planSegments, type Segment } from '../media/planner.js'
 import { listSubtitleOptions, extractSubtitle, type SubtitleOption } from '../media/subtitles.js'
 import { initialState, type PlaybackState } from './syncState.js'
+import type { RoomMeta } from '../media/tmdb.js'
 import type { ChatEntry } from '../ws/messages.js'
 
 export interface SessionLike {
@@ -22,6 +23,7 @@ export interface Room {
   token: string; item: LibraryItem; info: MediaInfo; segments: Segment[]
   subtitles: SubtitleOption[]; session: SessionLike; state: PlaybackState
   chat: ChatEntry[]; error: string[] | null; roomDir: string
+  meta: RoomMeta | null
   // TranscodeSession.onError only keeps a single callback (see transcoder.ts),
   // and RoomManager already needs that slot to record room.error. Rather than
   // fighting over the one callback, RoomManager registers its own single
@@ -34,7 +36,12 @@ export interface Room {
   closeListeners: Set<() => void>
 }
 
-interface Deps { createSession: (item: LibraryItem, info: MediaInfo, segments: Segment[], roomDir: string, forceTranscode?: boolean) => SessionLike }
+interface Deps {
+  createSession: (item: LibraryItem, info: MediaInfo, segments: Segment[], roomDir: string, forceTranscode?: boolean) => SessionLike
+  // Metadatos externos (TMDB); ausente = sin metadatos. Nunca lanza (el lookup
+  // captura sus propios errores y devuelve null).
+  lookupMeta?: (cleanTitle: string) => Promise<RoomMeta | null>
+}
 
 export class RoomManager {
   private rooms = new Map<string, Room>()
@@ -51,10 +58,11 @@ export class RoomManager {
     for (const s of subtitles) {
       await extractSubtitle(item.path, info, item.srtFiles, s.id, join(roomDir, `sub_${s.id}.vtt`)).catch(() => {})
     }
+    const meta = this.deps.lookupMeta ? await this.deps.lookupMeta(item.title) : null
     const session = this.deps.createSession(item, info, segments, roomDir)
     const room: Room = {
       token, item, info, segments, subtitles, session, state: initialState(Date.now()), chat: [], error: null, roomDir,
-      errorListeners: new Set(), closeListeners: new Set(),
+      meta, errorListeners: new Set(), closeListeners: new Set(),
     }
     session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
     session.start()

@@ -6,6 +6,7 @@ import { ChatPanel } from '../chat/ChatPanel'
 import { ReactionsBar } from '../chat/ReactionsBar'
 import { ReactionOverlay } from '../chat/ReactionOverlay'
 import { chatReducer, dropReaction, initialChat, type ChatState } from '../chat/chatStore'
+import { MetaModal } from '../MetaModal'
 import type { ClientMsg, RoomInfo, ServerMsg } from '../types'
 
 const NAME_KEY = 'jbg-name'
@@ -31,6 +32,7 @@ export function Room({ token }: { token: string }) {
   const [wsError, setWsError] = useState<string[] | null>(null)
   const [chat, dispatchChat] = useReducer(roomChatReducer, initialChat)
   const [theater, setTheater] = useState(() => localStorage.getItem(THEATER_KEY) === '1')
+  const [showMeta, setShowMeta] = useState(false)
   const sendRef = useRef<(m: ClientMsg) => void>(() => {})
 
   const toggleTheater = () => {
@@ -125,10 +127,18 @@ export function Room({ token }: { token: string }) {
       {tunnelDown && <div className="banner">Túnel caído, relanzando…</div>}
       <div className="room-head">
         <h1>{info.title}</h1>
-        <button className="btn-theater" onClick={toggleTheater} title={theater ? 'Salir del modo teatro' : 'Modo teatro'}>
-          {theater ? '⊡ Salir del teatro' : '🎭 Modo teatro'}
-        </button>
+        <div className="room-head-actions">
+          {info.meta && (
+            <button className="btn-theater" onClick={() => setShowMeta(true)} title="Información de la película">
+              ℹ️ Info
+            </button>
+          )}
+          <button className="btn-theater" onClick={toggleTheater} title={theater ? 'Salir del modo teatro' : 'Modo teatro'}>
+            {theater ? '⊡ Salir del teatro' : '🎭 Modo teatro'}
+          </button>
+        </div>
       </div>
+      {showMeta && info.meta && <MetaModal meta={info.meta} onClose={() => setShowMeta(false)} />}
       <div className={`room-grid${theater ? ' room-grid--theater' : ''}`}>
         <div className="video-stage">
           <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} />

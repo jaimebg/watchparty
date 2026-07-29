@@ -44,6 +44,7 @@ Ejemplo completo:
     "/Users/tuusuario/Videos/Series"
   ],
   "klipyApiKey": "tu-api-key-aqui-opcional",
+  "tmdbApiKey": "tu-api-key-de-tmdb-opcional",
   "port": 8400,
   "cacheLimitGB": 10
 }
@@ -52,6 +53,7 @@ Ejemplo completo:
 **Campos de `config.json`:**
 - **`mediaFolders`** (array de strings): Rutas absolutas a carpetas que contengan vídeos (MKV, MP4, AVI, etc.). Obligatorio; también se puede añadir la primera carpeta desde el panel del host si arrancas con la biblioteca vacía.
 - **`klipyApiKey`** (string, opcional): API key de Klipy para buscar y enviar GIFs en el chat. Si no está presente, el botón de GIFs se oculta.
+- **`tmdbApiKey`** (string, opcional): API key de TMDB (themoviedb.org → Ajustes → API). Con ella, al crear una sala se buscan metadatos por el nombre del archivo: el título de la sala pasa a ser «Título (año)» y aparece un botón **ℹ️ Info** con carátula, nota y sinopsis en español. Los episodios (`S01E02` en el nombre) se buscan como series. Sin key, todo funciona igual pero con el nombre del archivo pelado.
 - **`port`** (número): Puerto HTTP del servidor (por defecto: 8400).
 - **`cacheLimitGB`** (número): Límite de caché HLS en GB (por defecto: 10). Se limpia automáticamente al cerrar salas.
 

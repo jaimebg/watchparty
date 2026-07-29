@@ -74,6 +74,22 @@ describe('api', () => {
     expect(res.statusCode).toBe(401)
   })
 
+  it('room exposes TMDB meta and composed title when lookup succeeds', async () => {
+    const meta = { title: 'La Gran Peli', year: 2020, overview: 'Sinopsis.', posterUrl: null, rating: 7.5, episodeTag: null }
+    const metaRooms = new RoomManager({ createSession: () => fakeSession, lookupMeta: async () => meta })
+    const metaApp = await buildApp({
+      config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 },
+      library: () => scanLibrary([mediaDir]), rooms: metaRooms, adminToken: ADMIN, tunnel: { url: null },
+    })
+    const items = await scanLibrary([mediaDir])
+    const room = await metaRooms.create(items[0])
+    const res = await metaApp.inject({ url: `/api/rooms/${room.token}` })
+    expect(res.json().title).toBe('La Gran Peli (2020)')
+    expect(res.json().meta).toEqual(meta)
+    await metaRooms.close(room.token)
+    await metaApp.close()
+  })
+
   it('lists and removes media folders (admin only, persisted)', async () => {
     const extraDir = mkdtempSync(join(tmpdir(), 'apimedia4-'))
     await makeFixtureMkv(extraDir)

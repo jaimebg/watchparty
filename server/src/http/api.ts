@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { AppDeps } from '../app.js'
 import { saveConfig } from '../config.js'
 import { buildMasterPlaylist, buildMediaPlaylist } from '../media/planner.js'
+import { displayTitle } from '../media/tmdb.js'
 import { pickFolderNative } from './folderPicker.js'
 import { isPathInside, makeRequireAdmin } from './security.js'
 
@@ -74,8 +75,9 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) return reply.code(404).send({ error: 'room not found' })
     return {
-      title: room.item.title, durationSec: room.info.durationSec,
+      title: displayTitle(room.meta, room.item.title), durationSec: room.info.durationSec,
       audio: room.info.audio, subtitles: room.subtitles, error: room.error,
+      meta: room.meta,
     }
   })
 

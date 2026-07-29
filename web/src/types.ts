@@ -41,10 +41,20 @@ export type ServerMsg =
 export interface GifResult { id: string; title: string; previewUrl: string; url: string; width: number; height: number }
 
 // server/src/http/api.ts (GET /api/rooms/:token response shape)
+export interface RoomMeta {
+  title: string
+  year: number | null
+  overview: string
+  posterUrl: string | null
+  rating: number | null
+  episodeTag: string | null
+}
+
 export interface RoomInfo {
   title: string
   durationSec: number
   audio: AudioTrack[]
   subtitles: SubtitleOption[]
   error: string[] | null
+  meta: RoomMeta | null
 }

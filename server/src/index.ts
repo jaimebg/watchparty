@@ -7,6 +7,7 @@ import { scanLibrary } from './library/scanner.js'
 import { RoomManager } from './rooms/roomManager.js'
 import { TranscodeSession } from './media/transcoder.js'
 import { detectEncoder } from './media/hwaccel.js'
+import { makeTmdbLookup } from './media/tmdb.js'
 import { pickPrunable, segmentFilesWithStats } from './media/cachePrune.js'
 import { Tunnel } from './tunnel/cloudflared.js'
 
@@ -24,6 +25,7 @@ const rooms = new RoomManager({
     mode: !forceTranscode && info.videoCodec === 'h264' && info.pixFmt === 'yuv420p' ? 'copy' : 'transcode',
     encoder, segments, audioCount: info.audio.length, outDir: roomDir,
   }),
+  lookupMeta: config.tmdbApiKey ? makeTmdbLookup(config.tmdbApiKey) : undefined,
 })
 
 setInterval(() => {

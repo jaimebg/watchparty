@@ -308,6 +308,87 @@ details summary {
   font-size: 0.9rem;
 }
 
+.room-head-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Modal de metadatos (TMDB) */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+.modal {
+  position: relative;
+  background: #1c1f26;
+  border: 1px solid #2a2e37;
+  border-radius: 10px;
+  padding: 1.25rem;
+  max-width: 620px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.modal-close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  line-height: 1;
+}
+
+.modal-body {
+  display: flex;
+  gap: 1rem;
+}
+
+.modal-poster {
+  width: 170px;
+  border-radius: 8px;
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.modal-text {
+  min-width: 0;
+}
+
+.modal-text h2 {
+  margin: 0 2rem 0.5rem 0;
+}
+
+.modal-rating {
+  color: #ffb020;
+  font-weight: 600;
+  margin: 0.25rem 0;
+}
+
+.modal-overview {
+  line-height: 1.5;
+  color: #c9c9d1;
+}
+
+@media (max-width: 560px) {
+  .modal-body {
+    flex-direction: column;
+  }
+  .modal-poster {
+    width: 130px;
+  }
+}
+
 .room-grid {
   display: grid;
   grid-template-columns: 1fr 320px;

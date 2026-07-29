@@ -5,12 +5,13 @@ import { join } from 'node:path'
 export interface Config {
   mediaFolders: string[]
   klipyApiKey: string | null
+  tmdbApiKey?: string | null
   port: number
   hostName: string
   cacheLimitGB: number
 }
 
-const DEFAULTS: Config = { mediaFolders: [], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 }
+const DEFAULTS: Config = { mediaFolders: [], klipyApiKey: null, tmdbApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 }
 
 export function dataDir(): string {
   if (process.env.JBG_DATA_DIR) return process.env.JBG_DATA_DIR
