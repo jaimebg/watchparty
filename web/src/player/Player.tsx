@@ -384,13 +384,11 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
           // siendo play/pausa, no pertenece a la barra) con el inicio de un
           // arrastre, reabriendo el mismo reenvío que commitSeek evita arriba.
           onChange={e => { draggingRef.current = true; committedRef.current = false; setDrag(Number(e.target.value)); armDragWatchdog() }}
-          // La rueda del ratón sobre un range mueve su valor sin pasar por
-          // pointerdown/up: en Firefox eso deja draggingRef enganchado a true
-          // para siempre (nunca llega el evento que lo suelta) y con él la
-          // barra y el reloj de tiempo restante, que se calculan sobre el
-          // mismo valor. preventDefault() basta -React registra `wheel` como
-          // no-pasivo-, y el watchdog de arriba cierra el resto de la clase.
-          onWheel={e => e.preventDefault()}
+          // NO interceptamos la rueda: en Firefox mueve el valor sin pasar por
+          // pointerdown/up, pero eso es una anomalía que el watchdog ya absorbe.
+          // Interceptar preventivamente bloquearía el scroll de la página justo
+          // donde hace falta para alcanzar el chat en pantallas estrechas (<800px).
+          // El temblor visual de la barra tras la rueda es inofensivo y se autocorrige.
           onPointerUp={commitSeek}
           onKeyUp={commitSeek}
           // Si el foco se va a media pulsación (raro, pero posible) tampoco
