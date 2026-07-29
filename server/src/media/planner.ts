@@ -1,4 +1,5 @@
 import type { AudioTrack } from './probe.js'
+import { langLabel } from './lang.js'
 
 export interface Segment { index: number; start: number; duration: number }
 
@@ -29,7 +30,7 @@ const escapeAttr = (s: string): string => s.replace(/"/g, "'")
 export function buildMasterPlaylist(audio: AudioTrack[]): string {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:7']
   audio.forEach((a, i) => lines.push(
-    `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${escapeAttr(a.label)}",LANGUAGE="${escapeAttr(a.lang)}",DEFAULT=${i === 0 ? 'YES' : 'NO'},AUTOSELECT=YES,URI="audio_${a.index + 1}.m3u8"`))
+    `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${escapeAttr(langLabel(a.lang) ?? a.label)}",LANGUAGE="${escapeAttr(a.lang)}",DEFAULT=${i === 0 ? 'YES' : 'NO'},AUTOSELECT=YES,URI="audio_${a.index + 1}.m3u8"`))
   lines.push('#EXT-X-STREAM-INF:BANDWIDTH=8000000,CODECS="avc1.64001f,mp4a.40.2",AUDIO="aud"', 'video.m3u8')
   return lines.join('\n') + '\n'
 }

@@ -12,6 +12,7 @@ describe('cleanName', () => {
     ['otra-peli.mkv', 'otra-peli'],
     ['Spider-Man.2002.1080p.BluRay.x264-GRUPO.mkv', 'Spider-Man 2002'],
     ['Project Hail Mary (2026) [IMAX] [1080p] [WEBRip] [5.1] [YTS.BZ].mp4', 'Project Hail Mary 2026'],
+    ['Project.Hail.Mary.2026.IMAX.1080p.WEBRip.x264.AAC5.1-[YTS.BZ].mp4', 'Project Hail Mary 2026'],
     ['Otra_Peli_[2024]_(HDR10).mkv', 'Otra Peli 2024'],
   ])('%s -> %s', (input, expected) => {
     expect(cleanName(input)).toBe(expected)

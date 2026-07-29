@@ -21,7 +21,8 @@ describe('subtitles', () => {
     const opts = listSubtitleOptions(info, [extSrt])
     expect(opts).toHaveLength(2)
     expect(opts[0].id).toBe(0)
-    expect(opts[1].label).toBe('fixture.es')
+    expect(opts[1].label).toBe('Español') // idioma detectado del sufijo .es.srt
+    expect(opts[1].lang).toBe('es')
   })
   it('extracts embedded track to vtt', async () => {
     const out = join(dir, 'emb.vtt')

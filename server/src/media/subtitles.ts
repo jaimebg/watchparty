@@ -1,17 +1,51 @@
 import { execFile } from 'node:child_process'
+import { openSync, readSync, closeSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { basename } from 'node:path'
 import ffmpegPath from 'ffmpeg-static'
 import type { MediaInfo } from './probe.js'
+import { detectLangFromText, guessLangFromName, langLabel } from './lang.js'
 
 const pExecFile = promisify(execFile)
 
 export interface SubtitleOption { id: number; label: string; lang: string }
 
+function srtSample(path: string): string {
+  try {
+    const fd = openSync(path, 'r')
+    const buf = Buffer.alloc(16 * 1024)
+    const n = readSync(fd, buf, 0, buf.length, 0)
+    closeSync(fd)
+    return buf.subarray(0, n).toString('utf8')
+  } catch {
+    return ''
+  }
+}
+
+// Idioma de un .srt externo: primero pistas en el nombre (.es.srt, "Spanish"...),
+// si no, heurística sobre el contenido. null si no hay señal.
+function srtLang(path: string): string | null {
+  return guessLangFromName(basename(path)) ?? detectLangFromText(srtSample(path))
+}
+
 export function listSubtitleOptions(info: MediaInfo, srtFiles: string[]): SubtitleOption[] {
   const embedded = info.subs.filter(s => s.textBased)
-  const opts: SubtitleOption[] = embedded.map((s, i) => ({ id: i, label: s.label, lang: s.lang }))
-  srtFiles.forEach((f, i) => opts.push({ id: embedded.length + i, label: basename(f, '.srt'), lang: 'und' }))
+  const opts: SubtitleOption[] = embedded.map((s, i) => ({
+    id: i,
+    label: langLabel(s.lang) ?? s.label,
+    lang: s.lang,
+  }))
+  srtFiles.forEach((f, i) => {
+    const lang = srtLang(f)
+    opts.push({ id: embedded.length + i, label: langLabel(lang) ?? basename(f, '.srt'), lang: lang ?? 'und' })
+  })
+  // Etiquetas repetidas ("Español" incrustado + "Español" externo) → numerarlas.
+  const seen = new Map<string, number>()
+  for (const o of opts) {
+    const n = (seen.get(o.label) ?? 0) + 1
+    seen.set(o.label, n)
+    if (n > 1) o.label = `${o.label} (${n})`
+  }
   return opts
 }
 
