@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseBoxes, headerLength, canonicalizeInit } from '../src/media/fmp4.js'
+import { parseBoxes, headerLength, canonicalizeInit, retimeHeader } from '../src/media/fmp4.js'
 
 // Construye una caja MP4: [size:4][type:4][payload]
 function box(type: string, payload: Buffer = Buffer.alloc(0)): Buffer {
@@ -145,5 +145,103 @@ describe('canonicalizeInit', () => {
   it('es idempotente: canonicalizar un init ya canónico no lo cambia', () => {
     const una = canonicalizeInit(fakeInit()).init
     expect(canonicalizeInit(una).init.equals(una)).toBe(true)
+  })
+})
+
+// tfdt v1: version(1)+flags(3), baseMediaDecodeTime(8)
+function tfdt(base: number): Buffer {
+  const p = Buffer.alloc(12)
+  p.writeUInt8(1, 0)
+  p.writeBigUInt64BE(BigInt(base), 4)
+  return box('tfdt', p)
+}
+
+// tfhd: version(1)+flags(3), track_ID(4)
+function tfhd(trackId: number): Buffer {
+  const p = Buffer.alloc(8)
+  p.writeUInt32BE(trackId, 4)
+  return box('tfhd', p)
+}
+
+// sidx v1: version(1)+flags(3), reference_ID(4), timescale(4), earliestPT(8), firstOffset(8)
+function sidx(trackId: number, timescale: number, earliest: number): Buffer {
+  const p = Buffer.alloc(28)
+  p.writeUInt8(1, 0)
+  p.writeUInt32BE(trackId, 4)
+  p.writeUInt32BE(timescale, 8)
+  p.writeBigUInt64BE(BigInt(earliest), 12)
+  return box('sidx', p)
+}
+
+const readTfdt = (buf: Buffer, nth = 0) =>
+  Number(buf.readBigUInt64BE(parseBoxes(buf).filter(b => b.type === 'moof')
+    .flatMap(m => parseBoxes(buf, m.start + m.hdr, m.start + m.size))
+    .flatMap(t => parseBoxes(buf, t.start + t.hdr, t.start + t.size))
+    .filter(b => b.type === 'tfdt')[nth].start + 12))
+
+const readSidx = (buf: Buffer, nth = 0) =>
+  Number(buf.readBigUInt64BE(parseBoxes(buf).filter(b => b.type === 'sidx')[nth].start + 20))
+
+const SCALES = new Map([[1, 12800], [2, 44100]])
+
+// Cabecera como la que escribe ffmpeg: styp, un sidx por pista, y un moof con
+// un traf por pista. Un run reiniciado la escribe con los tfdt a cero.
+const head = (videoBase: number, audioBase: number) => Buffer.concat([
+  box('styp', Buffer.alloc(8)),
+  sidx(1, 12800, videoBase),
+  sidx(2, 44100, audioBase),
+  box('moof', Buffer.concat([
+    box('mfhd', Buffer.alloc(8)),
+    box('traf', Buffer.concat([tfhd(1), tfdt(videoBase)])),
+    box('traf', Buffer.concat([tfhd(2), tfdt(audioBase)])),
+  ])),
+])
+
+describe('retimeHeader', () => {
+  it('lleva el tfdt de cada pista a start × su propio timescale', () => {
+    const out = retimeHeader(head(0, 0), SCALES, 20)
+    expect(readTfdt(out, 0)).toBe(20 * 12800)
+    expect(readTfdt(out, 1)).toBe(20 * 44100)
+  })
+
+  it('mueve también el earliest_presentation_time del sidx', () => {
+    const out = retimeHeader(head(0, 0), SCALES, 20)
+    expect(readSidx(out, 0)).toBe(20 * 12800)
+    expect(readSidx(out, 1)).toBe(20 * 44100)
+  })
+
+  it('desplaza, no fija: un segundo fragmento conserva su separación', () => {
+    const dos = Buffer.concat([
+      head(0, 0),
+      box('moof', Buffer.concat([
+        box('mfhd', Buffer.alloc(8)),
+        box('traf', Buffer.concat([tfhd(1), tfdt(2 * 12800)])),
+        box('traf', Buffer.concat([tfhd(2), tfdt(2 * 44100)])),
+      ])),
+    ])
+    const out = retimeHeader(dos, SCALES, 20)
+    expect(readTfdt(out, 2)).toBe(22 * 12800)
+    expect(readTfdt(out, 3)).toBe(22 * 44100)
+  })
+
+  it('funciona igual con un run que ya traía tiempos absolutos', () => {
+    const out = retimeHeader(head(8 * 12800, 8 * 44100), SCALES, 20)
+    expect(readTfdt(out, 0)).toBe(20 * 12800)
+    expect(readTfdt(out, 1)).toBe(20 * 44100)
+  })
+
+  it('no cambia el tamaño del buffer ni toca la entrada', () => {
+    const entrada = head(0, 0)
+    const copia = Buffer.from(entrada)
+    const out = retimeHeader(entrada, SCALES, 20)
+    expect(out.length).toBe(entrada.length)
+    expect(entrada.equals(copia)).toBe(true)
+  })
+
+  it('deja intacta una pista de la que no conoce el timescale', () => {
+    const out = retimeHeader(head(0, 0), new Map([[1, 12800]]), 20)
+    expect(readTfdt(out, 0)).toBe(20 * 12800)
+    expect(readTfdt(out, 1)).toBe(0)
+    expect(readSidx(out, 1)).toBe(0)
   })
 })

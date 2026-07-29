@@ -140,3 +140,62 @@ export function canonicalizeInit(raw: Buffer): CanonicalInit {
   }
   return { init, timescales }
 }
+
+function readTime(buf: Buffer, at: number, version: number): number {
+  return version === 1 ? Number(buf.readBigUInt64BE(at)) : buf.readUInt32BE(at)
+}
+
+// Se conserva la versión de la caja: promocionar una v0 a v1 cambiaría el
+// tamaño, y con él el de todos sus padres. Desbordar los 32 bits de una v0
+// exigiría ~13 h de película a timescale 90000, fuera del caso real.
+function writeTime(buf: Buffer, at: number, version: number, value: number): void {
+  const safe = Math.max(0, value)
+  if (version === 1) buf.writeBigUInt64BE(BigInt(safe), at)
+  else buf.writeUInt32BE(safe, at)
+}
+
+/**
+ * Cabecera de segmento reanclada al instante absoluto que declara la playlist.
+ *
+ * ffmpeg numera cada reinicio desde su propio origen (medido: el `tfdt` del
+ * segmento 5 vale 0 en un run que arrancó con `-ss 20`), así que el tiempo del
+ * medio depende de qué proceso lo escribió. Aquí se fija por construcción.
+ *
+ * Desplaza en vez de fijar: el offset lo decide el PRIMER `moof` de cada pista y
+ * los siguientes se mueven lo mismo, de modo que si algún día cae más de un
+ * fragmento por segmento, su separación interna se conserva.
+ */
+export function retimeHeader(head: Buffer, timescales: Map<number, number>, startSec: number): Buffer {
+  const out = Buffer.from(head)
+  const deltas = new Map<number, number>()
+  for (const moof of parseBoxes(out)) {
+    if (moof.type !== 'moof') continue
+    for (const traf of parseBoxes(out, moof.start + moof.hdr, moof.start + moof.size)) {
+      if (traf.type !== 'traf') continue
+      let trackId = 0
+      for (const b of parseBoxes(out, traf.start + traf.hdr, traf.start + traf.size)) {
+        // tfhd va antes que tfdt dentro de traf, así que el trackId ya está puesto.
+        if (b.type === 'tfhd') { trackId = out.readUInt32BE(b.start + b.hdr + 4); continue }
+        if (b.type !== 'tfdt') continue
+        const timescale = timescales.get(trackId)
+        if (timescale === undefined) continue
+        const version = out[b.start + b.hdr]
+        const at = b.start + b.hdr + 4
+        const current = readTime(out, at, version)
+        if (!deltas.has(trackId)) deltas.set(trackId, Math.round(startSec * timescale) - current)
+        writeTime(out, at, version, current + deltas.get(trackId)!)
+      }
+    }
+  }
+  // Segunda pasada: el sidx va ANTES del moof en el archivo, pero su
+  // desplazamiento sale del moof, así que no se puede resolver en la primera.
+  for (const b of parseBoxes(out)) {
+    if (b.type !== 'sidx') continue
+    const delta = deltas.get(out.readUInt32BE(b.start + b.hdr + 4))
+    if (delta === undefined) continue
+    const version = out[b.start + b.hdr]
+    const at = b.start + b.hdr + 12
+    writeTime(out, at, version, readTime(out, at, version) + delta)
+  }
+  return out
+}
