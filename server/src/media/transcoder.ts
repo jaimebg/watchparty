@@ -50,6 +50,13 @@ export class TranscodeSession {
 
   seekTo(segmentIndex: number): void {
     if (this.closed) return
+    // Seek a una zona ya cacheada: reiniciar ffmpeg ahí regeneraría segmentos
+    // ya servibles y reescribiría init_*.mp4 mientras algún cliente los
+    // descarga, sin producir nada nuevo. Se comprueban todas las variantes
+    // porque la poda de caché puede haber borrado el audio y no el vídeo.
+    let ready = true
+    for (let v = 0; v <= this.opts.audioCount; v++) if (!this.isReady(v, segmentIndex)) { ready = false; break }
+    if (ready) return
     this.killProc()
     this.start(segmentIndex)
   }

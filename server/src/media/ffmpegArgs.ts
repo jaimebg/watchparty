@@ -24,6 +24,11 @@ export function buildTranscodeArgs(x: TranscodeArgsInput): string[] {
   for (let i = 0; i < x.audioCount; i++) args.push('-map', `0:a:${i}`)
   args.push('-c:a', 'aac', '-ac', '2', '-b:a', '128k')
   const vsm = ['v:0,agroup:aud', ...Array.from({ length: x.audioCount }, (_, i) => `a:${i},agroup:aud`)].join(' ')
+  // -ss antes de -i resetea los timestamps de salida a ~0: sin este offset, un
+  // reinicio a mitad de película (seek) produce segmentos cuyo tfdt contradice
+  // la playlist, hls.js los bufferiza en la posición 0 y el vídeo se queda
+  // cargando. Con el offset, el tfdt vuelve a coincidir con la línea de tiempo.
+  if (seg.start > 0) args.push('-output_ts_offset', seg.start.toFixed(6))
   args.push(
     '-f', 'hls', '-hls_time', '4', '-hls_segment_type', 'fmp4',
     '-hls_playlist_type', 'vod', '-hls_flags', 'independent_segments+temp_file',

@@ -74,6 +74,27 @@ describe('TranscodeSession', () => {
     await seekSession.stop()
   }, 90_000)
 
+  it('seekTo into an already-cached segment keeps the current process (no restart)', async () => {
+    // Restarting ffmpeg over a cached region would regenerate segments that are
+    // already servable and rewrite init_*.mp4 under clients' feet, so a seek
+    // whose target (every variant) is ready must leave the process alone.
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-cached-'))
+    const cachedOutDir = join(dir, 'out'); mkdirSync(cachedOutDir)
+    const cachedSession = new TranscodeSession({
+      input: fixture, mode: 'copy', encoder: 'libx264',
+      segments: session['segments'], audioCount: 2, outDir: cachedOutDir,
+    })
+    cachedSession.start()
+    for (const variant of [0, 1, 2]) await cachedSession.requestSegment(variant, 1, 20_000)
+    const proc = cachedSession['proc']
+    expect(proc).not.toBeNull()
+
+    cachedSession.seekTo(1)
+    expect(cachedSession['proc']).toBe(proc)
+
+    await cachedSession.stop()
+  }, 60_000)
+
   it('stop() closes the session so later start()/seekTo() calls no-op instead of respawning ffmpeg', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tsc-closed-'))
     const closedOutDir = join(dir, 'out'); mkdirSync(closedOutDir)

@@ -13,6 +13,19 @@ describe('buildTranscodeArgs', () => {
     expect(a.join(' ')).toContain('-start_number 0')
     expect(a.join(' ')).toContain('seg_%v_%05d.m4s')
   })
+  it('restart mid-stream offsets output timestamps to the segment start', () => {
+    for (const mode of ['copy', 'transcode'] as const) {
+      const a = buildTranscodeArgs({ ...base, mode, startSegment: 2 })
+      const i = a.indexOf('-output_ts_offset')
+      expect(i).toBeGreaterThan(a.indexOf('-i')) // opción de salida: tras el input
+      expect(i).toBeLessThan(a.length - 1) // y antes de la URL de salida
+      expect(Number(a[i + 1])).toBeCloseTo(8)
+    }
+  })
+  it('start from segment 0 needs no timestamp offset', () => {
+    const a = buildTranscodeArgs({ ...base, mode: 'copy', startSegment: 0 })
+    expect(a).not.toContain('-output_ts_offset')
+  })
   it('transcode mode seeks to segment start and forces keyframes', () => {
     const a = buildTranscodeArgs({ ...base, mode: 'transcode', startSegment: 2 })
     const i = a.indexOf('-ss')
