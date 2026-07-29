@@ -40,16 +40,14 @@ Edita `config.json` y añade las carpetas que contengan tus vídeos. Ejemplo com
   ],
   "klipyApiKey": "tu-api-key-aqui-opcional",
   "port": 8400,
-  "hostName": "Host",
   "cacheLimitGB": 10
 }
 ```
 
 **Campos de `config.json`:**
-- **`mediaFolders`** (array de strings): Rutas absolutas a carpetas que contengan vídeos (MKV, MP4, AVI, etc.). Obligatorio.
+- **`mediaFolders`** (array de strings): Rutas absolutas a carpetas que contengan vídeos (MKV, MP4, AVI, etc.). Obligatorio; también se puede añadir la primera carpeta desde el panel del host si arrancas con la biblioteca vacía.
 - **`klipyApiKey`** (string, opcional): API key de Klipy para buscar y enviar GIFs en el chat. Si no está presente, el botón de GIFs se oculta.
 - **`port`** (número): Puerto HTTP del servidor (por defecto: 8400).
-- **`hostName`** (string): Nombre del host visible en el chat (por defecto: "Host").
 - **`cacheLimitGB`** (número): Límite de caché HLS en GB (por defecto: 10). Se limpia automáticamente al cerrar salas.
 
 ### Paso 3: Ejecutar el servidor
@@ -61,7 +59,7 @@ npm start
 El servidor:
 1. Escanea las carpetas de medios configuradas
 2. Lanza automáticamente un túnel HTTPS seguro (cloudflared Quick Tunnel)
-3. Abre tu navegador en `http://localhost:8400/library`
+3. Abre tu navegador en `http://localhost:8400/?key=<token-admin>` — el `key` es un token generado al arrancar que autentica el panel del host (se guarda en una cookie tras la primera visita)
 4. Muestra la URL pública segura para compartir con los invitados
 
 ### Paso 4: Compartir el enlace
@@ -102,6 +100,7 @@ Sin API key, el chat funciona perfectamente; solo no está disponible el botón 
 - Pistas de texto incrustadas (SRT, ASS/SSA)
 - Archivos `.srt` externos junto al vídeo (se detectan automáticamente)
 - Conversión a WebVTT para reproducción en navegador
+- Pistas de imagen (PGS/VobSub) se omiten en silencio: no aparecen en el selector de subtítulos de la sala
 
 ## Características del chat
 
@@ -128,10 +127,11 @@ Sin API key, el chat funciona perfectamente; solo no está disponible el botón 
 
 Abre dos terminales:
 
-**Terminal 1 — Servidor (con auto-reload):**
+**Terminal 1 — Servidor (sin auto-reload):**
 ```bash
 npm start -w server
 ```
+`tsx` corre el servidor directamente desde TypeScript, pero sin `--watch`: tras cada cambio en `server/src`, para el proceso (`Ctrl+C`) y vuelve a lanzar `npm start -w server`.
 
 **Terminal 2 — Cliente (con Vite dev server):**
 ```bash
@@ -172,7 +172,7 @@ Compila el cliente React para producción en `web/dist/`.
 
 ## Limitaciones en v1
 
-- **Subtítulos de imagen** (PGS/VobSub) — no soportados; se listan como «no disponibles»
+- **Subtítulos de imagen** (PGS/VobSub) — no soportados; se omiten en silencio (no aparecen como opción en el selector)
 - **Persistencia** — el chat e historial de salas se pierden al cerrar la sala
 - **Metadatos externos** — sin carátulas ni información de TMDB
 - **Pausa automática global** — si alguien se queda cargando, no se pausa automáticamente al resto
@@ -184,25 +184,29 @@ Compila el cliente React para producción en `web/dist/`.
 
 ```
 .
-├── server/                 # Fastify + Node.js
+├── server/                   # Fastify + Node.js
 │   ├── src/
-│   │   ├── index.ts       # Punto de entrada
-│   │   ├── api/           # Rutas REST (biblioteca, salas)
-│   │   ├── media/         # Escaneo y gestión de vídeos
-│   │   ├── hls/           # Pipeline ffmpeg y generación HLS
-│   │   ├── ws/            # WebSocket (sync, chat, reacciones)
-│   │   └── tunnel/        # Integración cloudflared
+│   │   ├── index.ts          # Punto de entrada
+│   │   ├── app.ts            # Construcción de la app Fastify (rutas + estáticos)
+│   │   ├── config.ts         # Carga/guardado de config.json
+│   │   ├── http/              # Rutas REST (biblioteca, salas, stream, klipy, admin)
+│   │   ├── library/           # Escaneo de carpetas de medios
+│   │   ├── media/             # Probe, planificación de segmentos, ffmpeg, subtítulos, caché
+│   │   ├── rooms/             # Estado de sala y sincronización de reproducción
+│   │   ├── ws/                # WebSocket (sync, chat, reacciones, presencia)
+│   │   └── tunnel/            # Integración cloudflared
 │   └── package.json
-├── web/                    # React + Vite + hls.js
+├── web/                      # React + Vite + hls.js
 │   ├── src/
-│   │   ├── App.tsx        # Componente raíz
-│   │   ├── pages/         # Biblioteca, sala
-│   │   ├── components/    # Reproductor, chat, etc.
-│   │   ├── hooks/         # Sincronización, WebSocket
-│   │   └── types/         # TypeScript types compartidos
+│   │   ├── App.tsx           # Componente raíz (routing simple por pathname)
+│   │   ├── api.ts, ws.ts, types.ts
+│   │   ├── pages/             # Biblioteca, sala
+│   │   ├── player/            # Reproductor HLS y sincronización de deriva
+│   │   ├── chat/               # Chat, reacciones, GIFs
+│   │   └── sync/               # Cálculo de corrección de deriva
 │   └── package.json
-├── package.json           # Root workspace
-└── README.md             # Este archivo
+├── package.json              # Root workspace
+└── README.md                 # Este archivo
 ```
 
 ## Troubleshooting
