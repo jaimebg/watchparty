@@ -21,10 +21,15 @@ export function segmentForTime(segments: Segment[], t: number): number {
   return 0
 }
 
+// HLS attribute-lists use double quotes as the string delimiter with no
+// escape sequence, so a `"` inside a source-provided label/language would
+// otherwise break the #EXT-X-MEDIA line's syntax. Swap for a single quote.
+const escapeAttr = (s: string): string => s.replace(/"/g, "'")
+
 export function buildMasterPlaylist(audio: AudioTrack[]): string {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:7']
   audio.forEach((a, i) => lines.push(
-    `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${a.label}",LANGUAGE="${a.lang}",DEFAULT=${i === 0 ? 'YES' : 'NO'},AUTOSELECT=YES,URI="audio_${a.index + 1}.m3u8"`))
+    `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${escapeAttr(a.label)}",LANGUAGE="${escapeAttr(a.lang)}",DEFAULT=${i === 0 ? 'YES' : 'NO'},AUTOSELECT=YES,URI="audio_${a.index + 1}.m3u8"`))
   lines.push('#EXT-X-STREAM-INF:BANDWIDTH=8000000,CODECS="avc1.64001f,mp4a.40.2",AUDIO="aud"', 'video.m3u8')
   return lines.join('\n') + '\n'
 }

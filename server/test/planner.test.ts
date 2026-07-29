@@ -34,6 +34,16 @@ describe('playlists', () => {
     expect(m).toContain('AUDIO="aud"')
     expect(m.trim().endsWith('video.m3u8')).toBe(true)
   })
+  it('escapes double quotes in NAME/LANGUAGE so a source-provided label cannot break the attribute list', () => {
+    const quoted = [{ index: 0, codec: 'aac', lang: 'spa "Latino"', label: 'Comentario del "Director"', channels: 2 }]
+    const m = buildMasterPlaylist(quoted)
+    expect(m).toContain('NAME="Comentario del \'Director\'"')
+    expect(m).toContain('LANGUAGE="spa \'Latino\'"')
+    // GROUP-ID, NAME, LANGUAGE and URI are each a quoted attribute (4 pairs =
+    // 8 delimiters); any extra `"` would mean an unescaped quote leaked in.
+    const mediaLine = m.split('\n').find(l => l.startsWith('#EXT-X-MEDIA'))!
+    expect(mediaLine.match(/"/g)?.length).toBe(8)
+  })
   it('media playlist is a full VOD with map and endlist', () => {
     const p = buildMediaPlaylist(planSegments(10, null), 0)
     expect(p).toContain('#EXT-X-PLAYLIST-TYPE:VOD')
