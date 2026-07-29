@@ -143,6 +143,13 @@ Sin API key, el chat funciona perfectamente; solo no está disponible el botón 
   El razonamiento completo, con las medidas, está en
   `server/src/media/hlsLayout.ts`.
 
+  Además, el servidor fija la línea de tiempo del medio en vez de heredarla de
+  ffmpeg: sirve un init canónico (sin el *edit list* donde ffmpeg guarda en qué
+  punto arrancó ese proceso) y ancla la cabecera de cada segmento al instante que
+  la playlist ya declara. Sin eso, un salto de posición solo aterrizaba bien
+  mientras la sala siguiera corriendo sobre el ffmpeg que produjo el primer init.
+  La edición de cajas MP4 vive en `server/src/media/fmp4.ts`.
+
 **Pistas de audio:**
 - Con una sola pista, el audio viaja dentro del propio segmento de vídeo.
 - Con varias, cada una se expone como rendition AAC seleccionable
@@ -241,7 +248,7 @@ Compila el cliente React para producción en `web/dist/`.
 │   │   ├── config.ts         # Carga/guardado de config.json
 │   │   ├── http/              # Rutas REST (biblioteca, salas, stream, klipy, admin)
 │   │   ├── library/           # Escaneo de carpetas de medios
-│   │   ├── media/             # Probe, planificación de segmentos, ffmpeg, subtítulos, caché
+│   │   ├── media/             # Probe, planificación de segmentos, ffmpeg, cajas MP4, subtítulos, caché
 │   │   ├── rooms/             # Estado de sala y sincronización de reproducción
 │   │   ├── ws/                # WebSocket (sync, chat, reacciones, presencia)
 │   │   └── tunnel/            # Integración cloudflared

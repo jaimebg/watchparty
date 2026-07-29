@@ -13,8 +13,12 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 ## Sync
 - [ ] Pausa desde el host → pausa en el invitado en < 1 s, con mensaje de sistema
 - [ ] Play desde el invitado → reanuda en el host
-- [ ] El campo «Ir a» solo aparece en la pestaña del host, no en la del invitado
-- [ ] «Ir a 1:27:00» desde el host → ambos saltan; vídeo arranca en < 10 s
+- [ ] La barra de posición se arrastra y la sala salta al soltar (no en cada píxel)
+- [ ] «Ir a» y la barra están disponibles para el invitado, no solo para el host
+- [ ] «Ir a 1:27:00» desde cualquiera → ambos saltan; vídeo arranca en < 10 s
+- [ ] Saltar, esperar a que arranque, y saltar OTRA VEZ a una zona nueva → el
+      vídeo aparece en el minuto pedido (antes salía el principio de la película)
+- [ ] Tras dos o tres saltos seguidos, imagen y sonido siguen en sincronía
 - [ ] «Ir a» hacia atrás a zona ya vista → arranque casi instantáneo (caché)
 - [ ] «Ir a» con basura («abc», más allá del final) → aviso, y la sala no se mueve
 - [ ] Durante la carga tras un salto, el reloj de sala se congela y no se desincroniza
