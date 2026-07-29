@@ -52,6 +52,14 @@ describe('api', () => {
     expect(wrongCookie.statusCode).toBe(401)
   })
 
+  it('rejects (401, not 500) a ?key= with the same JS length as adminToken but a different UTF-8 byte length', async () => {
+    // 'é' is 1 UTF-16 code unit (matches ADMIN.length) but 2 bytes in UTF-8, so byte length differs from ADMIN's
+    const evilKey = 'é' + 'x'.repeat(ADMIN.length - 1)
+    expect(evilKey.length).toBe(ADMIN.length)
+    const res = await app.inject({ url: `/api/library?key=${encodeURIComponent(evilKey)}` })
+    expect(res.statusCode).toBe(401)
+  })
+
   it('creates a room and exposes public room info', async () => {
     const items = (await app.inject({ url: '/api/library', ...admin })).json()
     const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: { itemId: items[0].id }, ...admin })

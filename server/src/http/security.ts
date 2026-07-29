@@ -9,8 +9,10 @@ export function isPathInside(root: string, p: string): boolean {
 }
 
 function safeEqual(a: string | undefined, b: string): boolean {
-  if (a === undefined || a.length !== b.length) return false
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b))
+  if (a === undefined) return false
+  const ba = Buffer.from(a), bb = Buffer.from(b)
+  if (ba.length !== bb.length) return false
+  return timingSafeEqual(ba, bb)
 }
 
 export function makeRequireAdmin(adminToken: string) {
