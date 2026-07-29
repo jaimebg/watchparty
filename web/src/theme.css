@@ -103,37 +103,181 @@ details summary {
   display: block;
 }
 
+.player video {
+  cursor: pointer;
+}
+
 .player .controls {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
   align-items: center;
   margin-top: 0.5rem;
 }
 
-.player .controls input[type='range'] {
-  flex: 1;
+.btn-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: #7c5cff;
+  border-color: #7c5cff;
+  color: #fff;
+  flex-shrink: 0;
 }
 
-/* Room layout: video + reactions on the left, chat panel on the right. */
+.btn-play:hover {
+  background: #9377ff;
+  border-color: #9377ff;
+}
+
+.btn-play svg {
+  display: block;
+}
+
+.time-label {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: #9a9aa5;
+  flex-shrink: 0;
+}
+
+/* Barra de seek precisa: gran zona de click, relleno de progreso y tooltip de tiempo. */
+
+.seek-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 8px 0; /* zona de click generosa alrededor de la pista */
+}
+
+.seek {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #7c5cff;
+  transition: transform 0.1s ease;
+}
+
+.seek:hover::-webkit-slider-thumb,
+.seek:active::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+
+.seek::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #7c5cff;
+}
+
+.seek-tooltip {
+  position: absolute;
+  bottom: 26px;
+  transform: translateX(-50%);
+  background: #1c1f26;
+  border: 1px solid #2a2e37;
+  border-radius: 4px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Room layout: vídeo + reacciones y chat, con áreas para poder invertirlas en teatro. */
 
 .page--room {
   max-width: 1280px;
 }
 
+.room-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.room-head h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-theater {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+}
+
 .room-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
+  grid-template-areas: 'video chat';
   gap: 1rem;
   align-items: start;
 }
 
 .video-stage {
+  grid-area: video;
   position: relative;
 }
 
+.room-grid .chat-panel {
+  grid-area: chat;
+}
+
+/* Modo teatro: página a todo el ancho, chat a la izquierda, vídeo protagonista. */
+
+.page--room.theater {
+  max-width: none;
+  padding: 0.75rem 1.25rem;
+}
+
+.page--room.theater .room-head h1 {
+  font-size: 1.05rem;
+  margin: 0.3rem 0;
+}
+
+.room-grid--theater {
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  grid-template-areas: 'chat video';
+}
+
+.room-grid--theater video {
+  max-height: calc(100vh - 190px);
+  object-fit: contain;
+}
+
+.room-grid--theater .chat-entries {
+  max-height: calc(100vh - 330px);
+}
+
 @media (max-width: 800px) {
-  .room-grid {
+  .room-grid,
+  .room-grid--theater {
     grid-template-columns: 1fr;
+    grid-template-areas: 'video' 'chat';
   }
 }
 
@@ -141,6 +285,7 @@ details summary {
 
 .reactions-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
   margin-top: 0.5rem;
 }

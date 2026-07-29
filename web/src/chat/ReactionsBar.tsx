@@ -1,6 +1,6 @@
 import type { ClientMsg } from '../types'
 
-const EMOJIS = ['😂', '❤️', '😱', '🔥', '👏', '😭']
+const EMOJIS = ['😂', '❤️', '😱', '🤯', '🍿', '🔥', '👏', '😭', '💀', '🙈']
 
 export function ReactionsBar({ send }: { send: (m: ClientMsg) => void }) {
   return (

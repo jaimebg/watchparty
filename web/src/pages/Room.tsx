@@ -9,6 +9,7 @@ import { chatReducer, dropReaction, initialChat, type ChatState } from '../chat/
 import type { ClientMsg, RoomInfo, ServerMsg } from '../types'
 
 const NAME_KEY = 'jbg-name'
+const THEATER_KEY = 'jbg-theater'
 const STATUS_POLL_MS = 30_000
 
 // Superset of ServerMsg with a UI-only action to retire a reaction once its
@@ -29,7 +30,14 @@ export function Room({ token }: { token: string }) {
   const [tunnelDown, setTunnelDown] = useState(false)
   const [wsError, setWsError] = useState<string[] | null>(null)
   const [chat, dispatchChat] = useReducer(roomChatReducer, initialChat)
+  const [theater, setTheater] = useState(() => localStorage.getItem(THEATER_KEY) === '1')
   const sendRef = useRef<(m: ClientMsg) => void>(() => {})
+
+  const toggleTheater = () => {
+    const next = !theater
+    setTheater(next)
+    localStorage.setItem(THEATER_KEY, next ? '1' : '0')
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -113,10 +121,15 @@ export function Room({ token }: { token: string }) {
   }
 
   return (
-    <main className="page page--room">
+    <main className={`page page--room${theater ? ' theater' : ''}`}>
       {tunnelDown && <div className="banner">Túnel caído, relanzando…</div>}
-      <h1>{info.title}</h1>
-      <div className="room-grid">
+      <div className="room-head">
+        <h1>{info.title}</h1>
+        <button className="btn-theater" onClick={toggleTheater} title={theater ? 'Salir del modo teatro' : 'Modo teatro'}>
+          {theater ? '⊡ Salir del teatro' : '🎭 Modo teatro'}
+        </button>
+      </div>
+      <div className={`room-grid${theater ? ' room-grid--theater' : ''}`}>
         <div className="video-stage">
           <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} />
           <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />
