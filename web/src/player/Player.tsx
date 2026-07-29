@@ -116,7 +116,10 @@ export function Player({ token, info, send, lastState }: {
       // la sala está congelada, `playing` no dispararía nunca y la sala se
       // quedaría esperándonos hasta agotar el tope. Cerca del final nunca habrá
       // READY_AHEAD_S por delante, así que ese tramo cuenta siempre como listo.
-      const nearEnd = target >= infoRef.current.durationSec - READY_AHEAD_S
+      // durationSec en 0 significa «desconocida» (ffprobe no la reportó), no
+      // «ya estamos al final»: sin la guarda `> 0` se leería como el final de
+      // cualquier vídeo y la señal de listo quedaría desactivada para siempre.
+      const nearEnd = infoRef.current.durationSec > 0 && target >= infoRef.current.durationSec - READY_AHEAD_S
       const starved = !nearEnd && bufferedAhead(video.buffered, target) < READY_AHEAD_S
       if (starved !== bufferingRef.current) {
         bufferingRef.current = starved
