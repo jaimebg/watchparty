@@ -31,11 +31,22 @@ diálogo nativo de tu sistema (Finder/Explorador) para elegir la carpeta de tus 
 no hace falta tocar ningún archivo. Si lo prefieres, también puedes escribir la ruta a
 mano en el mismo asistente, o editar la configuración directamente.
 
-El archivo `config.json` vive en el directorio de datos de tu plataforma:
-- **macOS:** `~/Library/Application Support/jbg-watchparty/config.json`
-- **Windows:** `%APPDATA%\jbg-watchparty\config.json`
+La configuración se lee en dos capas, de menos a más prioridad:
 
-Ejemplo completo:
+1. **`config.defaults.json`** (en la raíz del repo, versionado). Lleva las API keys y el
+   túnel, así que al clonar el repo en otra máquina ya funciona todo sin reconfigurar
+   nada. Como contiene secretos, **el repo debe seguir siendo privado**.
+2. **`config.json`** (local, fuera del repo). Solo lo propio de cada máquina —
+   principalmente `mediaFolders`. Vive en el directorio de datos de tu plataforma:
+   - **macOS:** `~/Library/Application Support/jbg-watchparty/config.json`
+   - **Windows:** `%APPDATA%\jbg-watchparty\config.json`
+
+Un valor del `config.json` local pisa al del repo, salvo si es `null`: `null` significa
+«sin configurar» y deja pasar el valor compartido. Y al guardar desde la UI solo se
+persiste localmente lo que difiere del repo, de modo que si rotas una key en
+`config.defaults.json` todas las máquinas la recogen sin tocar nada.
+
+Ejemplo completo (mismos campos en ambos archivos):
 
 ```json
 {
@@ -50,8 +61,8 @@ Ejemplo completo:
 }
 ```
 
-**Campos de `config.json`:**
-- **`mediaFolders`** (array de strings): Rutas absolutas a carpetas que contengan vídeos (MKV, MP4, AVI, etc.). Obligatorio; también se puede añadir la primera carpeta desde el panel del host si arrancas con la biblioteca vacía.
+**Campos de configuración:**
+- **`mediaFolders`** (array de strings): Rutas absolutas a carpetas que contengan vídeos (MKV, MP4, AVI, etc.). Obligatorio; también se puede añadir la primera carpeta desde el panel del host si arrancas con la biblioteca vacía. Es específico de cada máquina: va en el `config.json` local, no en `config.defaults.json`.
 - **`klipyApiKey`** (string, opcional): API key de Klipy para buscar y enviar GIFs en el chat. Si no está presente, el botón de GIFs se oculta.
 - **`tunnelToken`** (string, opcional): Token de un named tunnel de Cloudflare. Con él (junto a `tunnelUrl`), el servidor usa tu túnel con URL fija en vez del Quick Tunnel aleatorio. Ver [URL fija con tu dominio](#url-fija-con-tu-dominio-named-tunnel).
 - **`tunnelUrl`** (string, opcional): URL pública fija del túnel, p. ej. `https://watchparty.tudominio.com`. Obligatorio si usas `tunnelToken` (deben configurarse juntos).

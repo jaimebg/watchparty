@@ -1,0 +1,9 @@
+{
+  "klipyApiKey": "REDACTED",
+  "tmdbApiKey": "REDACTED",
+  "tunnelToken": "REDACTED",
+  "tunnelUrl": "https://example.com",
+  "port": 8400,
+  "hostName": "Host",
+  "cacheLimitGB": 10
+}
