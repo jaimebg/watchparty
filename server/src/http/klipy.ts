@@ -1,15 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import type { AppDeps } from '../app.js'
 
-// Shape: docs.klipy.com/gifs-api/search-gifs returned 403 Forbidden to WebFetch on 2026-07-29,
-// so the official docs could not be read directly. Cross-checked instead against several
-// independent third-party open-source KLIPY integrations found via GitHub code search
-// (e.g. WerdoxDev/Huginn, CodyTseng/jumble) which agree on:
+// Shape confirmado contra la API viva con una key de test el 2026-07-29:
 //   GET https://api.klipy.com/api/v1/{KEY}/gifs/search?q=&page=1&per_page=24
-//   -> { result, data: { data: [{ id, title, file: { hd|md|sm|xs: { gif|webp|jpg|mp4|webm: { url, width, height, size } } } }], current_page, per_page, has_next } }
-// Notably, at least two independent implementations report the real per-item field is `file`
-// (singular) rather than `files` (plural) — jumble's klipy.service.ts comments this explicitly:
-// "Real responses use `file` (singular). Docs sometimes show `files` (plural) — accept both."
+//   -> { result, data: { data: [{ id, slug, title, file: { hd|md|sm|xs: { gif|webp|jpg|mp4|webm: { url, width, height, size } } }, tags, type, blur_preview }], current_page, per_page, has_next, meta } }
+// El campo por item es `file` (singular); algunas docs muestran `files` (plural) — el mapper acepta ambos.
 // This mapper therefore accepts both `file` and `files` defensively; unresolved beyond that
 // without a live API key, so treat this as unconfirmed against the primary source.
 export interface GifResult { id: string; title: string; previewUrl: string; url: string; width: number; height: number }
