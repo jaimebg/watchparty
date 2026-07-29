@@ -636,24 +636,6 @@ details summary:hover { color: var(--marquee); }
   }
 }
 
-/* Barra de progreso: solo lectura, el seek está desactivado. */
-
-.progress {
-  flex: 1;
-  min-width: 120px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--seek-track);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 3px;
-  background: var(--seek-fill);
-  transition: width 1s linear; /* el tick de posición es de 1s: avance continuo */
-}
-
 .seek {
   -webkit-appearance: none;
   appearance: none;
@@ -691,6 +673,12 @@ details summary:hover { color: var(--marquee); }
   border: 2px solid var(--marquee);
 }
 
+/* La barra de posición ocupa el hueco entre los dos relojes; el relleno lo pinta
+   positionGradient() en el fondo, porque un input[type=range] no admite hijos. */
+.seek.position {
+  flex: 1;
+  min-width: 120px;
+}
 
 /* ─── Sala: vídeo + chat ─── */
 

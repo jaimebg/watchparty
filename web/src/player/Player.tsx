@@ -2,7 +2,7 @@ import Hls from 'hls.js'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, PlaybackState, RoomInfo } from '../types'
 import { bufferedAhead, computeCorrection, targetPosition } from '../sync/driftControl'
-import { formatClock, MAX_VOLUME, parseClock, parseStoredVolume, spaceBelongsTo, volumeGradient } from './format'
+import { clampPosition, formatClock, MAX_VOLUME, parseClock, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from './format'
 
 export interface LastState { state: PlaybackState; serverNow: number; receivedAt: number }
 
@@ -32,16 +32,15 @@ const MutedIcon = () => (
   </svg>
 )
 
-export function Player({ token, info, send, lastState, welcomeCount, isHost }: {
+export function Player({ token, info, send, lastState, welcomeCount }: {
   token: string; info: RoomInfo; send: (m: ClientMsg) => void; lastState: LastState | null
-  welcomeCount: number; isHost: boolean
+  welcomeCount: number
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const [audioTracks, setAudioTracks] = useState<{ id: number; name: string }[]>([])
   const [sub, setSub] = useState<number>(-1)
-  // Salto del host: la barra sigue siendo solo informativa para todo el mundo,
-  // pero quien monta la sesión necesita poder retomarla donde se cortó.
+  // Salto manual por texto ("1:27:00"): lo usa cualquiera, igual que la barra.
   const [jumpTo, setJumpTo] = useState('')
   const [jumpError, setJumpError] = useState<string | null>(null)
   // Volumen y silencio son POR ESPECTADOR (no se sincronizan) y persisten.
@@ -56,6 +55,10 @@ export function Player({ token, info, send, lastState, welcomeCount, isHost }: {
   const audioCtxRef = useRef<AudioContext | null>(null)
   const gainRef = useRef<GainNode | null>(null)
   const [gesture, setGesture] = useState(0)
+  // Valor que enseña la barra mientras se arrastra. Sin esto, el tick de 500 ms
+  // del reloj de sala reescribe la posición bajo el pulgar y el thumb se escapa.
+  const [drag, setDrag] = useState<number | null>(null)
+  const draggingRef = useRef(false)
 
   const paused = lastState?.state.paused ?? true
   const pausedRef = useRef(paused)
@@ -90,6 +93,12 @@ export function Player({ token, info, send, lastState, welcomeCount, isHost }: {
   // before the drop and the room stops waiting for exactly the viewer whose
   // network just failed.
   useEffect(() => { bufferingRef.current = false }, [welcomeCount])
+
+  // Al soltar, la barra se queda donde la dejó el pulgar hasta que llega el
+  // estado nuevo: devolverla antes al valor viejo del reloj de sala daría un
+  // salto atrás visible durante el viaje de ida y vuelta. Mientras el pulgar
+  // siga abajo no se toca.
+  useEffect(() => { if (!draggingRef.current) setDrag(null) }, [lastState])
 
   // The socket outlives this component: Room.tsx unmounts Player (and this
   // 500ms tick) to show the recovery screen on a `{t:'error'}` broadcast, but
@@ -254,12 +263,17 @@ export function Player({ token, info, send, lastState, welcomeCount, isHost }: {
 
   useEffect(() => () => { void audioCtxRef.current?.close().catch(() => {}) }, [])
 
-  // El seek está desactivado: la barra solo informa de por dónde va la sala.
-  const shownPosition = lastState
+  const roomPosition = lastState
     ? Math.min(info.durationSec, targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now()))
     : 0
+  const shownPosition = drag ?? roomPosition
   const remaining = Math.max(0, info.durationSec - shownPosition)
-  const pct = info.durationSec > 0 ? (shownPosition / info.durationSec) * 100 : 0
+
+  const commitSeek = () => {
+    draggingRef.current = false
+    if (drag === null) return
+    sendRef.current({ t: 'seek', position: clampPosition(drag, info.durationSec) })
+  }
 
   if (mode === 'unsupported') {
     return (
@@ -296,22 +310,25 @@ export function Player({ token, info, send, lastState, welcomeCount, isHost }: {
           {!muted && volume > 1 && <span className="volume-pct">{Math.round(volume * 100)}%</span>}
         </div>
         <span className="time-label">{formatClock(shownPosition)}</span>
-        <div className="progress" role="progressbar" aria-label="Progreso del vídeo"
-          aria-valuemin={0} aria-valuemax={Math.round(info.durationSec)}
-          aria-valuenow={Math.round(shownPosition)} aria-valuetext={`Quedan ${formatClock(remaining)}`}>
-          <div className="progress-fill" style={{ width: `${pct}%` }} />
-        </div>
+        <input className="seek position" type="range" step={1}
+          min={0} max={Math.max(1, Math.round(info.durationSec))}
+          aria-label="Posición en la película"
+          aria-valuetext={`${formatClock(shownPosition)} de ${formatClock(info.durationSec)}`}
+          style={{ background: positionGradient(shownPosition, info.durationSec) }}
+          value={Math.round(shownPosition)}
+          onPointerDown={() => { draggingRef.current = true }}
+          onChange={e => setDrag(Number(e.target.value))}
+          onPointerUp={commitSeek}
+          onKeyUp={commitSeek} />
         <span className="time-label" title={`Duración total ${formatClock(info.durationSec)}`}>−{formatClock(remaining)}</span>
-        {isHost && (
-          <form className="jump-group" onSubmit={e => { e.preventDefault(); jump() }}>
-            <label className="jump-label" htmlFor="jump-to">Ir a</label>
-            <input id="jump-to" className="jump-input" value={jumpTo} placeholder="1:27:00"
-              aria-label="Saltar a un momento de la película"
-              aria-invalid={jumpError !== null}
-              onChange={e => { setJumpTo(e.target.value); setJumpError(null) }} />
-            <button type="submit" className="btn-jump" disabled={jumpTo.trim() === ''}>Saltar</button>
-          </form>
-        )}
+        <form className="jump-group" onSubmit={e => { e.preventDefault(); jump() }}>
+          <label className="jump-label" htmlFor="jump-to">Ir a</label>
+          <input id="jump-to" className="jump-input" value={jumpTo} placeholder="1:27:00"
+            aria-label="Saltar a un momento de la película"
+            aria-invalid={jumpError !== null}
+            onChange={e => { setJumpTo(e.target.value); setJumpError(null) }} />
+          <button type="submit" className="btn-jump" disabled={jumpTo.trim() === ''}>Saltar</button>
+        </form>
         {/* Con una sola pista el audio va muxeado en el propio segmento de vídeo
             y hls.js no anuncia ninguna: no hay nada entre lo que elegir. */}
         {mode === 'hls' && audioTracks.length > 1 && (
