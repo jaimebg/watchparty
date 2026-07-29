@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { AppDeps } from '../app.js'
 import { saveConfig } from '../config.js'
+import { variantCount } from '../media/hlsLayout.js'
 import { buildMasterPlaylist, buildMediaPlaylist } from '../media/planner.js'
 import { displayTitle } from '../media/tmdb.js'
 import { pickFolderNative } from './folderPicker.js'
@@ -99,20 +100,23 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     if (file === 'master.m3u8') return reply.type(M3U8).send(buildMasterPlaylist(room.info.audio))
     if (file === 'video.m3u8') return reply.type(M3U8).send(buildMediaPlaylist(room.segments, 0))
     // Variant numbering follows ffmpegArgs's -var_stream_map: variant 0 is
-    // video, variants 1..audioCount are one per audio track (audio_1..audio_N
-    // in the master playlist). Anything outside that range is a bogus/attacker
-    // request and must 404 without ever touching the transcode session.
-    const audioCount = room.info.audio.length
+    // video (con el audio dentro si solo hay una pista) y, cuando hay varias,
+    // las variantes 1..audioCount son una por pista (audio_1..audio_N en la
+    // playlist maestra). Anything outside that range is a bogus/attacker
+    // request and must 404 without ever touching the transcode session — y con
+    // un solo variant eso incluye audio_1, que ffmpeg no escribe: dejarlo pasar
+    // colgaría la petición 30 s esperando un archivo que nunca llega.
+    const variants = variantCount(room.info.audio.length)
     const audio = file.match(/^audio_(\d+)\.m3u8$/)
     if (audio) {
       const n = Number(audio[1])
-      if (n < 1 || n > audioCount) return reply.code(404).send()
+      if (n < 1 || n >= variants) return reply.code(404).send()
       return reply.type(M3U8).send(buildMediaPlaylist(room.segments, n))
     }
     const init = file.match(/^init_(\d+)\.mp4$/)
     if (init) {
       const variant = Number(init[1])
-      if (variant < 0 || variant > audioCount) return reply.code(404).send()
+      if (variant < 0 || variant >= variants) return reply.code(404).send()
       try {
         const p = await room.session.requestInit(variant)
         return reply.type('video/mp4').send(createReadStream(p))
@@ -121,7 +125,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     const seg = file.match(/^seg_(\d+)_(\d+)\.m4s$/)
     if (seg) {
       const variant = Number(seg[1])
-      if (variant < 0 || variant > audioCount) return reply.code(404).send()
+      if (variant < 0 || variant >= variants) return reply.code(404).send()
       try {
         const p = await room.session.requestSegment(variant, Number(seg[2]))
         return reply.type('video/mp4').send(createReadStream(p))

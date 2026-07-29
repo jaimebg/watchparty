@@ -2,7 +2,7 @@ import Hls from 'hls.js'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, PlaybackState, RoomInfo } from '../types'
 import { bufferedAhead, computeCorrection, targetPosition } from '../sync/driftControl'
-import { formatClock, MAX_VOLUME, parseStoredVolume, spaceBelongsTo, volumeGradient } from './format'
+import { formatClock, MAX_VOLUME, parseClock, parseStoredVolume, spaceBelongsTo, volumeGradient } from './format'
 
 export interface LastState { state: PlaybackState; serverNow: number; receivedAt: number }
 
@@ -32,13 +32,18 @@ const MutedIcon = () => (
   </svg>
 )
 
-export function Player({ token, info, send, lastState, welcomeCount }: {
-  token: string; info: RoomInfo; send: (m: ClientMsg) => void; lastState: LastState | null; welcomeCount: number
+export function Player({ token, info, send, lastState, welcomeCount, isHost }: {
+  token: string; info: RoomInfo; send: (m: ClientMsg) => void; lastState: LastState | null
+  welcomeCount: number; isHost: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const [audioTracks, setAudioTracks] = useState<{ id: number; name: string }[]>([])
   const [sub, setSub] = useState<number>(-1)
+  // Salto del host: la barra sigue siendo solo informativa para todo el mundo,
+  // pero quien monta la sesión necesita poder retomarla donde se cortó.
+  const [jumpTo, setJumpTo] = useState('')
+  const [jumpError, setJumpError] = useState<string | null>(null)
   // Volumen y silencio son POR ESPECTADOR (no se sincronizan) y persisten.
   const [volume, setVolume] = useState(() => parseStoredVolume(localStorage.getItem(VOLUME_KEY)))
   const [muted, setMuted] = useState(() => localStorage.getItem(MUTED_KEY) === '1')
@@ -62,6 +67,20 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
   const infoRef = useRef(info)
   infoRef.current = info
   const togglePlay = () => sendRef.current({ t: pausedRef.current ? 'play' : 'pause' })
+
+  const jump = () => {
+    const position = parseClock(jumpTo)
+    if (position === null) { setJumpError('Usa 1:27:00, 87:00 o 5220'); return }
+    // El servidor recorta al rango igualmente, pero avisar aquí evita que un
+    // dedazo mande la sala al final de la película sin que nadie sepa por qué.
+    if (info.durationSec > 0 && position > info.durationSec) {
+      setJumpError(`La película dura ${formatClock(info.durationSec)}`)
+      return
+    }
+    setJumpError(null)
+    setJumpTo('')
+    sendRef.current({ t: 'seek', position })
+  }
 
   // `welcome` is the one message meaning "the server just learned about me
   // from scratch": a fresh join, or ws.ts's transparent reconnect after a
@@ -283,7 +302,19 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
           <div className="progress-fill" style={{ width: `${pct}%` }} />
         </div>
         <span className="time-label" title={`Duración total ${formatClock(info.durationSec)}`}>−{formatClock(remaining)}</span>
-        {mode === 'hls' && (
+        {isHost && (
+          <form className="jump-group" onSubmit={e => { e.preventDefault(); jump() }}>
+            <label className="jump-label" htmlFor="jump-to">Ir a</label>
+            <input id="jump-to" className="jump-input" value={jumpTo} placeholder="1:27:00"
+              aria-label="Saltar a un momento de la película"
+              aria-invalid={jumpError !== null}
+              onChange={e => { setJumpTo(e.target.value); setJumpError(null) }} />
+            <button type="submit" className="btn-jump" disabled={jumpTo.trim() === ''}>Saltar</button>
+          </form>
+        )}
+        {/* Con una sola pista el audio va muxeado en el propio segmento de vídeo
+            y hls.js no anuncia ninguna: no hay nada entre lo que elegir. */}
+        {mode === 'hls' && audioTracks.length > 1 && (
           <select aria-label="Pista de audio" onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
             {audioTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
@@ -293,6 +324,7 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
           {info.subtitles.map((s, i) => <option key={s.id} value={i}>{s.label}</option>)}
         </select>
       </div>
+      {jumpError && <p className="field-error" role="alert">{jumpError}</p>}
     </div>
   )
 }

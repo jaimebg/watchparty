@@ -17,13 +17,10 @@ mkdirSync(cacheDir(), { recursive: true })
 
 const encoder = await detectEncoder()
 const rooms = new RoomManager({
-  createSession: (item, info, segments, roomDir, forceTranscode) => new TranscodeSession({
-    input: item.path,
-    // Copy-remux only when we know the browser can decode the source as-is:
-    // h264 in 8-bit 4:2:0 (yuv420p). Anything else (e.g. Hi10P's yuv420p10le)
-    // must be transcoded, or it renders as a black screen in most browsers.
-    mode: !forceTranscode && info.videoCodec === 'h264' && info.pixFmt === 'yuv420p' ? 'copy' : 'transcode',
-    encoder, segments, audioCount: info.audio.length, outDir: roomDir,
+  // El modo lo decide RoomManager (pickMode en hlsLayout.ts), que es quien
+  // planifica la rejilla de segmentos que ese modo tiene que producir.
+  createSession: (item, info, segments, roomDir, mode) => new TranscodeSession({
+    input: item.path, mode, encoder, segments, audioCount: info.audio.length, outDir: roomDir,
   }),
   lookupMeta: config.tmdbApiKey ? makeTmdbLookup(config.tmdbApiKey) : undefined,
 })

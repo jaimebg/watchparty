@@ -47,8 +47,29 @@ describe('playlists', () => {
     expect(m).toContain('AUDIO="aud"')
     expect(m.trim().endsWith('video.m3u8')).toBe(true)
   })
+  // Con una sola pista el audio viaja dentro del propio variant de vídeo (ver
+  // hlsLayout.ts), así que no hay rendición alternativa que anunciar: dejar el
+  // grupo "aud" en el master mandaría a hls.js a por un audio_1.m3u8 que ni
+  // existe ni tendría los mismos límites que el vídeo.
+  it('master has no alternate-audio group when there is a single track', () => {
+    const m = buildMasterPlaylist([audio[0]])
+    expect(m).not.toContain('#EXT-X-MEDIA')
+    expect(m).not.toContain('AUDIO="aud"')
+    expect(m).toContain('#EXT-X-STREAM-INF:BANDWIDTH=8000000,CODECS="avc1.64001f,mp4a.40.2"')
+    expect(m.trim().endsWith('video.m3u8')).toBe(true)
+  })
+  it('master has no alternate-audio group when there is no audio at all', () => {
+    const m = buildMasterPlaylist([])
+    expect(m).not.toContain('#EXT-X-MEDIA')
+    expect(m.trim().endsWith('video.m3u8')).toBe(true)
+  })
   it('escapes double quotes in NAME/LANGUAGE so a source-provided label cannot break the attribute list', () => {
-    const quoted = [{ index: 0, codec: 'aac', lang: 'spa "Latino"', label: 'Comentario del "Director"', channels: 2 }]
+    // Dos pistas: es el único caso con #EXT-X-MEDIA que escapar (con una sola,
+    // el audio va dentro del variant de vídeo y no hay atributos que romper).
+    const quoted = [
+      { index: 0, codec: 'aac', lang: 'spa "Latino"', label: 'Comentario del "Director"', channels: 2 },
+      { index: 1, codec: 'aac', lang: 'eng', label: 'English', channels: 2 },
+    ]
     const m = buildMasterPlaylist(quoted)
     expect(m).toContain('NAME="Comentario del \'Director\'"')
     expect(m).toContain('LANGUAGE="spa \'Latino\'"')

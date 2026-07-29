@@ -15,6 +15,7 @@ const fakeSession = () => ({
 
 let rooms: RoomManager
 let items: Awaited<ReturnType<typeof scanLibrary>>
+let monoItems: Awaited<ReturnType<typeof scanLibrary>>
 
 beforeAll(async () => {
   process.env.JBG_DATA_DIR = mkdtempSync(join(tmpdir(), 'rm-'))
@@ -22,6 +23,48 @@ beforeAll(async () => {
   await makeFixtureMkv(mediaDir)
   rooms = new RoomManager({ createSession: () => fakeSession() })
   items = await scanLibrary([mediaDir])
+  const monoDir = mkdtempSync(join(tmpdir(), 'rmmono-'))
+  await makeFixtureMkv(monoDir, { audioTracks: 1 })
+  monoItems = await scanLibrary([monoDir])
+})
+
+// La rejilla de segmentos y el modo de ffmpeg son UN solo contrato: en copy el
+// vídeo solo se puede cortar en los keyframes de la fuente, y en transcode
+// ffmpeg fuerza los suyos cada 4 s (ver ffmpegArgs.ts). Planificar con la
+// rejilla equivocada hace que la playlist describa cortes que el archivo no
+// tiene, que es justo lo que rompía el audio.
+describe('RoomManager.create plans the grid the chosen mode will actually produce', () => {
+  const capturing = () => {
+    const modes: ('copy' | 'transcode')[] = []
+    const manager = new RoomManager({
+      createSession: (_i, _info, _segs, _dir, mode) => { modes.push(mode); return fakeSession() },
+    })
+    return { manager, modes }
+  }
+
+  it('plans the uniform 4s grid ffmpeg will force, for one audio track', async () => {
+    const { manager, modes } = capturing()
+    const room = await manager.create(monoItems[0])
+    expect(modes).toEqual(['transcode'])
+    expect(room.segments.map(s => s.start)).toEqual([0, 4, 8])
+  })
+
+  it('plans the uniform 4s grid ffmpeg will force, for several audio tracks', async () => {
+    const { manager, modes } = capturing()
+    const room = await manager.create(items[0])
+    expect(modes).toEqual(['transcode'])
+    expect(room.segments.map(s => s.start)).toEqual([0, 4, 8])
+  })
+
+  // Los keyframes de la FUENTE ya no deciden nada: ffmpeg va a poner los suyos
+  // cada 4 s. Planificar con ellos era justo lo que producía una playlist con
+  // menos segmentos de los que ffmpeg escribía.
+  it('does not let the source keyframes shape the grid', async () => {
+    const { manager } = capturing()
+    const room = await manager.create(monoItems[0])
+    for (const s of room.segments.slice(0, -1)) expect(s.duration).toBe(4)
+    for (const s of room.segments) expect(s.seekAt).toBe(s.start)
+  })
 })
 
 describe('RoomManager.retry', () => {
@@ -59,5 +102,20 @@ describe('RoomManager.retry', () => {
     expect(existsSync(staleSegment)).toBe(false)
     expect(existsSync(staleInit)).toBe(false)
     expect(existsSync(staleSub)).toBe(true)
+  })
+
+  // El reintento vuelve a montar la sesión desde cero, y la rejilla que sirva
+  // la sala tras él tiene que seguir siendo la que ffmpeg va a producir.
+  it('re-plans the grid, so the playlist keeps matching what the new run will cut', async () => {
+    const modes: ('copy' | 'transcode')[] = []
+    const manager = new RoomManager({
+      createSession: (_i, _info, _segs, _dir, mode) => { modes.push(mode); return fakeSession() },
+    })
+    const room = await manager.create(monoItems[0])
+
+    await manager.retry(room.token)
+
+    expect(modes).toEqual(['transcode', 'transcode'])
+    expect(room.segments.map(s => s.start)).toEqual([0, 4, 8])
   })
 })

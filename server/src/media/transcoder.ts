@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, renameSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegPath from 'ffmpeg-static'
 import { buildTranscodeArgs } from './ffmpegArgs.js'
+import { variantCount } from './hlsLayout.js'
 import type { Segment } from './planner.js'
 
 // Margen antes de dar por perdido a ffmpeg. Tiene que superar con holgura lo que
@@ -75,7 +76,7 @@ export class TranscodeSession {
     // descarga, sin producir nada nuevo. Se comprueban todas las variantes
     // porque la poda de caché puede haber borrado el audio y no el vídeo.
     let ready = true
-    for (let v = 0; v <= this.opts.audioCount; v++) if (!this.isReady(v, segmentIndex)) { ready = false; break }
+    for (let v = 0; v < variantCount(this.opts.audioCount); v++) if (!this.isReady(v, segmentIndex)) { ready = false; break }
     if (ready) return
     this.killProc()
     this.start(segmentIndex)

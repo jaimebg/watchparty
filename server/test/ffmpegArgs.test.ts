@@ -41,6 +41,28 @@ describe('buildTranscodeArgs', () => {
     expect(segments[1].start).toBe(4)
     expect(Number(a[a.indexOf('-ss') + 1])).toBeCloseTo(5) // (4 + 6) / 2
   })
+  // Una variante de solo-audio la parte el muxer HLS cada -hls_time exacto,
+  // mientras que la de vídeo se parte en keyframes: con una sola pista no hay
+  // razón para separarlas, y juntarlas hace imposible que sus límites deriven.
+  // Medido con este ffmpeg: si -var_stream_map declara una sola variante,
+  // -hls_fmp4_init_filename deja el «%v» sin sustituir y el init acaba en un
+  // archivo llamado literalmente «init_%v.mp4», que requestInit() jamás
+  // encuentra. Con una sola variante se numera a mano y no hace falta el mapa.
+  it('muxes video and audio into a single, hand-numbered variant when there is at most one audio track', () => {
+    const a = buildTranscodeArgs({ ...base, audioCount: 1, mode: 'copy', startSegment: 0 })
+    expect(a).not.toContain('-var_stream_map')
+    expect(a.join(' ')).not.toContain('%v')
+    expect(a.join(' ')).toContain('seg_0_%05d.m4s')
+    expect(a.join(' ')).toContain('-hls_fmp4_init_filename init_0.mp4')
+    expect(a.join(' ')).toContain('-map 0:a:0')
+    expect(a.join(' ')).toContain('-c:a aac')
+  })
+  it('maps no audio and asks for no audio encoder when the source has none', () => {
+    const a = buildTranscodeArgs({ ...base, audioCount: 0, mode: 'copy', startSegment: 0 })
+    expect(a.join(' ')).not.toContain('-map 0:a')
+    expect(a).not.toContain('-c:a')
+    expect(a.join(' ')).toContain('seg_0_%05d.m4s')
+  })
   it('transcode mode seeks to the boundary, not the midpoint, even when real keyframes are known', () => {
     // Transcode decodes and discards up to the requested instant, so -ss must
     // land on seg.start; feeding it seg.seekAt (the copy-mode midpoint) would

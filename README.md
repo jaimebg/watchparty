@@ -132,12 +132,21 @@ Sin API key, el chat funciona perfectamente; solo no está disponible el botón 
 - WebM
 
 **Códecs de vídeo:**
-- H.264 (transmitido sin transcodificación)
-- HEVC/x265 (transcodificado automáticamente a H.264)
-- MPEG-4 ASP y otros (transcodificados a H.264)
+- Todo se transcodifica a H.264 con keyframes forzados cada 4 s (aceleración por
+  hardware cuando la hay: VideoToolbox en macOS, NVENC/QSV en Windows).
+
+  Copiar el vídeo tal cual sería más barato, pero la playlist es VOD —el
+  servidor tiene que declarar *de antemano* dónde va a cortar cada segmento— y
+  en modo copia los cortes los elige el muxer HLS de ffmpeg contra una rejilla
+  propia que el servidor no puede predecir. Cuando las dos listas no coinciden,
+  la playlist se queda corta y la sala se congela a mitad de película.
+  El razonamiento completo, con las medidas, está en
+  `server/src/media/hlsLayout.ts`.
 
 **Pistas de audio:**
-- Cualquier pista del vídeo fuente se expone como rendition AAC seleccionable independientemente por cada espectador
+- Con una sola pista, el audio viaja dentro del propio segmento de vídeo.
+- Con varias, cada una se expone como rendition AAC seleccionable
+  independientemente por cada espectador.
 
 **Subtítulos:**
 - Pistas de texto incrustadas (SRT, ASS/SSA)

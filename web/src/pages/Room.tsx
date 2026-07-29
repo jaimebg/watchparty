@@ -56,6 +56,10 @@ export function Room({ token }: { token: string }) {
   // el botón de copiar aparece únicamente en la pestaña del host (localhost),
   // que es justo la que necesita el enlace del túnel en vez de su propia URL.
   const [tunnelUrl, setTunnelUrl] = useState<string | null>(null)
+  // Misma prueba que el botón de copiar: si /api/status responde, esta pestaña
+  // lleva el adminToken y es la del host. Es lo que habilita el salto manual,
+  // que sigue estando fuera del alcance de los invitados.
+  const [isHost, setIsHost] = useState(false)
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle')
   const [wsError, setWsError] = useState<string[] | null>(null)
   const [chat, dispatchChat] = useReducer(roomChatReducer, initialChat)
@@ -116,16 +120,19 @@ export function Room({ token }: { token: string }) {
   // (a los invitados les da 401, así que se omite silenciosamente).
   useEffect(() => {
     let cancelled = false
-    let isHost = true
+    let polling = true
     const poll = () => {
-      if (!isHost || cancelled) return
+      if (!polling || cancelled) return
       getStatus()
         .then(s => {
           if (cancelled) return
+          setIsHost(true)
           setTunnelUrl(s.tunnelUrl)
           setTunnelDown(s.tunnelUrl === null)
         })
-        .catch(() => { isHost = false })
+        // 401: es un invitado. Se deja de sondear y no se le enseña ni el
+        // enlace del túnel ni el salto manual.
+        .catch(() => { polling = false; if (!cancelled) setIsHost(false) })
     }
     poll()
     const id = setInterval(poll, STATUS_POLL_MS)
@@ -227,7 +234,7 @@ export function Room({ token }: { token: string }) {
       {showMeta && info.meta && <MetaModal meta={info.meta} onClose={() => setShowMeta(false)} />}
       <div className="room-grid">
         <div className="video-stage">
-          <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount} />
+          <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount} isHost={isHost} />
           <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />
           <ReactionsBar send={m => sendRef.current(m)} />
         </div>

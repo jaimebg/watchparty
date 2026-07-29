@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { variantCount } from './hlsLayout.js'
 import type { Segment } from './planner.js'
 
 export interface TranscodeArgsInput {
@@ -33,8 +34,7 @@ export function buildTranscodeArgs(x: TranscodeArgsInput): string[] {
     '-force_key_frames', 'expr:gte(t,n_forced*4)',
     '-pix_fmt', 'yuv420p')
   for (let i = 0; i < x.audioCount; i++) args.push('-map', `0:a:${i}`)
-  args.push('-c:a', 'aac', '-ac', '2', '-b:a', '128k')
-  const vsm = ['v:0,agroup:aud', ...Array.from({ length: x.audioCount }, (_, i) => `a:${i},agroup:aud`)].join(' ')
+  if (x.audioCount > 0) args.push('-c:a', 'aac', '-ac', '2', '-b:a', '128k')
   // Re-anclar con -output_ts_offset daba por hecho que ffmpeg caía exactamente
   // donde se le pedía, y en Matroska no es así. -copyts no asume nada: conserva
   // el tiempo absoluto de la fuente, de modo que todos los reinicios comparten
@@ -44,10 +44,28 @@ export function buildTranscodeArgs(x: TranscodeArgsInput): string[] {
     '-f', 'hls', '-hls_time', '4', '-hls_segment_type', 'fmp4',
     '-hls_playlist_type', 'vod', '-hls_flags', 'independent_segments+temp_file',
     '-start_number', String(x.startSegment),
-    '-hls_segment_filename', join(x.outDir, 'seg_%v_%05d.m4s'),
-    '-hls_fmp4_init_filename', 'init_%v.mp4',
-    '-var_stream_map', vsm,
-    join(x.outDir, 'ffm_%v.m3u8'),
   )
+  // Una sola variante con el audio dentro, salvo que haya varias pistas entre
+  // las que elegir: separar el audio obliga al muxer a partirlo por su cuenta
+  // cada -hls_time exacto (ver el contrato completo en hlsLayout.ts).
+  //
+  // Y con una sola variante hay que numerar a mano: medido con este ffmpeg,
+  // -hls_fmp4_init_filename NO sustituye %v si -var_stream_map declara una
+  // única variante, así que el init acabaría en un archivo llamado
+  // literalmente «init_%v.mp4» y requestInit() esperaría en vano por init_0.mp4.
+  if (variantCount(x.audioCount) === 1) {
+    args.push(
+      '-hls_segment_filename', join(x.outDir, 'seg_0_%05d.m4s'),
+      '-hls_fmp4_init_filename', 'init_0.mp4',
+      join(x.outDir, 'ffm_0.m3u8'),
+    )
+  } else {
+    args.push(
+      '-hls_segment_filename', join(x.outDir, 'seg_%v_%05d.m4s'),
+      '-hls_fmp4_init_filename', 'init_%v.mp4',
+      '-var_stream_map', ['v:0,agroup:aud', ...Array.from({ length: x.audioCount }, (_, i) => `a:${i},agroup:aud`)].join(' '),
+      join(x.outDir, 'ffm_%v.m3u8'),
+    )
+  }
   return args
 }

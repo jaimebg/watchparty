@@ -538,6 +538,55 @@ details summary:hover { color: var(--marquee); }
   color: var(--text);
 }
 
+/* Salto manual: solo en la pestaña del host (ver Room.tsx). */
+
+.jump-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.jump-label {
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+.jump-input {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  width: 5.5rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  transition: border-color 0.18s ease;
+}
+
+.jump-input:focus { outline: none; border-color: var(--marquee); }
+.jump-input[aria-invalid='true'] { border-color: var(--danger); }
+
+.btn-jump {
+  font-size: 0.82rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--text-dim);
+  border: 1px solid var(--line-soft);
+  cursor: pointer;
+  transition: border-color 0.18s ease, color 0.18s ease;
+}
+
+.btn-jump:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--marquee) 55%, var(--line));
+  color: var(--text);
+}
+
+.btn-jump:disabled { opacity: 0.45; cursor: default; }
+
 /* Volumen por espectador */
 
 .volume-group {

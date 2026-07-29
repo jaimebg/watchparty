@@ -5,6 +5,7 @@ import { cacheDir } from '../config.js'
 import type { LibraryItem } from '../library/scanner.js'
 import { probeFile, extractKeyframes, type MediaInfo } from '../media/probe.js'
 import { planSegments, type Segment } from '../media/planner.js'
+import { pickMode } from '../media/hlsLayout.js'
 import { listSubtitleOptions, extractSubtitle, type SubtitleOption } from '../media/subtitles.js'
 import { initialState, type PlaybackState } from './syncState.js'
 import type { RoomMeta } from '../media/tmdb.js'
@@ -39,7 +40,11 @@ export interface Room {
 }
 
 interface Deps {
-  createSession: (item: LibraryItem, info: MediaInfo, segments: Segment[], roomDir: string, forceTranscode?: boolean) => SessionLike
+  // El modo lo elige RoomManager, no quien construye la sesión: la rejilla de
+  // segmentos que se planifica aquí solo es correcta para uno de los dos modos
+  // (ver hlsLayout.ts), así que la decisión tiene que vivir en el mismo sitio
+  // que la planificación.
+  createSession: (item: LibraryItem, info: MediaInfo, segments: Segment[], roomDir: string, mode: 'copy' | 'transcode') => SessionLike
   // Metadatos externos (TMDB); ausente = sin metadatos. Nunca lanza (el lookup
   // captura sus propios errores y devuelve null).
   lookupMeta?: (cleanTitle: string) => Promise<RoomMeta | null>
@@ -54,7 +59,13 @@ export class RoomManager {
     const roomDir = join(cacheDir(), token)
     mkdirSync(roomDir, { recursive: true })
     const info = await probeFile(item.path)
-    const keyframes = info.videoCodec === 'h264' ? await extractKeyframes(item.path) : null
+    const mode = pickMode(info)
+    // Solo copy corta donde diga la fuente; transcode fuerza su propia rejilla
+    // de 4 s, así que ahí la lista de keyframes no solo sobra: planificar con
+    // ella describiría cortes que ffmpeg no va a producir. De paso, esto ahorra
+    // el volcado de paquetes de extractKeyframes (hasta 256 MB) en las salas
+    // que van a transcodificar igualmente.
+    const keyframes = mode === 'copy' ? await extractKeyframes(item.path) : null
     const segments = planSegments(info.durationSec, keyframes)
     const subtitles = listSubtitleOptions(info, item.srtFiles)
     for (const s of subtitles) {
@@ -64,7 +75,7 @@ export class RoomManager {
     // Pistas de audio sin idioma declarado: se infiere del nombre del archivo o
     // del idioma original (TMDB) cuando solo hay una pista.
     info.audio = enrichAudioLangs(info.audio, basename(item.path), meta?.originalLang ?? null)
-    const session = this.deps.createSession(item, info, segments, roomDir)
+    const session = this.deps.createSession(item, info, segments, roomDir, mode)
     const room: Room = {
       token, item, info, segments, subtitles, session, state: initialState(Date.now()), chat: [], error: null, roomDir,
       meta, errorListeners: new Set(), closeListeners: new Set(),
@@ -96,7 +107,12 @@ export class RoomManager {
       }
     }
     room.error = null
-    room.session = this.deps.createSession(room.item, room.info, room.segments, room.roomDir, true)
+    // El reintento siempre transcodifica, y transcode fuerza keyframes cada
+    // 4 s: quedarse con la rejilla de keyframes de la fuente que planificó el
+    // modo copy dejaría la playlist anunciando cortes que el ffmpeg nuevo no va
+    // a producir. El cliente recarga tras el retry, así que recoge la lista nueva.
+    room.segments = planSegments(room.info.durationSec, null)
+    room.session = this.deps.createSession(room.item, room.info, room.segments, room.roomDir, 'transcode')
     room.session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
     room.session.start()
   }

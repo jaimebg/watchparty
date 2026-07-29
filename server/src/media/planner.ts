@@ -1,5 +1,6 @@
 import type { AudioTrack } from './probe.js'
 import { langLabel } from './lang.js'
+import { variantCount } from './hlsLayout.js'
 
 export interface Segment { index: number; start: number; duration: number; seekAt: number }
 
@@ -49,9 +50,15 @@ const escapeAttr = (s: string): string => s.replace(/"/g, "'")
 
 export function buildMasterPlaylist(audio: AudioTrack[]): string {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:7']
-  audio.forEach((a, i) => lines.push(
-    `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${escapeAttr(langLabel(a.lang) ?? a.label)}",LANGUAGE="${escapeAttr(a.lang)}",DEFAULT=${i === 0 ? 'YES' : 'NO'},AUTOSELECT=YES,URI="audio_${a.index + 1}.m3u8"`))
-  lines.push('#EXT-X-STREAM-INF:BANDWIDTH=8000000,CODECS="avc1.64001f,mp4a.40.2",AUDIO="aud"', 'video.m3u8')
+  // Con 0 o 1 pista el audio viaja dentro del propio variant de vídeo
+  // (hlsLayout.ts), así que no hay rendición alternativa que anunciar:
+  // anunciarla mandaría a hls.js a por un audio_1.m3u8 inexistente.
+  const alternate = variantCount(audio.length) > 1
+  if (alternate) {
+    audio.forEach((a, i) => lines.push(
+      `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="${escapeAttr(langLabel(a.lang) ?? a.label)}",LANGUAGE="${escapeAttr(a.lang)}",DEFAULT=${i === 0 ? 'YES' : 'NO'},AUTOSELECT=YES,URI="audio_${a.index + 1}.m3u8"`))
+  }
+  lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=8000000,CODECS="avc1.64001f,mp4a.40.2"${alternate ? ',AUDIO="aud"' : ''}`, 'video.m3u8')
   return lines.join('\n') + '\n'
 }
 

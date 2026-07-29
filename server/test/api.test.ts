@@ -226,6 +226,35 @@ describe('api', () => {
     expect((await app.inject({ url: `/stream/${token}/init_3.mp4` })).statusCode).toBe(404)
   })
 
+  // Con una sola pista el audio va dentro del variant de vídeo (hlsLayout.ts):
+  // no hay variant 1, así que pedirlo debe ser un 404 seco. Sin esta guarda la
+  // petición llegaría a la sesión, que esperaría 30 s por un archivo que ffmpeg
+  // nunca va a escribir.
+  it('exposes a single variant when the source has one audio track', async () => {
+    const monoDir = mkdtempSync(join(tmpdir(), 'apimono-'))
+    await makeFixtureMkv(monoDir, { audioTracks: 1 })
+    const monoApp = await buildApp({
+      config: { mediaFolders: [monoDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 },
+      library: () => scanLibrary([monoDir]), rooms, adminToken: ADMIN, tunnel: { url: null },
+    })
+    const item = (await scanLibrary([monoDir]))[0]
+    const created = await monoApp.inject({ method: 'POST', url: '/api/rooms', payload: { itemId: item.id }, ...admin })
+    const mono = created.json().token
+
+    const master = await monoApp.inject({ url: `/stream/${mono}/master.m3u8` })
+    expect(master.body).not.toContain('#EXT-X-MEDIA')
+    expect(master.body).not.toContain('audio_1.m3u8')
+
+    fakeSession.requestSegment.mockClear()
+    expect((await monoApp.inject({ url: `/stream/${mono}/audio_1.m3u8` })).statusCode).toBe(404)
+    expect((await monoApp.inject({ url: `/stream/${mono}/seg_1_00000.m4s` })).statusCode).toBe(404)
+    expect((await monoApp.inject({ url: `/stream/${mono}/init_1.mp4` })).statusCode).toBe(404)
+    expect(fakeSession.requestSegment).not.toHaveBeenCalled()
+    expect((await monoApp.inject({ url: `/stream/${mono}/seg_0_00000.m4s` })).statusCode).toBe(200)
+
+    await monoApp.close()
+  })
+
   it('404s (without leaking the filesystem path) for roomDir files missing on disk', async () => {
     // sub id that was never extracted to disk (extractSubtitle failed silently, or id simply doesn't exist)
     const missingSub = await app.inject({ url: `/stream/${token}/sub_999.vtt` })
