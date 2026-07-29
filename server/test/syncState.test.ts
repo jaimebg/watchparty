@@ -41,4 +41,9 @@ describe('syncState', () => {
     s = apply(s, { type: 'pause', at: 30_000 })
     expect(s.positionBase).toBeCloseTo(5) // no 30: el reloj estaba congelado
   })
+
+  it('a resume that arrives without a stall does not rewind the clock', () => {
+    const s = apply(initialState(0), { type: 'play', at: 0 })
+    expect(positionAt(apply(s, { type: 'resume', at: 5_000 }), 5_000)).toBeCloseTo(5)
+  })
 })

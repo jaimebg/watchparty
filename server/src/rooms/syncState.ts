@@ -35,9 +35,10 @@ export function apply(s: PlaybackState, a: SyncAction): PlaybackState {
       return { ...s, positionBase: a.position, updatedAt: a.at }
     case 'stall':
       return { ...s, positionBase: positionAt(s, a.at), stalled: true, updatedAt: a.at }
-    // positionBase ya quedó congelado en el stall; solo hace falta reajustar
-    // updatedAt para que el reloj cuente desde ahora y no desde entonces.
+    // Recomputar positionBase es un no-op mientras stalled siga true (positionAt
+    // lo devuelve congelado), pero deja el resume auto-corregido frente a un
+    // despacho redundante o fuera de orden, igual que play/pause.
     case 'resume':
-      return { ...s, stalled: false, updatedAt: a.at }
+      return { ...s, positionBase: positionAt(s, a.at), stalled: false, updatedAt: a.at }
   }
 }
