@@ -68,18 +68,31 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     if (!room) return reply.code(404).send()
     if (file === 'master.m3u8') return reply.type(M3U8).send(buildMasterPlaylist(room.info.audio))
     if (file === 'video.m3u8') return reply.type(M3U8).send(buildMediaPlaylist(room.segments, 0))
+    // Variant numbering follows ffmpegArgs's -var_stream_map: variant 0 is
+    // video, variants 1..audioCount are one per audio track (audio_1..audio_N
+    // in the master playlist). Anything outside that range is a bogus/attacker
+    // request and must 404 without ever touching the transcode session.
+    const audioCount = room.info.audio.length
     const audio = file.match(/^audio_(\d+)\.m3u8$/)
-    if (audio) return reply.type(M3U8).send(buildMediaPlaylist(room.segments, Number(audio[1])))
+    if (audio) {
+      const n = Number(audio[1])
+      if (n < 1 || n > audioCount) return reply.code(404).send()
+      return reply.type(M3U8).send(buildMediaPlaylist(room.segments, n))
+    }
     const init = file.match(/^init_(\d+)\.mp4$/)
     if (init) {
+      const variant = Number(init[1])
+      if (variant < 0 || variant > audioCount) return reply.code(404).send()
       const p = join(room.roomDir, file)
       if (!isPathInside(room.roomDir, p) || !existsSync(p)) return reply.code(404).send()
       return reply.type('video/mp4').send(createReadStream(p))
     }
     const seg = file.match(/^seg_(\d+)_(\d+)\.m4s$/)
     if (seg) {
+      const variant = Number(seg[1])
+      if (variant < 0 || variant > audioCount) return reply.code(404).send()
       try {
-        const p = await room.session.requestSegment(Number(seg[1]), Number(seg[2]))
+        const p = await room.session.requestSegment(variant, Number(seg[2]))
         return reply.type('video/mp4').send(createReadStream(p))
       } catch { return reply.code(504).send() }
     }

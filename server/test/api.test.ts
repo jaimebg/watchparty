@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,9 +13,9 @@ const ADMIN = 'test-admin-token'
 
 const fakeSession = {
   start: () => {}, seekTo: () => {}, stop: async () => {}, onError: () => {}, lastLog: [] as string[],
-  requestSegment: async (v: number, i: number) => {
+  requestSegment: vi.fn(async (_v: number, _i: number) => {
     const p = join(process.env.JBG_DATA_DIR!, 'fake.m4s'); writeFileSync(p, 'seg'); return p
-  },
+  }),
 }
 
 beforeAll(async () => {
@@ -119,6 +119,21 @@ describe('api', () => {
     expect((await app.inject({ url: `/stream/${token}/../../etc/passwd` })).statusCode).toBe(404)
     expect((await app.inject({ url: `/stream/${token}/evil.txt` })).statusCode).toBe(404)
     expect((await app.inject({ url: `/stream/NOEXISTE/master.m3u8` })).statusCode).toBe(404)
+  })
+
+  it('rejects a segment variant outside the real range (0..audioCount) without touching the session', async () => {
+    fakeSession.requestSegment.mockClear()
+    const res = await app.inject({ url: `/stream/${token}/seg_99_00000.m4s` })
+    expect(res.statusCode).toBe(404)
+    expect(fakeSession.requestSegment).not.toHaveBeenCalled()
+  })
+
+  it('rejects an audio playlist / init file outside the real variant range', async () => {
+    // fixture has 2 audio tracks -> valid variants are 0 (video) and 1..2 (audio)
+    expect((await app.inject({ url: `/stream/${token}/audio_0.m3u8` })).statusCode).toBe(404)
+    expect((await app.inject({ url: `/stream/${token}/audio_3.m3u8` })).statusCode).toBe(404)
+    expect((await app.inject({ url: `/stream/${token}/audio_1.m3u8` })).statusCode).toBe(200)
+    expect((await app.inject({ url: `/stream/${token}/init_3.mp4` })).statusCode).toBe(404)
   })
 
   it('404s (without leaking the filesystem path) for roomDir files missing on disk', async () => {
