@@ -32,15 +32,32 @@ function system(room: Room, text: string): void {
   broadcast(room, { t: 'chat', entry })
 }
 
+// Closes every live socket for a room (called from RoomManager.close()'s
+// closeListeners, once the ffmpeg session has already stopped) and prunes
+// the room's entry from `conns` so nothing keeps a dead room's peer map
+// alive. Without this, sockets connected to a closed room stay open: chat
+// keeps "working" in a dead room, and a seek would respawn ffmpeg pointed at
+// a roomDir that no longer exists.
+export function closeRoomSockets(room: Room): void {
+  const peers = conns.get(room)
+  if (!peers) return
+  for (const ws of peers.keys()) {
+    try { ws.close(4001, 'room closed') } catch { /* already closing */ }
+  }
+  conns.delete(room)
+}
+
 export function registerHub(app: FastifyInstance, deps: AppDeps): void {
   app.get('/ws/:token', { websocket: true }, (socket: WebSocket, req) => {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) { socket.close(4004, 'room not found'); return }
     if (!conns.has(room)) {
       conns.set(room, new Map())
-      // One-time-per-room hookup: fan out ffmpeg errors from RoomManager to
-      // every client currently (and later) connected to this room.
+      // One-time-per-room hookups: fan out ffmpeg errors from RoomManager to
+      // every client currently (and later) connected to this room, and close
+      // every socket once the room itself is torn down.
       room.errorListeners.add(log => broadcast(room, { t: 'error', log }))
+      room.closeListeners.add(() => closeRoomSockets(room))
     }
     const peers = conns.get(room)!
     let me: Participant | null = null

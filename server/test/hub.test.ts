@@ -147,4 +147,21 @@ describe('hub', () => {
 
     a.ws.close(); b.ws.close()
   })
+
+  it('closing a room (DELETE /api/rooms/:token) closes every live socket with code 4001', async () => {
+    const room = await rooms.create(items[0])
+    const a = await connect('Zoe', room.token)
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
+
+    const closed = new Promise<{ code: number; reason: string }>(resolve => {
+      a.ws.on('close', (code: number, reason: Buffer) => resolve({ code, reason: reason.toString() }))
+    })
+
+    const res = await app.inject({ method: 'DELETE', url: `/api/rooms/${room.token}`, cookies: { admin: 'a' } })
+    expect(res.statusCode).toBe(200)
+
+    const { code, reason } = await closed
+    expect(code).toBe(4001)
+    expect(reason).toBe('room closed')
+  })
 })

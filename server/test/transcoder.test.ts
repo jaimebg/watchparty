@@ -73,4 +73,27 @@ describe('TranscodeSession', () => {
 
     await seekSession.stop()
   }, 90_000)
+
+  it('stop() closes the session so later start()/seekTo() calls no-op instead of respawning ffmpeg', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-closed-'))
+    const closedOutDir = join(dir, 'out'); mkdirSync(closedOutDir)
+    const info = await probeFile(fixture)
+    const kf = await extractKeyframes(fixture)
+    const closedSession = new TranscodeSession({
+      input: fixture, mode: 'copy', encoder: 'libx264',
+      segments: planSegments(info.durationSec, kf), audioCount: 2, outDir: closedOutDir,
+    })
+    closedSession.start()
+    await closedSession.requestSegment(0, 0)
+    expect(closedSession['proc']).not.toBeNull()
+
+    await closedSession.stop()
+    expect(closedSession['proc']).toBeNull()
+
+    closedSession.seekTo(1)
+    expect(closedSession['proc']).toBeNull() // no respawn: closed session ignores seekTo()
+
+    closedSession.start(0)
+    expect(closedSession['proc']).toBeNull() // no respawn: closed session ignores start()
+  })
 })

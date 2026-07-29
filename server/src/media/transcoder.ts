@@ -21,10 +21,15 @@ export class TranscodeSession {
   private killedProcs = new WeakSet<ChildProcess>()
   private errorCb: ((log: string[]) => void) | null = null
   private segments: Segment[]
+  // Set by stop() once the room that owns this session is torn down (roomDir
+  // deleted, cleanup done). Without this, a seek arriving after the room was
+  // closed would respawn ffmpeg against a directory that no longer exists.
+  private closed = false
 
   constructor(private opts: Opts) { this.segments = opts.segments }
 
   start(fromSegment = 0): void {
+    if (this.closed) return
     this.startSegment = fromSegment
     this.finished = false
     const args = buildTranscodeArgs({ ...this.opts, startSegment: fromSegment })
@@ -44,6 +49,7 @@ export class TranscodeSession {
   onError(cb: (log: string[]) => void): void { this.errorCb = cb }
 
   seekTo(segmentIndex: number): void {
+    if (this.closed) return
     this.killProc()
     this.start(segmentIndex)
   }
@@ -76,6 +82,7 @@ export class TranscodeSession {
   }
 
   async stop(): Promise<void> {
+    this.closed = true
     const p = this.proc
     this.killProc()
     if (p && p.exitCode === null) await new Promise(r => p.once('exit', r))

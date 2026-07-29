@@ -28,6 +28,10 @@ export interface Room {
   // onError handler and fans it out to whoever else wants to know (currently:
   // the ws hub, to broadcast {t:'error'} to every connected client).
   errorListeners: Set<(log: string[]) => void>
+  // Notified once, synchronously, from close() before the room is torn down —
+  // lets the ws hub close every live socket for the room (see hub.ts's
+  // closeRoomSockets) instead of leaving zombie connections around.
+  closeListeners: Set<() => void>
 }
 
 interface Deps { createSession: (item: LibraryItem, info: MediaInfo, segments: Segment[], roomDir: string, forceTranscode?: boolean) => SessionLike }
@@ -50,7 +54,7 @@ export class RoomManager {
     const session = this.deps.createSession(item, info, segments, roomDir)
     const room: Room = {
       token, item, info, segments, subtitles, session, state: initialState(Date.now()), chat: [], error: null, roomDir,
-      errorListeners: new Set(),
+      errorListeners: new Set(), closeListeners: new Set(),
     }
     session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
     session.start()
@@ -75,6 +79,7 @@ export class RoomManager {
     const room = this.rooms.get(token)
     if (!room) return
     await room.session.stop()
+    for (const cb of room.closeListeners) cb()
     rmSync(room.roomDir, { recursive: true, force: true })
     this.rooms.delete(token)
   }
