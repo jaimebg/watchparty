@@ -2,14 +2,54 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { mkdtempSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { randomBytes } from 'node:crypto'
+import { Readable } from 'node:stream'
 import ffprobeStatic from 'ffprobe-static'
 import { makeFixtureMkv } from './support/fixture.js'
 import { extractKeyframes, probeFile } from '../src/media/probe.js'
 import { planSegments } from '../src/media/planner.js'
 import { TranscodeSession } from '../src/media/transcoder.js'
+import { parseBoxes, type Box } from '../src/media/fmp4.js'
 import { run } from './support/run.js'
 
 let fixture: string, session: TranscodeSession, outDir: string
+
+async function drain(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  for await (const c of stream) chunks.push(c as Buffer)
+  return Buffer.concat(chunks)
+}
+
+// media_time de las entradas del elst de un trak (o [] si no tiene edts). El
+// trim del retardo del códec sobrevive a canonicalizeInit (no depende del
+// run), así que un `edts` presente no es, por sí solo, prueba de nada; lo que
+// no puede sobrevivir es una entrada con media_time==-1 (el empty edit que
+// memoriza dónde arrancó ESE proceso).
+function elstMediaTimes(buf: Buffer, trak: Box): number[] {
+  const edtsBox = parseBoxes(buf, trak.start + trak.hdr, trak.start + trak.size).find(b => b.type === 'edts')
+  if (!edtsBox) return []
+  const elst = parseBoxes(buf, edtsBox.start + edtsBox.hdr, edtsBox.start + edtsBox.size)[0]
+  const version = buf[elst.start + elst.hdr]
+  const count = buf.readUInt32BE(elst.start + elst.hdr + 4)
+  const entrySize = version === 1 ? 20 : 12
+  const out: number[] = []
+  for (let i = 0; i < count; i++) {
+    const at = elst.start + elst.hdr + 8 + i * entrySize
+    out.push(version === 1 ? Number(buf.readBigInt64BE(at + 8)) : buf.readInt32BE(at + 4))
+  }
+  return out
+}
+
+// start_time de cada pista de un fMP4, que solo es reproducible con su init
+// delante. Es la medida que importa: es donde hls.js coloca el segmento.
+async function startTimes(dir: string, init: Buffer, seg: Buffer): Promise<number[]> {
+  const joined = join(dir, `joined-${randomBytes(4).toString('hex')}.mp4`)
+  writeFileSync(joined, Buffer.concat([init, seg]))
+  const { stdout } = await run(ffprobeStatic.path, [
+    '-v', 'error', '-show_entries', 'stream=start_time', '-of', 'csv=p=0', joined,
+  ])
+  return stdout.trim().split('\n').map(Number)
+}
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tsc-'))
@@ -187,6 +227,77 @@ describe('TranscodeSession', () => {
     await s.stop()
   }, 60_000)
 
+  it('el init entregado es canónico y no depende del run que lo produjo', async () => {
+    // El fallo de bb67bc0: ffmpeg guarda en el edts del init la posición donde
+    // arrancó ESE proceso, y el servidor fija un init para toda la sala. Si el
+    // init recuerda su run, los segmentos de cualquier otro reinicio se colocan
+    // en el offset equivocado.
+    const segments = session['segments']
+    const mid = Math.floor(segments.length / 2)
+    const paths: string[] = []
+    for (const [name, from] of [['desde0', 0], ['mid', mid]] as const) {
+      const dir = mkdtempSync(join(tmpdir(), `tsc-canon-${name}-`))
+      const out = join(dir, 'out'); mkdirSync(out)
+      // audioCount 1 → una sola variante con el audio DENTRO del segmento de
+      // vídeo (ver hlsLayout.ts), que es la forma en que corre una sala normal y
+      // la única en la que el init 0 tiene dos pistas que comprobar.
+      const s = new TranscodeSession({
+        input: fixture, mode: 'transcode', encoder: 'libx264', segments, audioCount: 1, outDir: out,
+      })
+      s.start(from)
+      paths.push(await s.requestInit(0, 30_000))
+      await s.stop()
+    }
+
+    const [desde0, desdeMid] = paths.map(p => readFileSync(p))
+    // Ningún trak conserva el empty edit (media_time==-1) del -ss. El edts en
+    // sí puede sobrevivir: el trim del retardo del códec no depende del run
+    // y hay que conservarlo para que retimeHeader clave el tfdt sin dejar el
+    // vídeo sistemáticamente tarde (ver canonicalizeInit en fmp4.ts).
+    const moov = parseBoxes(desde0).find(b => b.type === 'moov')!
+    for (const t of parseBoxes(desde0, moov.start + moov.hdr, moov.start + moov.size)) {
+      if (t.type !== 'trak') continue
+      expect(elstMediaTimes(desde0, t)).not.toContain(-1)
+    }
+    // Y los dos runs dan exactamente el mismo init.
+    expect(desdeMid.equals(desde0)).toBe(true)
+  }, 120_000)
+
+  it('un segmento de un run reiniciado aterriza en su sitio con el init de OTRO run', async () => {
+    // Exactamente el fallo reportado en bb67bc0: la sala arranca en 0, fija ese
+    // init, el host salta a mitad de película y ffmpeg reinicia. Medido antes de
+    // este arreglo: el segmento decodificaba en 0:00:00 en vez de en su minuto.
+    const segments = session['segments']
+    const mid = Math.floor(segments.length / 2)
+
+    const dirA = mkdtempSync(join(tmpdir(), 'tsc-open-a-'))
+    const outA = join(dirA, 'out'); mkdirSync(outA)
+    // audioCount 1 → el audio va dentro del segmento de vídeo, así que
+    // startTimes() devuelve las dos pistas y de paso comprueba el lipsync.
+    const a = new TranscodeSession({
+      input: fixture, mode: 'transcode', encoder: 'libx264', segments, audioCount: 1, outDir: outA,
+    })
+    a.start(0)
+    const initFijado = readFileSync(await a.requestInit(0, 30_000))
+    await a.stop()
+
+    const dirB = mkdtempSync(join(tmpdir(), 'tsc-open-b-'))
+    const outB = join(dirB, 'out'); mkdirSync(outB)
+    const b = new TranscodeSession({
+      input: fixture, mode: 'transcode', encoder: 'libx264', segments, audioCount: 1, outDir: outB,
+    })
+    b.start(mid)
+    const seg = await drain(await b.openSegment(0, mid, 30_000))
+    await b.stop()
+
+    // El init es el del run A y el segmento el del run B: es el cruce que rompía.
+    const times = await startTimes(dirB, initFijado, seg)
+    expect(times).toHaveLength(2) // vídeo y audio, los dos dentro del segmento
+    for (const t of times) {
+      expect(Math.abs(t - segments[mid].start)).toBeLessThan(0.05)
+    }
+  }, 120_000)
+
   it('a segment produced by a mid-film start carries the correct absolute timestamp', async () => {
     // Si el tfdt del segmento no coincide con lo que dice la playlist, hls.js lo
     // bufferiza en el sitio equivocado: el vídeo no aparece pero los subtítulos,
@@ -199,18 +310,13 @@ describe('TranscodeSession', () => {
       input: fixture, mode: 'copy', encoder: 'libx264', segments, audioCount: 2, outDir: tsOutDir,
     })
     s.start(mid)
-    const segPath = await s.requestSegment(0, mid, 30_000)
-    const initPath = await s.requestInit(0, 30_000)
+    const seg = await drain(await s.openSegment(0, mid, 30_000))
+    const init = readFileSync(await s.requestInit(0, 30_000))
 
-    // Un fMP4 suelto no es reproducible: hay que anteponerle su init.
-    const joined = join(dir, 'joined.mp4')
-    writeFileSync(joined, Buffer.concat([readFileSync(initPath), readFileSync(segPath)]))
-    const { stdout } = await run(ffprobeStatic.path, [
-      '-v', 'error', '-select_streams', 'v:0',
-      '-show_entries', 'stream=start_time', '-of', 'csv=p=0', joined,
-    ])
-
-    expect(Math.abs(Number(stdout.trim()) - segments[mid].start)).toBeLessThan(0.1)
+    // openSegment ancla el segmento al límite que declara la playlist, así que
+    // el margen deja de ser «casi» y pasa a ser exacto salvo redondeo.
+    const [video] = await startTimes(dir, init, seg)
+    expect(Math.abs(video - segments[mid].start)).toBeLessThan(0.05)
     await s.stop()
   }, 90_000)
 
@@ -228,17 +334,13 @@ describe('TranscodeSession', () => {
       input: fixture, mode: 'transcode', encoder: 'libx264', segments, audioCount: 2, outDir: tsOutDir,
     })
     s.start(mid)
-    const segPath = await s.requestSegment(0, mid, 30_000)
-    const initPath = await s.requestInit(0, 30_000)
+    const seg = await drain(await s.openSegment(0, mid, 30_000))
+    const init = readFileSync(await s.requestInit(0, 30_000))
 
-    const joined = join(dir, 'joined.mp4')
-    writeFileSync(joined, Buffer.concat([readFileSync(initPath), readFileSync(segPath)]))
-    const { stdout } = await run(ffprobeStatic.path, [
-      '-v', 'error', '-select_streams', 'v:0',
-      '-show_entries', 'stream=start_time', '-of', 'csv=p=0', joined,
-    ])
-
-    expect(Math.abs(Number(stdout.trim()) - segments[mid].start)).toBeLessThan(0.1)
+    // openSegment ancla el segmento al límite que declara la playlist, así que
+    // el margen deja de ser «casi» y pasa a ser exacto salvo redondeo.
+    const [video] = await startTimes(dir, init, seg)
+    expect(Math.abs(video - segments[mid].start)).toBeLessThan(0.05)
     await s.stop()
   }, 90_000)
 

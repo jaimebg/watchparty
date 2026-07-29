@@ -61,19 +61,77 @@ export function headerLength(buf: Buffer): number {
 
 export interface CanonicalInit { init: Buffer; timescales: Map<number, number> }
 
-// Contenedores que hay que reconstruir para poder tirar un hijo: al quitar el
-// `edts` cambia el tamaño de su `trak` y, en cascada, el del `moov`.
-const REBUILD_PARENTS = new Set(['moov', 'trak', 'mdia'])
+// Contenedores que hay que reconstruir para poder editar el `elst` de dentro:
+// quitar una entrada cambia el tamaño de su `elst` y, en cascada, el de su
+// `edts`, su `trak` y su `moov`.
+const REBUILD_PARENTS = new Set(['moov', 'trak', 'edts'])
 
-function rebuildWithout(buf: Buffer, start: number, end: number, drop: string): Buffer {
+// Tamaño de una entrada de elst: version(1)+flags(3) es el prólogo del elst,
+// no de la entrada. v1 usa 64 bits para segment_duration y media_time; v0, 32.
+function elstEntrySize(version: number): number {
+  return version === 1 ? 20 : 12
+}
+
+// media_time de la entrada que empieza en `at`, sea v0 (32 bits) o v1 (64).
+function elstMediaTime(buf: Buffer, at: number, version: number): number {
+  return version === 1 ? Number(buf.readBigInt64BE(at + 8)) : buf.readInt32BE(at + 4)
+}
+
+/**
+ * El `elst` sin sus «empty edits» (media_time == -1), o `null` si no queda
+ * ninguna entrada.
+ *
+ * Un `elst` de ffmpeg trae normalmente DOS entradas y solo la primera depende
+ * del run: el empty edit con `media_time = -1` guarda dónde arrancó ESE
+ * proceso (medido: al reiniciar con `-ss 16`, esa entrada trae
+ * `segment_duration = 16000` ms). La segunda entrada, con `media_time` >= 0,
+ * es el trim del retardo propio del códec (medido con libx264: 1024 en el
+ * timescale de la pista de vídeo, ~0,083 s; con audio o con
+ * h264_videotoolbox, 0) — compensa que el primer sample del `trun` traiga un
+ * `composition_time_offset` distinto de cero, y es IDÉNTICA en cualquier run
+ * porque no depende de dónde arrancó ffmpeg. Tirar el `elst` entero (como
+ * hacía la versión anterior) quitaba también esa compensación y dejaba el
+ * vídeo reanclado con `retimeHeader` sistemáticamente tarde en esos mismos
+ * ~0,083 s. Conservarla verbatim es lo que hace que la aritmética de
+ * `retimeHeader` (tfdt = start × timescale) salga exacta.
+ */
+function rebuildElst(buf: Buffer, b: Box): Buffer | null {
+  const version = buf[b.start + b.hdr]
+  const count = buf.readUInt32BE(b.start + b.hdr + 4)
+  const entrySize = elstEntrySize(version)
+  const kept: Buffer[] = []
+  let p = b.start + b.hdr + 8
+  for (let i = 0; i < count; i++) {
+    if (elstMediaTime(buf, p, version) !== -1) kept.push(buf.subarray(p, p + entrySize))
+    p += entrySize
+  }
+  if (kept.length === 0) return null
+  const prologue = Buffer.from(buf.subarray(b.start + b.hdr, b.start + b.hdr + 8))
+  prologue.writeUInt32BE(kept.length, 4)
+  const payload = Buffer.concat([prologue, ...kept])
+  const head = Buffer.from(buf.subarray(b.start, b.start + b.hdr))
+  const total = b.hdr + payload.length
+  if (b.hdr === 16) head.writeBigUInt64BE(BigInt(total), 8)
+  else head.writeUInt32BE(total, 0)
+  return Buffer.concat([head, payload])
+}
+
+function rebuildEdits(buf: Buffer, start: number, end: number): Buffer {
   const parts: Buffer[] = []
   for (const b of parseBoxes(buf, start, end)) {
-    if (b.type === drop) continue
+    if (b.type === 'elst') {
+      const edited = rebuildElst(buf, b)
+      if (edited) parts.push(edited)
+      continue
+    }
     if (!REBUILD_PARENTS.has(b.type)) {
       parts.push(buf.subarray(b.start, b.start + b.size))
       continue
     }
-    const kids = rebuildWithout(buf, b.start + b.hdr, b.start + b.size, drop)
+    const kids = rebuildEdits(buf, b.start + b.hdr, b.start + b.size)
+    // Un `edts` cuyo `elst` se quedó sin entradas (solo tenía empty edits) no
+    // aporta nada: se tira entero, igual que antes se tiraba siempre.
+    if (b.type === 'edts' && kids.length === 0) continue
     const head = Buffer.from(buf.subarray(b.start, b.start + b.hdr))
     const total = b.hdr + kids.length
     if (b.hdr === 16) head.writeBigUInt64BE(BigInt(total), 8)
@@ -106,19 +164,25 @@ function readAfterDates(buf: Buffer, b: Box): number {
 }
 
 /**
- * Init reproducible: sin `edts` y con las duraciones a cero.
+ * Init reproducible: sin las entradas del `elst` que dependen del run que lo
+ * produjo, y con las duraciones a cero.
  *
- * ffmpeg guarda en el `edts` de cada pista un «empty edit» con la posición
- * absoluta donde arrancó ese proceso (medido: dur=20000 ms al reiniciar con
- * `-ss 20`). Como el servidor fija UN snapshot del init para toda la sala, ese
- * offset acabaría aplicándose a segmentos de cualquier otro reinicio. Sin
- * `edts`, la línea de tiempo sale solo del `tfdt`, que sí controlamos
- * (retimeHeader). Las duraciones se ponen a cero por la misma razón: un run
- * reiniciado codifica menos metraje y las escribiría distintas.
+ * ffmpeg guarda en el `edts` de cada pista la posición absoluta donde arrancó
+ * ese proceso, como un «empty edit» (medido: `segment_duration = 16000` ms al
+ * reiniciar con `-ss 16`). Como el servidor fija UN snapshot del init para
+ * toda la sala, ese offset acabaría aplicándose a segmentos de cualquier otro
+ * reinicio. Pero el `elst` no es solo eso: también trae, en una segunda
+ * entrada, el trim del retardo propio del códec (compensa que el primer
+ * sample del `trun` traiga un `composition_time_offset` != 0), que es igual
+ * en todos los runs y que `retimeHeader` necesita para clavar el `tfdt` sin
+ * dejar el vídeo sistemáticamente tarde. Por eso la cirugía es quirúrgica:
+ * quitar solo las entradas con `media_time == -1` (rebuildElst), no el `edts`
+ * entero. Las duraciones se ponen a cero por la misma razón que el empty
+ * edit: un run reiniciado codifica menos metraje y las escribiría distintas.
  */
 export function canonicalizeInit(raw: Buffer): CanonicalInit {
   // Buffer.concat copia, así que `init` es propio y se puede mutar sin tocar `raw`.
-  const init = rebuildWithout(raw, 0, raw.length, 'edts')
+  const init = rebuildEdits(raw, 0, raw.length)
   const timescales = new Map<number, number>()
   const moov = parseBoxes(init).find(b => b.type === 'moov')
   if (!moov) throw new Error('init de fMP4 sin moov')

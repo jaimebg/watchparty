@@ -1,8 +1,11 @@
 import { spawn, ChildProcess } from 'node:child_process'
-import { copyFileSync, existsSync, renameSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { open } from 'node:fs/promises'
 import { join } from 'node:path'
+import { PassThrough, Readable } from 'node:stream'
 import ffmpegPath from 'ffmpeg-static'
 import { buildTranscodeArgs } from './ffmpegArgs.js'
+import { canonicalizeInit, headerLength, retimeHeader } from './fmp4.js'
 import { variantCount } from './hlsLayout.js'
 import type { Segment } from './planner.js'
 
@@ -10,6 +13,11 @@ import type { Segment } from './planner.js'
 // cuesta un segmento (planSegments reparte cada 4 s), o una producción lenta se
 // confundiría con un proceso ausente.
 const FORWARD_GRACE_MS = 6_000
+
+// Cuánto se lee de un segmento para encontrar y parchear su cabecera. Medido en
+// un segmento de 4 s: styp+sidx+sidx+moof ocupan ~2,5 KB, así que 64 KB sobran
+// de largo; si aun así no apareciera el mdat, se relee el archivo entero.
+const HEAD_PROBE_BYTES = 64 * 1024
 
 interface Opts { input: string; mode: 'copy' | 'transcode'; encoder: string; segments: Segment[]; audioCount: number; outDir: string }
 
@@ -32,6 +40,10 @@ export class TranscodeSession {
   // closed would respawn ffmpeg against a directory that no longer exists.
   private closed = false
   private initCopies = 0
+  // Timescale de cada pista, por variante, sacado del init al fijarlo. Hace
+  // falta para retimear los segmentos, y no se puede deducir del plan: cada
+  // pista tiene el suyo (medido: vídeo 12800, audio 44100).
+  private timescales = new Map<number, Map<number, number>>()
   // When the currently-running process was spawned. requestInit's proof below
   // ("seeing the segment proves the init is whole") only holds for a segment
   // the CURRENT process wrote: a leftover *.m4s from a previous run (still on
@@ -113,7 +125,7 @@ export class TranscodeSession {
   async requestInit(variant: number, timeoutMs = 30_000): Promise<string> {
     if (this.closed) throw new Error(`Sesión cerrada esperando init v${variant}`)
     const stable = join(this.opts.outDir, `init_${variant}.stable.mp4`)
-    if (existsSync(stable)) return stable
+    if (existsSync(stable)) { this.loadTimescales(variant, stable); return stable }
     const live = join(this.opts.outDir, `init_${variant}.mp4`)
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
@@ -128,14 +140,24 @@ export class TranscodeSession {
       // ejecución anterior (frontier seek, o retry() reanudando en 0) no
       // demuestra nada sobre el init que este proceso acaba de reescribir.
       if (existsSync(live) && (this.finished || this.segFreshEnough(this.segPath(variant, this.startSegment)))) {
+        const { init, timescales } = canonicalizeInit(readFileSync(live))
         const tmp = `${stable}.${this.initCopies++}.tmp`
-        copyFileSync(live, tmp)
+        writeFileSync(tmp, init)
         renameSync(tmp, stable)
+        this.timescales.set(variant, timescales)
         return stable
       }
       await new Promise(r => setTimeout(r, 200))
     }
     throw new Error(`Timeout esperando init v${variant}`)
+  }
+
+  // Un snapshot que ya existía (misma sesión, otra variante ya servida) no pasó
+  // por el set de arriba. canonicalizeInit es idempotente sobre un init ya
+  // canónico, así que releerlo es la forma barata de recuperar sus timescales.
+  private loadTimescales(variant: number, stable: string): void {
+    if (this.timescales.has(variant)) return
+    this.timescales.set(variant, canonicalizeInit(readFileSync(stable)).timescales)
   }
 
   async requestSegment(variant: number, index: number, timeoutMs = 30_000): Promise<string> {
@@ -168,6 +190,50 @@ export class TranscodeSession {
       await new Promise(r => setTimeout(r, 200))
     }
     throw new Error(`Timeout esperando segmento v${variant}#${index}`)
+  }
+
+  /**
+   * El segmento listo para servir: los mismos bytes que escribió ffmpeg pero con
+   * la cabecera reanclada al instante que la playlist declara para ese índice.
+   *
+   * Solo la cabecera pasa por memoria; el `mdat` (megas) sigue viajando en
+   * streaming desde disco.
+   */
+  async openSegment(variant: number, index: number, timeoutMs = 30_000): Promise<Readable> {
+    const path = await this.requestSegment(variant, index, timeoutMs)
+    // Garantiza que el init está fijado, que es de donde salen los timescales.
+    await this.requestInit(variant, timeoutMs)
+    const timescales = this.timescales.get(variant)
+    const start = this.segments[index]?.start
+    if (!timescales || start === undefined) return createReadStream(path)
+
+    const fh = await open(path, 'r')
+    let head: Buffer
+    let headLen: number
+    try {
+      const size = (await fh.stat()).size
+      let probe = Buffer.alloc(Math.min(HEAD_PROBE_BYTES, size))
+      await fh.read(probe, 0, probe.length, 0)
+      headLen = headerLength(probe)
+      if (headLen < 0 && probe.length < size) {
+        probe = Buffer.alloc(size)
+        await fh.read(probe, 0, size, 0)
+        headLen = headerLength(probe)
+      }
+      // Sin `mdat` no hay segmento: servirlo tal cual sería resucitar el fallo
+      // en silencio, así que se prefiere el 504 que ya devuelve la ruta.
+      if (headLen < 0) throw new Error(`Segmento sin mdat v${variant}#${index}`)
+      head = retimeHeader(probe.subarray(0, headLen), timescales, start)
+    } finally {
+      await fh.close()
+    }
+
+    const out = new PassThrough()
+    out.write(head)
+    const rest = createReadStream(path, { start: headLen })
+    rest.on('error', e => out.destroy(e))
+    rest.pipe(out)
+    return out
   }
 
   private killProc(): void {

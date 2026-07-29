@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseBoxes, headerLength, canonicalizeInit, retimeHeader } from '../src/media/fmp4.js'
+import { parseBoxes, headerLength, canonicalizeInit, retimeHeader, type Box } from '../src/media/fmp4.js'
 
 // Construye una caja MP4: [size:4][type:4][payload]
 function box(type: string, payload: Buffer = Buffer.alloc(0)): Buffer {
@@ -86,36 +86,129 @@ function mdhd(timescale: number, duration: number): Buffer {
   return box('mdhd', p)
 }
 
-// elst con un empty edit (media_time = -1): lo que ffmpeg escribe tras un -ss.
-function edts(emptyEditDuration: number): Buffer {
-  const p = Buffer.alloc(16)
-  p.writeUInt32BE(1, 4)                 // entry_count
-  p.writeUInt32BE(emptyEditDuration, 8) // segment_duration
-  p.writeInt32BE(-1, 12)                // media_time
+// elst con las entradas dadas, cada una [duration, mediaTime]. media_time=-1
+// es el empty edit que ffmpeg escribe tras un -ss (depende del run, se tira
+// en canonicalizeInit); cualquier otro media_time es el trim del retardo del
+// códec (igual en todos los runs, se conserva verbatim). Versión 0 siempre,
+// que es lo que escribe ffmpeg en la práctica (medido).
+function edts(entries: [number, number][]): Buffer {
+  const p = Buffer.alloc(8 + entries.length * 12)
+  p.writeUInt32BE(entries.length, 4) // entry_count
+  entries.forEach(([duration, mediaTime], i) => {
+    const at = 8 + i * 12
+    p.writeUInt32BE(duration, at)
+    p.writeInt32BE(mediaTime, at + 4)
+    // media_rate_integer/fraction quedan a 0, como los escribe ffmpeg.
+  })
   return box('edts', box('elst', p))
 }
 
-const trak = (id: number, ts: number) =>
-  box('trak', Buffer.concat([tkhd(id, 4000), edts(20000), box('mdia', mdhd(ts, 4000))]))
+// elst v1 (64 bits): mismo layout que v0 pero con duration/mediaTime de 8
+// bytes cada uno. Nunca lo hemos visto escrito por ffmpeg, pero el formato lo
+// permite y rebuildElst tiene que respetarlo sin cambiar la versión de la caja.
+function edtsV1(entries: [number, number][]): Buffer {
+  const p = Buffer.alloc(8 + entries.length * 20)
+  p.writeUInt8(1, 0) // version
+  p.writeUInt32BE(entries.length, 4)
+  entries.forEach(([duration, mediaTime], i) => {
+    const at = 8 + i * 20
+    p.writeBigUInt64BE(BigInt(duration), at)
+    p.writeBigInt64BE(BigInt(mediaTime), at + 8)
+  })
+  return box('edts', box('elst', p))
+}
+
+// Entradas [duration, mediaTime] del elst de un trak ya canonicalizado (o no).
+function readElst(buf: Buffer, t: Box): [number, number][] {
+  const edtsBox = parseBoxes(buf, t.start + t.hdr, t.start + t.size).find(b => b.type === 'edts')
+  if (!edtsBox) return []
+  const elst = parseBoxes(buf, edtsBox.start + edtsBox.hdr, edtsBox.start + edtsBox.size)[0]
+  const version = buf[elst.start + elst.hdr]
+  const count = buf.readUInt32BE(elst.start + elst.hdr + 4)
+  const entrySize = version === 1 ? 20 : 12
+  const out: [number, number][] = []
+  for (let i = 0; i < count; i++) {
+    const at = elst.start + elst.hdr + 8 + i * entrySize
+    const duration = version === 1 ? Number(buf.readBigUInt64BE(at)) : buf.readUInt32BE(at)
+    const mediaTime = version === 1 ? Number(buf.readBigInt64BE(at + 8)) : buf.readInt32BE(at + 4)
+    out.push([duration, mediaTime])
+  }
+  return out
+}
+
+// El trim del códec (medido con libx264: 1024 en timescale de vídeo) no
+// depende del run, así que el mismo valor aparece en fakeInit() y en `otro`
+// más abajo: es lo que hace falta para que la comparación de reproducibilidad
+// tenga sentido con el elst de dos entradas real, no con el edts-de-un-solo-
+// empty-edit que se usaba antes de este arreglo.
+const TRIM: [number, number] = [0, 1024]
+
+const trak = (id: number, ts: number, emptyEditDuration: number) =>
+  box('trak', Buffer.concat([
+    tkhd(id, 4000), edts([[emptyEditDuration, -1], TRIM]), box('mdia', mdhd(ts, 4000)),
+  ]))
 
 const fakeInit = () => Buffer.concat([
   box('ftyp', Buffer.alloc(8)),
-  box('moov', Buffer.concat([mvhd(1000, 4000), trak(1, 12800), trak(2, 44100)])),
+  box('moov', Buffer.concat([mvhd(1000, 4000), trak(1, 12800, 20000), trak(2, 44100, 20000)])),
 ])
 
 describe('canonicalizeInit', () => {
-  it('quita el edts de cada pista y arregla los tamaños de trak y moov', () => {
+  it('quita del elst solo las entradas de empty edit y arregla los tamaños de edts/trak/moov', () => {
     const { init } = canonicalizeInit(fakeInit())
     const moov = parseBoxes(init).find(b => b.type === 'moov')!
     const traks = parseBoxes(init, moov.start + moov.hdr, moov.start + moov.size).filter(b => b.type === 'trak')
     expect(traks).toHaveLength(2)
     for (const t of traks) {
-      expect(parseBoxes(init, t.start + t.hdr, t.start + t.size).map(b => b.type)).toEqual(['tkhd', 'mdia'])
+      // El edts sobrevive porque le queda el trim: el orden de cajas no cambia.
+      expect(parseBoxes(init, t.start + t.hdr, t.start + t.size).map(b => b.type)).toEqual(['tkhd', 'edts', 'mdia'])
+      // Y lo que queda dentro es EXACTAMENTE el trim, verbatim, no el empty edit.
+      expect(readElst(init, t)).toEqual([TRIM])
     }
     // Los tamaños tienen que cuadrar de verdad: si moov mintiera, parseBoxes
     // del nivel superior no llegaría hasta el final del buffer.
     expect(parseBoxes(init).map(b => b.type)).toEqual(['ftyp', 'moov'])
     expect(moov.start + moov.size).toBe(init.length)
+  })
+
+  it('un elst con solo un trim (sin empty edit) sobrevive intacto', () => {
+    const soloTrim = Buffer.concat([
+      box('ftyp', Buffer.alloc(8)),
+      box('moov', Buffer.concat([mvhd(1000, 4000),
+        box('trak', Buffer.concat([tkhd(1, 4000), edts([TRIM]), box('mdia', mdhd(12800, 4000))]))])),
+    ])
+    const { init } = canonicalizeInit(soloTrim)
+    const moov = parseBoxes(init).find(b => b.type === 'moov')!
+    const [t] = parseBoxes(init, moov.start + moov.hdr, moov.start + moov.size).filter(b => b.type === 'trak')
+    expect(parseBoxes(init, t.start + t.hdr, t.start + t.size).map(b => b.type)).toEqual(['tkhd', 'edts', 'mdia'])
+    expect(readElst(init, t)).toEqual([TRIM])
+  })
+
+  it('un elst con solo empty edits desaparece por completo, junto con su edts', () => {
+    const soloEmptyEdit = Buffer.concat([
+      box('ftyp', Buffer.alloc(8)),
+      box('moov', Buffer.concat([mvhd(1000, 4000),
+        box('trak', Buffer.concat([tkhd(1, 4000), edts([[20000, -1]]), box('mdia', mdhd(12800, 4000))]))])),
+    ])
+    const { init } = canonicalizeInit(soloEmptyEdit)
+    const moov = parseBoxes(init).find(b => b.type === 'moov')!
+    const [t] = parseBoxes(init, moov.start + moov.hdr, moov.start + moov.size).filter(b => b.type === 'trak')
+    expect(parseBoxes(init, t.start + t.hdr, t.start + t.size).map(b => b.type)).toEqual(['tkhd', 'mdia'])
+  })
+
+  it('funciona igual con un elst de versión 1 (64 bits), sin promocionar la versión', () => {
+    const v1 = Buffer.concat([
+      box('ftyp', Buffer.alloc(8)),
+      box('moov', Buffer.concat([mvhd(1000, 4000),
+        box('trak', Buffer.concat([tkhd(1, 4000), edtsV1([[20000, -1], TRIM]), box('mdia', mdhd(12800, 4000))]))])),
+    ])
+    const { init } = canonicalizeInit(v1)
+    const moov = parseBoxes(init).find(b => b.type === 'moov')!
+    const [t] = parseBoxes(init, moov.start + moov.hdr, moov.start + moov.size).filter(b => b.type === 'trak')
+    const edtsBox = parseBoxes(init, t.start + t.hdr, t.start + t.size).find(b => b.type === 'edts')!
+    const elst = parseBoxes(init, edtsBox.start + edtsBox.hdr, edtsBox.start + edtsBox.size)[0]
+    expect(init[elst.start + elst.hdr]).toBe(1) // sigue siendo v1
+    expect(readElst(init, t)).toEqual([TRIM])
   })
 
   it('devuelve el timescale de cada pista', () => {
@@ -124,12 +217,14 @@ describe('canonicalizeInit', () => {
 
   it('pone a cero las duraciones, para que dos runs distintos den el mismo init', () => {
     const desde0 = canonicalizeInit(fakeInit()).init
-    // Un run reiniciado codifica menos metraje: otras duraciones y otro empty edit.
+    // Un run reiniciado codifica menos metraje: otras duraciones y otro empty
+    // edit. El trim del códec (TRIM) es el mismo en los dos runs, como en la
+    // realidad, y tiene que sobrevivir idéntico a los dos lados.
     const otro = Buffer.concat([
       box('ftyp', Buffer.alloc(8)),
       box('moov', Buffer.concat([
-        mvhd(1000, 999), box('trak', Buffer.concat([tkhd(1, 111), edts(77), box('mdia', mdhd(12800, 111))])),
-        box('trak', Buffer.concat([tkhd(2, 222), edts(88), box('mdia', mdhd(44100, 222))])),
+        mvhd(1000, 999), box('trak', Buffer.concat([tkhd(1, 111), edts([[77, -1], TRIM]), box('mdia', mdhd(12800, 111))])),
+        box('trak', Buffer.concat([tkhd(2, 222), edts([[88, -1], TRIM]), box('mdia', mdhd(44100, 222))])),
       ])),
     ])
     expect(canonicalizeInit(otro).init.equals(desde0)).toBe(true)
@@ -142,9 +237,15 @@ describe('canonicalizeInit', () => {
     expect(raw.equals(copia)).toBe(true)
   })
 
-  it('es idempotente: canonicalizar un init ya canónico no lo cambia', () => {
+  it('es idempotente: canonicalizar un init ya canónico no lo cambia, y no vuelve a tocar el trim', () => {
     const una = canonicalizeInit(fakeInit()).init
-    expect(canonicalizeInit(una).init.equals(una)).toBe(true)
+    const dos = canonicalizeInit(una).init
+    expect(dos.equals(una)).toBe(true)
+    // Explícito además del byte-a-byte: el trim sigue siendo el mismo tras
+    // pasar dos veces, no algo que una segunda pasada pudiera recortar más.
+    const moov = parseBoxes(dos).find(b => b.type === 'moov')!
+    const [t] = parseBoxes(dos, moov.start + moov.hdr, moov.start + moov.size).filter(b => b.type === 'trak')
+    expect(readElst(dos, t)).toEqual([TRIM])
   })
 })
 
