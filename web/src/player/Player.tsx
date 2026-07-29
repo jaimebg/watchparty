@@ -10,6 +10,11 @@ const VOLUME_KEY = 'jbg-volume'
 const MUTED_KEY = 'jbg-muted'
 const READY_AHEAD_S = 2
 const HARD_SEEK_MIN_INTERVAL_MS = 3000
+// Cierre estructural para cualquier forma de "dragging" que no dispare
+// limpieza (la rueda del ratón sobre el range en Firefox es la que conocemos
+// hoy, pero no hay por qué asumir que es la única): sin actividad durante
+// este margen, el watchdog de más abajo suelta `drag` solo.
+const DRAG_WATCHDOG_MS = 2000
 
 const PlayIcon = () => (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
@@ -65,6 +70,13 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
   // Se reinicia al empezar cada interacción nueva y cuando el efecto de abajo
   // por fin limpia `drag`.
   const committedRef = useRef(false)
+  // Verdadero solo mientras un puntero real sigue físicamente abajo, entre su
+  // onPointerDown y el onPointerUp/onPointerCancel/onBlur que lo suelta. Sin
+  // esto el watchdog de abajo no podría distinguir un arrastre lento legítimo
+  // -el pulgar sigue abajo aunque el valor no cambie un rato- del enganche
+  // que llegó SIN pulgar (la rueda), y soltaría `drag` a media pulsación.
+  const pointerDownRef = useRef(false)
+  const dragWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const paused = lastState?.state.paused ?? true
   const pausedRef = useRef(paused)
@@ -274,6 +286,28 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
 
   useEffect(() => () => { void audioCtxRef.current?.close().catch(() => {}) }, [])
 
+  const disarmDragWatchdog = () => {
+    if (dragWatchdogRef.current === null) return
+    clearTimeout(dragWatchdogRef.current)
+    dragWatchdogRef.current = null
+  }
+  // Se rearma en cada onChange/onPointerDown y se cancela al soltar el pulgar
+  // (commitSeek) o al empezar una interacción nueva. Si dispara con el pulgar
+  // todavía abajo no hace nada -eso es un arrastre lento legítimo, no un
+  // enganche-, así que solo libera de verdad el enganche sin dueño (rueda,
+  // o lo que venga mañana con la misma forma).
+  const armDragWatchdog = () => {
+    disarmDragWatchdog()
+    dragWatchdogRef.current = setTimeout(() => {
+      dragWatchdogRef.current = null
+      if (pointerDownRef.current) return
+      draggingRef.current = false
+      setDrag(null)
+      committedRef.current = false
+    }, DRAG_WATCHDOG_MS)
+  }
+  useEffect(() => () => disarmDragWatchdog(), [])
+
   const roomPosition = lastState
     ? Math.min(info.durationSec, targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now()))
     : 0
@@ -282,6 +316,8 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
 
   const commitSeek = () => {
     draggingRef.current = false
+    pointerDownRef.current = false
+    disarmDragWatchdog()
     // El `keyup` de una tecla que no toca la barra (el espacio que reanuda tras
     // soltar el pulgar, por ejemplo) también llega aquí porque el foco se queda
     // en el input. `committedRef` corta ese reenvío: solo se emite una vez por
@@ -328,17 +364,18 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
         <span className="time-label">{formatClock(shownPosition)}</span>
         <input className="seek position" type="range" step={1}
           min={0} max={Math.max(1, Math.round(info.durationSec))}
+          disabled={info.durationSec <= 0}
           aria-label="Posición en la película"
           aria-valuetext={`${formatClock(shownPosition)} de ${formatClock(info.durationSec)}`}
           style={{ background: positionGradient(shownPosition, info.durationSec) }}
           value={Math.round(shownPosition)}
-          onPointerDown={() => { draggingRef.current = true; committedRef.current = false }}
+          onPointerDown={() => { draggingRef.current = true; committedRef.current = false; pointerDownRef.current = true; armDragWatchdog() }}
           // Un pointercancel (el gesto táctil se reinterpreta como scroll de la
           // página, por ejemplo) no trae pointerup: sin esto el pulgar quedaría
           // marcado como bajado para siempre y el efecto de arriba nunca
           // volvería a soltar `drag`. No comitea: un gesto cancelado no es una
           // intención de salto.
-          onPointerCancel={() => { draggingRef.current = false }}
+          onPointerCancel={() => { draggingRef.current = false; pointerDownRef.current = false; disarmDragWatchdog() }}
           // El input nativo solo dispara `change` con las flechas/Home/End/
           // PageUp/PageDown, que son las únicas teclas que mueven el valor de
           // un range — así que esto ya cubre el arrastre por teclado sin
@@ -346,12 +383,19 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
           // tecla confundiría al espacio (que en este control global sigue
           // siendo play/pausa, no pertenece a la barra) con el inicio de un
           // arrastre, reabriendo el mismo reenvío que commitSeek evita arriba.
-          onChange={e => { draggingRef.current = true; committedRef.current = false; setDrag(Number(e.target.value)) }}
+          onChange={e => { draggingRef.current = true; committedRef.current = false; setDrag(Number(e.target.value)); armDragWatchdog() }}
+          // La rueda del ratón sobre un range mueve su valor sin pasar por
+          // pointerdown/up: en Firefox eso deja draggingRef enganchado a true
+          // para siempre (nunca llega el evento que lo suelta) y con él la
+          // barra y el reloj de tiempo restante, que se calculan sobre el
+          // mismo valor. preventDefault() basta -React registra `wheel` como
+          // no-pasivo-, y el watchdog de arriba cierra el resto de la clase.
+          onWheel={e => e.preventDefault()}
           onPointerUp={commitSeek}
           onKeyUp={commitSeek}
           // Si el foco se va a media pulsación (raro, pero posible) tampoco
           // llega un keyup a este input: mismo motivo que pointercancel.
-          onBlur={() => { draggingRef.current = false }} />
+          onBlur={() => { draggingRef.current = false; pointerDownRef.current = false; disarmDragWatchdog() }} />
         <span className="time-label" title={`Duración total ${formatClock(info.durationSec)}`}>−{formatClock(remaining)}</span>
         <form className="jump-group" onSubmit={e => { e.preventDefault(); jump() }}>
           <label className="jump-label" htmlFor="jump-to">Ir a</label>
