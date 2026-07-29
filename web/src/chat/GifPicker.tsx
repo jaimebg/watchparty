@@ -35,8 +35,8 @@ export function GifPicker({
   return (
     <div className="gif-picker">
       <div className="gif-picker-header">
-        <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar GIFs…" />
-        <button type="button" onClick={onClose}>✕</button>
+        <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar GIFs…" aria-label="Buscar GIFs" />
+        <button type="button" aria-label="Cerrar buscador de GIFs" onClick={onClose}>✕</button>
       </div>
       {loading && <p className="gif-picker-status">Buscando…</p>}
       <div className="gif-grid">

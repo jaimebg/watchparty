@@ -67,8 +67,12 @@ export function Library() {
   if (guest) {
     const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname)
     return (
-      <main className="page">
-        <h1>🎬 jbg-watchparty</h1>
+      <main className="page page--gate">
+        <header className="masthead">
+          <p className="eyebrow">JBG Watchparty</p>
+          <h1>Función privada</h1>
+          <div className="marquee-rule" aria-hidden="true" />
+        </header>
         <p>Para ver la sesión necesitas el <strong>enlace de sala</strong> que comparte el host
           — termina en <code>/room/…</code>. Pídeselo y ábrelo tal cual.</p>
         {isLocal && (
@@ -84,7 +88,7 @@ export function Library() {
       <p>No se pudo cargar la biblioteca. ({error})</p>
     </main>
   )
-  if (!items) return <main className="page"><p>Cargando…</p></main>
+  if (!items) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
 
   const foldersSection = (
     <section className="folders-box">
@@ -93,13 +97,13 @@ export function Library() {
           {folders.map(f => (
             <li key={f}>
               <code>{f}</code>
-              <button className="btn-small" disabled={busyFolders}
+              <button type="button" className="btn-small" disabled={busyFolders}
                 onClick={() => void folderOp(() => removeMediaFolder(f))}>Quitar</button>
             </li>
           ))}
         </ul>
       )}
-      <button onClick={() => void folderOp(pickMediaFolder)} disabled={busyFolders}>
+      <button type="button" className="btn-primary" onClick={() => void folderOp(pickMediaFolder)} disabled={busyFolders}>
         {busyFolders ? 'Esperando…' : '📁 Añadir carpeta…'}
       </button>
       <p className="hint">Se abre el diálogo de tu sistema (mira el Finder/Explorador si no lo ves).</p>
@@ -110,6 +114,7 @@ export function Library() {
             value={folderPath}
             onChange={e => setFolderPath(e.target.value)}
             placeholder="/ruta/absoluta/a/tus/vídeos"
+            aria-label="Ruta de la carpeta de medios"
           />
           <button type="submit" disabled={busyFolders}>{busyFolders ? 'Añadiendo…' : 'Añadir carpeta'}</button>
         </form>
@@ -121,9 +126,13 @@ export function Library() {
   if (items.length === 0) {
     return (
       <main className="page">
-        <h1>🎬 Biblioteca</h1>
+        <header className="masthead">
+          <p className="eyebrow">JBG Watchparty</p>
+          <h1>La cartelera</h1>
+          <div className="marquee-rule" aria-hidden="true" />
+        </header>
         <p>{folders.length === 0
-          ? 'Aún no hay carpetas de medios configuradas.'
+          ? 'Aún no hay nada en cartel: falta configurar carpetas de medios.'
           : 'Las carpetas configuradas no contienen vídeos (MKV, MP4, AVI, M4V, WebM).'}</p>
         <h2>{folders.length === 0 ? 'Añade tu primera carpeta de medios' : 'Carpetas de medios'}</h2>
         {foldersSection}
@@ -134,12 +143,21 @@ export function Library() {
   const groups = [...new Set(items.map(i => i.folderName))]
   return (
     <main className="page">
-      <h1>🎬 Biblioteca</h1>
+      <header className="masthead">
+        <p className="eyebrow">JBG Watchparty</p>
+        <h1>La cartelera</h1>
+        <div className="marquee-rule" aria-hidden="true" />
+      </header>
       {groups.map(g => (
-        <section key={g}>
+        <section key={g} className="bill">
           <h2>{g}</h2>
-          <ul>{items.filter(i => i.folderName === g).map(i => (
-            <li key={i.id}><button onClick={() => start(i)}>{i.title}</button></li>
+          <ul className="film-list">{items.filter(i => i.folderName === g).map((i, idx) => (
+            <li key={i.id} style={{ animationDelay: `${Math.min(idx, 10) * 45}ms` }}>
+              <button type="button" className="film-btn" onClick={() => start(i)}>
+                <span className="film-title">{i.title}</span>
+                <span className="film-go" aria-hidden="true">Crear sala →</span>
+              </button>
+            </li>
           ))}</ul>
         </section>
       ))}

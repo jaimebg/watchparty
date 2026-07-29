@@ -78,30 +78,45 @@ export function Room({ token }: { token: string }) {
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 
-  if (notFound) return <main className="page"><h1>Sala no encontrada</h1></main>
-
-  if (!name) {
+  if (notFound) {
     return (
-      <main className="page">
-        <h1>Sala {token}</h1>
-        <form
-          className="name-form"
-          onSubmit={e => {
-            e.preventDefault()
-            const trimmed = nameInput.trim()
-            if (!trimmed) return
-            localStorage.setItem(NAME_KEY, trimmed)
-            setName(trimmed)
-          }}
-        >
-          <input value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Tu nombre" autoFocus />
-          <button type="submit">Entrar</button>
-        </form>
+      <main className="page page--gate">
+        <header className="masthead">
+          <p className="eyebrow">JBG Watchparty</p>
+          <h1>Sala no encontrada</h1>
+          <div className="marquee-rule" aria-hidden="true" />
+        </header>
+        <p className="hint">El enlace puede haber caducado. Pide al host uno nuevo.</p>
       </main>
     )
   }
 
-  if (!info) return <main className="page"><p>Cargando…</p></main>
+  if (!name) {
+    return (
+      <main className="page page--gate">
+        <div className="ticket">
+          <p className="eyebrow">Tu entrada para</p>
+          <h1 className="ticket-title">{info?.title ?? 'la función'}</h1>
+          <div className="ticket-rule" aria-hidden="true" />
+          <form
+            className="name-form"
+            onSubmit={e => {
+              e.preventDefault()
+              const trimmed = nameInput.trim()
+              if (!trimmed) return
+              localStorage.setItem(NAME_KEY, trimmed)
+              setName(trimmed)
+            }}
+          >
+            <input value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Tu nombre" aria-label="Tu nombre" autoFocus />
+            <button type="submit" className="btn-primary">Entrar</button>
+          </form>
+        </div>
+      </main>
+    )
+  }
+
+  if (!info) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
 
   // A ffmpeg failure can happen either before the client ever connects
   // (info.error, from the initial REST fetch) or mid-session, reported over
@@ -117,23 +132,31 @@ export function Room({ token }: { token: string }) {
       <main className="page">
         <h1>Error al preparar la sala</h1>
         <pre className="error-log">{errorLog.join('\n')}</pre>
-        <button onClick={retry}>Reintentar</button>
+        <button className="btn-primary" onClick={retry}>Reintentar</button>
       </main>
     )
   }
 
   return (
     <main className={`page page--room${theater ? ' theater' : ''}`}>
-      {tunnelDown && <div className="banner">Túnel caído, relanzando…</div>}
+      {tunnelDown && (
+        <div className="banner">
+          <span className="banner-dot" aria-hidden="true" />
+          Túnel caído, relanzando…
+        </div>
+      )}
       <div className="room-head">
-        <h1>{info.title}</h1>
+        <div className="room-head-titles">
+          <p className="eyebrow">En proyección</p>
+          <h1>{info.title}</h1>
+        </div>
         <div className="room-head-actions">
           {info.meta && (
-            <button className="btn-theater" onClick={() => setShowMeta(true)} title="Información de la película">
+            <button type="button" className="btn-theater" onClick={() => setShowMeta(true)} title="Información de la película">
               ℹ️ Info
             </button>
           )}
-          <button className="btn-theater" onClick={toggleTheater} title={theater ? 'Salir del modo teatro' : 'Modo teatro'}>
+          <button type="button" className="btn-theater" onClick={toggleTheater} title={theater ? 'Salir del modo teatro' : 'Modo teatro'}>
             {theater ? '⊡ Salir del teatro' : '🎭 Modo teatro'}
           </button>
         </div>

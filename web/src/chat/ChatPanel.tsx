@@ -74,11 +74,11 @@ export function ChatPanel({
       ))}
 
       <form className="chat-input" onSubmit={e => { e.preventDefault(); submit() }}>
-        <input value={text} onChange={e => setText(e.target.value)} placeholder="Escribe un mensaje…" />
+        <input value={text} onChange={e => setText(e.target.value)} placeholder="Escribe un mensaje…" aria-label="Mensaje de chat" />
         {!gifsDisabled && (
           <button type="button" onClick={() => setGifOpen(v => !v)}>GIF</button>
         )}
-        <button type="submit">Enviar</button>
+        <button type="submit" className="btn-primary">Enviar</button>
       </form>
 
       {gifOpen && !gifsDisabled && (

@@ -170,18 +170,18 @@ export function Player({ token, info, send, lastState }: {
         ))}
       </video>
       <div className="controls">
-        <button className="btn-play" aria-label={paused ? 'Reproducir (espacio)' : 'Pausar (espacio)'}
+        <button type="button" className="btn-play" aria-label={paused ? 'Reproducir (espacio)' : 'Pausar (espacio)'}
           title={paused ? 'Reproducir (espacio)' : 'Pausar (espacio)'} onClick={togglePlay}>
           {paused ? <PlayIcon /> : <PauseIcon />}
         </button>
         <div className="volume-group">
-          <button className="btn-mute" aria-label={muted ? 'Quitar silencio' : 'Silenciar'}
+          <button type="button" className="btn-mute" aria-label={muted ? 'Quitar silencio' : 'Silenciar'}
             title={muted ? 'Quitar silencio' : 'Silenciar'} onClick={() => setMuted(m => !m)}>
             {muted || volume === 0 ? <MutedIcon /> : <VolumeIcon />}
           </button>
           <input className="seek volume" type="range" min={0} max={1} step={0.01}
             aria-label="Volumen"
-            style={{ background: `linear-gradient(90deg, #7c5cff ${(muted ? 0 : volume) * 100}%, #2a2e37 ${(muted ? 0 : volume) * 100}%)` }}
+            style={{ background: `linear-gradient(90deg, var(--seek-fill) ${(muted ? 0 : volume) * 100}%, var(--seek-track) ${(muted ? 0 : volume) * 100}%)` }}
             value={muted ? 0 : volume}
             onChange={e => { setVolume(Number(e.target.value)); if (muted) setMuted(false) }} />
         </div>
@@ -198,7 +198,7 @@ export function Player({ token, info, send, lastState }: {
           )}
           <input className="seek" type="range" min={0} max={info.durationSec} step={0.1}
             aria-label="Posición del vídeo"
-            style={{ background: `linear-gradient(90deg, #7c5cff ${pct}%, #2a2e37 ${pct}%)` }}
+            style={{ background: `linear-gradient(90deg, var(--seek-fill) ${pct}%, var(--seek-track) ${pct}%)` }}
             value={shownPosition}
             onChange={e => setDragValue(Number(e.target.value))}
             onPointerUp={e => commitSeek(Number(e.currentTarget.value))}
@@ -207,11 +207,11 @@ export function Player({ token, info, send, lastState }: {
         </div>
         <span className="time-label">{formatClock(info.durationSec)}</span>
         {mode === 'hls' && (
-          <select onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
+          <select aria-label="Pista de audio" onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
             {audioTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         )}
-        <select value={sub} onChange={e => setSub(Number(e.target.value))}>
+        <select aria-label="Subtítulos" value={sub} onChange={e => setSub(Number(e.target.value))}>
           <option value={-1}>Sin subtítulos</option>
           {info.subtitles.map((s, i) => <option key={s.id} value={i}>{s.label}</option>)}
         </select>
