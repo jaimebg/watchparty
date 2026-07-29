@@ -2,9 +2,12 @@ import Hls from 'hls.js'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, PlaybackState, RoomInfo } from '../types'
 import { computeCorrection, targetPosition } from '../sync/driftControl'
-import { formatClock, spaceBelongsTo } from './format'
+import { formatClock, parseStoredVolume, spaceBelongsTo } from './format'
 
 export interface LastState { state: PlaybackState; serverNow: number; receivedAt: number }
+
+const VOLUME_KEY = 'jbg-volume'
+const MUTED_KEY = 'jbg-muted'
 
 const PlayIcon = () => (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
@@ -14,6 +17,16 @@ const PlayIcon = () => (
 const PauseIcon = () => (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
     <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+  </svg>
+)
+const VolumeIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden>
+    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z" />
+  </svg>
+)
+const MutedIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden>
+    <path d="M3 9v6h4l5 5V4L7 9H3zm13.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4-2.7-2.7z" />
   </svg>
 )
 
@@ -26,6 +39,9 @@ export function Player({ token, info, send, lastState }: {
   const [sub, setSub] = useState<number>(-1)
   const [dragValue, setDragValue] = useState<number | null>(null)
   const [hover, setHover] = useState<{ x: number; t: number } | null>(null)
+  // Volumen y silencio son POR ESPECTADOR (no se sincronizan) y persisten.
+  const [volume, setVolume] = useState(() => parseStoredVolume(localStorage.getItem(VOLUME_KEY)))
+  const [muted, setMuted] = useState(() => localStorage.getItem(MUTED_KEY) === '1')
   // 'hls': hls.js/MSE (per-viewer audio track selection available).
   // 'native': no MSE, but the <video> element itself plays HLS (Safari/iOS) —
   // audio track selection has no native equivalent, so that selector hides.
@@ -116,6 +132,15 @@ export function Player({ token, info, send, lastState }: {
     for (let i = 0; i < tracks.length; i++) tracks[i].mode = i === sub ? 'showing' : 'hidden'
   }, [sub])
 
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.volume = volume
+    video.muted = muted
+    localStorage.setItem(VOLUME_KEY, String(volume))
+    localStorage.setItem(MUTED_KEY, muted ? '1' : '0')
+  }, [volume, muted])
+
   // Dragging the slider must not spam a `seek` per pixel: onChange only updates
   // the locally-displayed position (dragValue), and a single seek is sent when
   // the interaction ends (pointer/touch release or keyboard commit).
@@ -149,6 +174,17 @@ export function Player({ token, info, send, lastState }: {
           title={paused ? 'Reproducir (espacio)' : 'Pausar (espacio)'} onClick={togglePlay}>
           {paused ? <PlayIcon /> : <PauseIcon />}
         </button>
+        <div className="volume-group">
+          <button className="btn-mute" aria-label={muted ? 'Quitar silencio' : 'Silenciar'}
+            title={muted ? 'Quitar silencio' : 'Silenciar'} onClick={() => setMuted(m => !m)}>
+            {muted || volume === 0 ? <MutedIcon /> : <VolumeIcon />}
+          </button>
+          <input className="seek volume" type="range" min={0} max={1} step={0.01}
+            aria-label="Volumen"
+            style={{ background: `linear-gradient(90deg, #7c5cff ${(muted ? 0 : volume) * 100}%, #2a2e37 ${(muted ? 0 : volume) * 100}%)` }}
+            value={muted ? 0 : volume}
+            onChange={e => { setVolume(Number(e.target.value)); if (muted) setMuted(false) }} />
+        </div>
         <span className="time-label">{formatClock(shownPosition)}</span>
         <div className="seek-wrap"
           onMouseMove={e => {

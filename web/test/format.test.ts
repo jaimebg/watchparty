@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest'
-import { formatClock, spaceBelongsTo } from '../src/player/format'
+import { formatClock, parseStoredVolume, spaceBelongsTo } from '../src/player/format'
+
+describe('parseStoredVolume', () => {
+  it.each([
+    [null, 1],
+    ['', 1],
+    ['basura', 1],
+    ['0.5', 0.5],
+    ['0', 0],
+    ['1', 1],
+    ['1.7', 1],
+    ['-3', 0],
+  ])('%s -> %d', (raw, expected) => {
+    expect(parseStoredVolume(raw as string | null)).toBe(expected)
+  })
+})
 
 describe('formatClock', () => {
   it.each([
