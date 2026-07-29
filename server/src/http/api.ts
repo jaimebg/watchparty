@@ -127,8 +127,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
       const variant = Number(seg[1])
       if (variant < 0 || variant >= variants) return reply.code(404).send()
       try {
-        const p = await room.session.requestSegment(variant, Number(seg[2]))
-        return reply.type('video/mp4').send(createReadStream(p))
+        return reply.type('video/mp4').send(await room.session.openSegment(variant, Number(seg[2])))
       } catch { return reply.code(504).send() }
     }
     const sub = file.match(/^sub_(\d+)\.vtt$/)

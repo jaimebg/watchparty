@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import WebSocket from 'ws'
 import { buildApp } from '../src/app.js'
 import { RoomManager } from '../src/rooms/roomManager.js'
@@ -23,6 +24,7 @@ function makeFakeSession() {
     triggerError: (log: string[]) => errorCb?.(log),
     lastLog: [] as string[],
     requestSegment: async () => '/dev/null',
+    openSegment: async () => Readable.from([]),
     requestInit: async () => '/dev/null',
   }
 }

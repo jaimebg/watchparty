@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
+import type { Readable } from 'node:stream'
 import { cacheDir } from '../config.js'
 import type { LibraryItem } from '../library/scanner.js'
 import { probeFile, extractKeyframes, type MediaInfo } from '../media/probe.js'
@@ -15,6 +16,9 @@ import type { ChatEntry } from '../ws/messages.js'
 export interface SessionLike {
   start(fromSegment?: number): void
   requestSegment(variant: number, index: number, timeoutMs?: number): Promise<string>
+  // Los bytes listos para servir: requestSegment da la ruta del archivo tal cual
+  // lo escribió ffmpeg, y openSegment lo ancla en el tiempo de la playlist.
+  openSegment(variant: number, index: number, timeoutMs?: number): Promise<Readable>
   requestInit(variant: number, timeoutMs?: number): Promise<string>
   seekTo(segmentIndex: number): void
   stop(): Promise<void>

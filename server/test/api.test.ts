@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import { buildApp } from '../src/app.js'
 import { loadConfig } from '../src/config.js'
 import { RoomManager } from '../src/rooms/roomManager.js'
@@ -16,6 +17,7 @@ const fakeSession = {
   requestSegment: vi.fn(async (_v: number, _i: number) => {
     const p = join(process.env.JBG_DATA_DIR!, 'fake.m4s'); writeFileSync(p, 'seg'); return p
   }),
+  openSegment: vi.fn(async (_v: number, _i: number) => Readable.from([Buffer.from('seg-retimed')])),
   requestInit: vi.fn(async () => { throw new Error('sin init') }),
 }
 
@@ -211,11 +213,18 @@ describe('api', () => {
     expect((await app.inject({ url: `/stream/NOEXISTE/master.m3u8` })).statusCode).toBe(404)
   })
 
+  it('el segmento se sirve por openSegment, que es quien lo ancla en el tiempo', async () => {
+    const s = await app.inject({ url: `/stream/${token}/seg_0_00000.m4s` })
+    expect(s.statusCode).toBe(200)
+    expect(s.body).toBe('seg-retimed')
+    expect(fakeSession.openSegment).toHaveBeenCalledWith(0, 0)
+  })
+
   it('rejects a segment variant outside the real range (0..audioCount) without touching the session', async () => {
-    fakeSession.requestSegment.mockClear()
+    fakeSession.openSegment.mockClear()
     const res = await app.inject({ url: `/stream/${token}/seg_99_00000.m4s` })
     expect(res.statusCode).toBe(404)
-    expect(fakeSession.requestSegment).not.toHaveBeenCalled()
+    expect(fakeSession.openSegment).not.toHaveBeenCalled()
   })
 
   it('rejects an audio playlist / init file outside the real variant range', async () => {
@@ -245,11 +254,11 @@ describe('api', () => {
     expect(master.body).not.toContain('#EXT-X-MEDIA')
     expect(master.body).not.toContain('audio_1.m3u8')
 
-    fakeSession.requestSegment.mockClear()
+    fakeSession.openSegment.mockClear()
     expect((await monoApp.inject({ url: `/stream/${mono}/audio_1.m3u8` })).statusCode).toBe(404)
     expect((await monoApp.inject({ url: `/stream/${mono}/seg_1_00000.m4s` })).statusCode).toBe(404)
     expect((await monoApp.inject({ url: `/stream/${mono}/init_1.mp4` })).statusCode).toBe(404)
-    expect(fakeSession.requestSegment).not.toHaveBeenCalled()
+    expect(fakeSession.openSegment).not.toHaveBeenCalled()
     expect((await monoApp.inject({ url: `/stream/${mono}/seg_0_00000.m4s` })).statusCode).toBe(200)
 
     await monoApp.close()

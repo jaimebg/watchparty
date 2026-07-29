@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import { RoomManager } from '../src/rooms/roomManager.js'
 import { scanLibrary } from '../src/library/scanner.js'
 import { makeFixtureMkv } from './support/fixture.js'
@@ -10,6 +11,7 @@ const fakeSession = () => ({
   start: () => {}, seekTo: () => {}, stop: async () => {}, onError: () => {},
   lastLog: [] as string[],
   requestSegment: async () => '',
+  openSegment: async () => Readable.from([]),
   requestInit: async () => '',
 })
 
