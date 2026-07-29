@@ -69,6 +69,12 @@ input {
   margin-bottom: 1rem;
 }
 
+.field-error {
+  color: #ff6b6b;
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+}
+
 .error-log {
   background: #1c1f26;
   border: 1px solid #2a2e37;

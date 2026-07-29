@@ -1,7 +1,8 @@
-import { createReadStream, existsSync } from 'node:fs'
+import { createReadStream, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import type { AppDeps } from '../app.js'
+import { saveConfig } from '../config.js'
 import { buildMasterPlaylist, buildMediaPlaylist } from '../media/planner.js'
 import { isPathInside, makeRequireAdmin } from './security.js'
 
@@ -12,6 +13,19 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
 
   app.get('/api/library', { preHandler: requireAdmin }, async () => deps.library())
   app.post('/api/library/rescan', { preHandler: requireAdmin }, async () => deps.library())
+
+  app.post('/api/config/folders', { preHandler: requireAdmin }, async (req, reply) => {
+    const { path } = (req.body ?? {}) as { path?: string }
+    if (typeof path !== 'string' || !path.trim()) return reply.code(400).send({ error: 'ruta requerida' })
+    let stat
+    try { stat = statSync(path) } catch { return reply.code(400).send({ error: `la ruta no existe: ${path}` }) }
+    if (!stat.isDirectory()) return reply.code(400).send({ error: `la ruta no es una carpeta: ${path}` })
+    if (!deps.config.mediaFolders.includes(path)) {
+      deps.config.mediaFolders.push(path)
+      saveConfig(deps.config)
+    }
+    return deps.library()
+  })
 
   app.get('/api/status', { preHandler: requireAdmin }, async () => ({
     tunnelUrl: deps.tunnel.url,

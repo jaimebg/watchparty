@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildApp } from '../src/app.js'
+import { loadConfig } from '../src/config.js'
 import { RoomManager } from '../src/rooms/roomManager.js'
 import { makeFixtureMkv } from './support/fixture.js'
 import { scanLibrary } from '../src/library/scanner.js'
@@ -39,6 +40,38 @@ describe('api', () => {
     const res = await app.inject({ url: '/api/library', ...admin })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toHaveLength(1)
+  })
+
+  it('adds a media folder (persisted + rescanned library) when the path is a real directory', async () => {
+    const cfg = { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 }
+    const folderApp = await buildApp({
+      config: cfg, library: () => scanLibrary(cfg.mediaFolders), rooms, adminToken: ADMIN, tunnel: { url: null },
+    })
+    const newDir = mkdtempSync(join(tmpdir(), 'apimedia2-'))
+    await makeFixtureMkv(newDir)
+
+    const res = await folderApp.inject({ method: 'POST', url: '/api/config/folders', payload: { path: newDir }, ...admin })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toHaveLength(2) // original item + the new folder's item
+    expect(cfg.mediaFolders).toContain(newDir)
+    expect(loadConfig().mediaFolders).toContain(newDir) // persisted via saveConfig
+
+    // adding the same folder again must not duplicate it
+    const again = await folderApp.inject({ method: 'POST', url: '/api/config/folders', payload: { path: newDir }, ...admin })
+    expect(again.statusCode).toBe(200)
+    expect(cfg.mediaFolders.filter(f => f === newDir)).toHaveLength(1)
+
+    await folderApp.close()
+  })
+
+  it('rejects a non-existent path with 400', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/config/folders', payload: { path: '/no/existe/de/verdad/xyz' }, ...admin })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('requires admin to add a media folder', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/config/folders', payload: { path: mediaDir } })
+    expect(res.statusCode).toBe(401)
   })
 
   it('admits admin via ?key= (setting a hardened cookie) and rejects a wrong cookie value', async () => {
