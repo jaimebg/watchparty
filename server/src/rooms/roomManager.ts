@@ -22,6 +22,12 @@ export interface Room {
   token: string; item: LibraryItem; info: MediaInfo; segments: Segment[]
   subtitles: SubtitleOption[]; session: SessionLike; state: PlaybackState
   chat: ChatEntry[]; error: string[] | null; roomDir: string
+  // TranscodeSession.onError only keeps a single callback (see transcoder.ts),
+  // and RoomManager already needs that slot to record room.error. Rather than
+  // fighting over the one callback, RoomManager registers its own single
+  // onError handler and fans it out to whoever else wants to know (currently:
+  // the ws hub, to broadcast {t:'error'} to every connected client).
+  errorListeners: Set<(log: string[]) => void>
 }
 
 interface Deps { createSession: (item: LibraryItem, info: MediaInfo, segments: Segment[], roomDir: string, forceTranscode?: boolean) => SessionLike }
@@ -42,8 +48,11 @@ export class RoomManager {
       await extractSubtitle(item.path, info, item.srtFiles, s.id, join(roomDir, `sub_${s.id}.vtt`)).catch(() => {})
     }
     const session = this.deps.createSession(item, info, segments, roomDir)
-    const room: Room = { token, item, info, segments, subtitles, session, state: initialState(Date.now()), chat: [], error: null, roomDir }
-    session.onError(log => { room.error = log })
+    const room: Room = {
+      token, item, info, segments, subtitles, session, state: initialState(Date.now()), chat: [], error: null, roomDir,
+      errorListeners: new Set(),
+    }
+    session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
     session.start()
     this.rooms.set(token, room)
     return room
@@ -58,7 +67,7 @@ export class RoomManager {
     await room.session.stop()
     room.error = null
     room.session = this.deps.createSession(room.item, room.info, room.segments, room.roomDir, true)
-    room.session.onError(log => { room.error = log })
+    room.session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
     room.session.start()
   }
 

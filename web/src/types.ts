@@ -35,6 +35,7 @@ export type ServerMsg =
   | { t: 'chat'; entry: ChatEntry }
   | { t: 'reaction'; emoji: string; from: string }
   | { t: 'buffering'; name: string; value: boolean }
+  | { t: 'error'; log: string[] }
 
 // server/src/http/klipy.ts
 export interface GifResult { id: string; title: string; previewUrl: string; url: string; width: number; height: number }

@@ -27,6 +27,7 @@ export function Room({ token }: { token: string }) {
   const [notFound, setNotFound] = useState(false)
   const [lastState, setLastState] = useState<LastState | null>(null)
   const [tunnelDown, setTunnelDown] = useState(false)
+  const [wsError, setWsError] = useState<string[] | null>(null)
   const [chat, dispatchChat] = useReducer(roomChatReducer, initialChat)
   const sendRef = useRef<(m: ClientMsg) => void>(() => {})
 
@@ -45,6 +46,7 @@ export function Room({ token }: { token: string }) {
       if (m.t === 'welcome' || m.t === 'state') {
         setLastState({ state: m.state, serverNow: m.serverNow, receivedAt: Date.now() })
       }
+      if (m.t === 'error') setWsError(m.log)
     })
     sendRef.current = conn.send
     return () => conn.close()
@@ -91,15 +93,20 @@ export function Room({ token }: { token: string }) {
 
   if (!info) return <main className="page"><p>Cargando…</p></main>
 
-  if (info.error) {
+  // A ffmpeg failure can happen either before the client ever connects
+  // (info.error, from the initial REST fetch) or mid-session, reported over
+  // the socket as {t:'error'}; both render the same recovery screen.
+  const errorLog = wsError ?? info.error
+  if (errorLog) {
     const retry = async () => {
+      setWsError(null)
       await fetch(`/api/rooms/${token}/retry`, { method: 'POST' })
       location.reload()
     }
     return (
       <main className="page">
         <h1>Error al preparar la sala</h1>
-        <pre className="error-log">{info.error.join('\n')}</pre>
+        <pre className="error-log">{errorLog.join('\n')}</pre>
         <button onClick={retry}>Reintentar</button>
       </main>
     )

@@ -18,3 +18,4 @@ export type ServerMsg =
   | { t: 'chat'; entry: ChatEntry }
   | { t: 'reaction'; emoji: string; from: string }
   | { t: 'buffering'; name: string; value: boolean }
+  | { t: 'error'; log: string[] }

@@ -12,9 +12,17 @@ let app: Awaited<ReturnType<typeof buildApp>>, url: string, token: string
 let rooms: RoomManager
 let items: Awaited<ReturnType<typeof scanLibrary>>
 
-const fakeSession = {
-  start: () => {}, seekTo: () => {}, stop: async () => {}, onError: () => {}, lastLog: [],
-  requestSegment: async () => '/dev/null',
+// A fresh fake session per room (rather than one shared object) so each
+// room's onError callback and error trigger stay independent of the others.
+function makeFakeSession() {
+  let errorCb: ((log: string[]) => void) | null = null
+  return {
+    start: () => {}, seekTo: () => {}, stop: async () => {},
+    onError: (cb: (log: string[]) => void) => { errorCb = cb },
+    triggerError: (log: string[]) => errorCb?.(log),
+    lastLog: [] as string[],
+    requestSegment: async () => '/dev/null',
+  }
 }
 
 function connect(name: string, tok = token): Promise<{ ws: WebSocket; recv: () => Promise<any> }> {
@@ -30,7 +38,7 @@ beforeAll(async () => {
   process.env.JBG_DATA_DIR = mkdtempSync(join(tmpdir(), 'hub-'))
   const mediaDir = mkdtempSync(join(tmpdir(), 'hubmedia-'))
   await makeFixtureMkv(mediaDir)
-  rooms = new RoomManager({ createSession: () => fakeSession })
+  rooms = new RoomManager({ createSession: () => makeFakeSession() })
   app = await buildApp({
     config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'H', cacheLimitGB: 10 },
     library: () => scanLibrary([mediaDir]), rooms, adminToken: 'a', tunnel: { url: null },
@@ -100,8 +108,13 @@ describe('hub', () => {
   })
 
   it('seek position is clamped to [0, durationSec] before being applied', async () => {
-    const duration = rooms.get(token)!.info.durationSec
-    const a = await connect('Clara')
+    // Uses its own room rather than the shared `token` one: reusing a room
+    // right after a previous test closed its sockets races the server-side
+    // close handlers (which broadcast presence/system to remaining peers)
+    // against this test's own initial recv() calls.
+    const room = await rooms.create(items[0])
+    const duration = room.info.durationSec
+    const a = await connect('Clara', room.token)
     await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
 
     a.ws.send(JSON.stringify({ t: 'seek', position: 999999 }))
@@ -115,5 +128,23 @@ describe('hub', () => {
     expect(underState.state.positionBase).toBe(0)
 
     a.ws.close()
+  })
+
+  it('an ffmpeg error mid-session is broadcast to every connected client as {t:"error"}', async () => {
+    const room = await rooms.create(items[0])
+    const a = await connect('Edi', room.token)
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
+    const b = await connect('Uve', room.token)
+    await b.recv() // welcome de Uve (incluye history)
+    await a.recv(); await a.recv() // presence + system de Uve, en A
+    await b.recv(); await b.recv() // presence + system, en B
+
+    ;(room.session as unknown as { triggerError: (log: string[]) => void }).triggerError(['ffmpeg: boom'])
+    const errA = await a.recv()
+    const errB = await b.recv()
+    expect(errA).toEqual({ t: 'error', log: ['ffmpeg: boom'] })
+    expect(errB).toEqual({ t: 'error', log: ['ffmpeg: boom'] })
+
+    a.ws.close(); b.ws.close()
   })
 })
