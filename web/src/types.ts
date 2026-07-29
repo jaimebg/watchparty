@@ -14,6 +14,7 @@ export interface PlaybackState {
   paused: boolean
   positionBase: number
   updatedAt: number
+  stalled: boolean
 }
 
 // server/src/ws/messages.ts

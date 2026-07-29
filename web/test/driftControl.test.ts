@@ -18,11 +18,15 @@ describe('computeCorrection', () => {
 
 describe('targetPosition', () => {
   it('compensates clock offset while playing', () => {
-    const state = { paused: false, positionBase: 100, updatedAt: 1000 }
+    const state = { paused: false, positionBase: 100, updatedAt: 1000, stalled: false }
     expect(targetPosition(state, 1000, 5000, 8000)).toBeCloseTo(103)
   })
   it('frozen when paused', () => {
-    const state = { paused: true, positionBase: 100, updatedAt: 1000 }
+    const state = { paused: true, positionBase: 100, updatedAt: 1000, stalled: false }
+    expect(targetPosition(state, 1000, 5000, 99000)).toBe(100)
+  })
+  it('frozen when stalled even though it is not paused', () => {
+    const state = { paused: false, positionBase: 100, updatedAt: 1000, stalled: true }
     expect(targetPosition(state, 1000, 5000, 99000)).toBe(100)
   })
 })

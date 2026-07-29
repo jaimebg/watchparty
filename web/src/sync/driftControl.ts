@@ -11,7 +11,7 @@ export function computeCorrection(targetSec: number, actualSec: number): Correct
 }
 
 const positionAt = (s: PlaybackState, now: number) =>
-  s.paused ? s.positionBase : s.positionBase + (now - s.updatedAt) / 1000
+  s.paused || s.stalled ? s.positionBase : s.positionBase + (now - s.updatedAt) / 1000
 
 export function targetPosition(state: PlaybackState, serverNow: number, receivedAt: number, now: number): number {
   return positionAt(state, serverNow + (now - receivedAt))
