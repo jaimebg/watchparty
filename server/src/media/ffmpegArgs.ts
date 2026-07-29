@@ -25,9 +25,12 @@ export function buildTranscodeArgs(x: TranscodeArgsInput): string[] {
   args.push('-i', x.input, '-map', '0:v:0')
   if (x.mode === 'copy') args.push('-c:v', 'copy')
   else args.push('-c:v', x.encoder, ...(ENCODER_FLAGS[x.encoder] ?? []),
-    // Con -copyts, `t` es absoluto: sin sumar el arranque, n_forced*4 iría muy
-    // por detrás del t real y forzaría un keyframe en cada fotograma.
-    '-force_key_frames', `expr:gte(t,n_forced*4+${seg.start.toFixed(6)})`,
+    // `t` en force_key_frames es relativo al punto de -ss, incluso con
+    // -copyts (que solo afecta a los timestamps de salida, no a esta
+    // expresión). Anclarlo a seg.start la hace insatisfacible: x264 nunca
+    // fuerza un keyframe y cae a su keyint por defecto, produciendo
+    // segmentos que no coinciden con lo que dice la playlist.
+    '-force_key_frames', 'expr:gte(t,n_forced*4)',
     '-pix_fmt', 'yuv420p')
   for (let i = 0; i < x.audioCount; i++) args.push('-map', `0:a:${i}`)
   args.push('-c:a', 'aac', '-ac', '2', '-b:a', '128k')

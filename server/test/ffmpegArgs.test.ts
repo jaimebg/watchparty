@@ -32,7 +32,7 @@ describe('buildTranscodeArgs', () => {
     expect(i).toBeGreaterThanOrEqual(0)
     expect(Number(a[i + 1])).toBeCloseTo(8)
     expect(a.indexOf('-ss')).toBeLessThan(a.indexOf('-i'))
-    expect(a.join(' ')).toContain('-force_key_frames expr:gte(t,n_forced*4+8.000000)')
+    expect(a.join(' ')).toContain('-force_key_frames expr:gte(t,n_forced*4)')
     expect(a.join(' ')).toContain('-start_number 2')
   })
   it('seeks to the midpoint, not to the boundary, when real keyframes are known', () => {

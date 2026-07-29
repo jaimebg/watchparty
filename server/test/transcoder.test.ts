@@ -241,4 +241,31 @@ describe('TranscodeSession', () => {
     expect(Math.abs(Number(stdout.trim()) - segments[mid].start)).toBeLessThan(0.1)
     await s.stop()
   }, 90_000)
+
+  it('a mid-film restart in transcode mode cuts the segment at the planned 4s boundary, not x264\'s default keyint', async () => {
+    // `t` en -force_key_frames es relativo al punto de -ss, incluso con
+    // -copyts: si la expresión queda anclada a seg.start nunca se satisface,
+    // x264 cae a su keyint por defecto (~10 s a 24 fps) y el segmento
+    // producido desborda lo que la playlist (planSegments, objetivo 4 s) dice.
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-kf-'))
+    const kfOutDir = join(dir, 'out'); mkdirSync(kfOutDir)
+    const segments = session['segments']
+    const mid = Math.floor(segments.length / 2)
+    const s = new TranscodeSession({
+      input: fixture, mode: 'transcode', encoder: 'libx264', segments, audioCount: 2, outDir: kfOutDir,
+    })
+    s.start(mid)
+    const segPath = await s.requestSegment(0, mid, 60_000)
+    const initPath = await s.requestInit(0, 30_000)
+
+    const joined = join(dir, 'joined.mp4')
+    writeFileSync(joined, Buffer.concat([readFileSync(initPath), readFileSync(segPath)]))
+    const { stdout } = await run(ffprobeStatic.path, [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'format=duration', '-of', 'csv=p=0', joined,
+    ])
+
+    expect(Math.abs(Number(stdout.trim()) - segments[mid].duration)).toBeLessThan(1.5)
+    await s.stop()
+  }, 90_000)
 })
