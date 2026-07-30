@@ -105,6 +105,7 @@ Añade estos tres casos a `server/test/scanner.test.ts`, dentro del `describe('s
     expect(otra.srtFiles).toHaveLength(1)
     expect(otra.srtFiles[0]).toBe(join(root, 'Otra.es.srt'))
   })
+```
 
 Y añade una aserción de `folderPath` al test que ya existe, justo después de `expect(ep.folderName).toBe('Season1')`:
 
