@@ -285,7 +285,34 @@ cambian.
 Las salas vacías no aportan ficheros y los epochs huérfanos que no se hayan
 podido borrar quedan fuera de la poda: se los lleva `close()`.
 
-### 7. Cliente
+### 7. Biblioteca a escala (`server/src/library/scanner.ts`)
+
+Elegir dentro de la sala cambia el contexto del escaneo: hasta ahora
+`scanLibrary` solo corría en la portada, **antes** de que existiera la sala; a
+partir de aquí corre en mitad de la función, cada vez que el host abre el picker.
+Y lo que se escanea es una carpeta recursiva que puede tener cientos de medios
+con sus `.srt` al lado. Dos cambios, los dos contenidos:
+
+- **`LibraryItem` gana `folderPath: string`** (el `dirname` absoluto).
+  `folderName` sigue siendo `basename(dir)` para la etiqueta, pero **la
+  agrupación pasa a ser por `folderPath`**: hoy dos carpetas homónimas
+  (`…/Alien/Season 1` y `…/Dune/Season 1`) se fusionan en una sola sección con
+  los episodios de las dos mezclados, porque `folderName` es solo el basename
+  (`scanner.ts:32`, y `Library.tsx:160` agrupa por él). Con cientos de medios eso
+  deja de ser un detalle estético. La cartelera se arregla de rebote al compartir
+  la agrupación; no se toca nada más de ella.
+- **Un solo `readdir` por directorio.** Hoy se hace uno **por cada vídeo** para
+  buscar sus hermanos `.srt` (`scanner.ts:27`): con 200 episodios en una carpeta
+  son 200 lecturas del mismo directorio. Se agrupan los ficheros por `dirname` y
+  se lee cada directorio una vez, cacheando su listado durante el escaneo. El
+  criterio de emparejado (`endsWith('.srt') && startsWith(base)`) no cambia, así
+  que `movie.srt`, `movie.es.srt` y `movie.en.srt` siguen cayendo en el mismo
+  ítem.
+
+No se añade caché en memoria de la biblioteca: con el escaneo ya barato no hace
+falta, y una caché trae su propia familia de formas de enseñar datos rancios.
+
+### 8. Cliente
 
 #### `web/src/types.ts`
 Espejo manual de `RoomInfo` / `RoomMediaInfo` y del `ServerMsg` nuevo, como se
@@ -325,12 +352,36 @@ carpetas). Los botones por ítem se quedan como están.
   cuando un fichero concreto no hay forma de reproducirlo.
 
 #### `web/src/MediaPicker.tsx` (nuevo)
-Modal que pide `/api/library`, agrupa por carpeta como la cartelera y filtra
-por título. Al elegir, `setRoomMedia`. Si ya hay película puesta, confirma antes
-(«Vas a cambiar la película para todos»). Cierre por clic en el fondo y botón
-`✕`, como `MetaModal`; sin Escape, por el mismo motivo documentado en el spec de
-emojis. Muestra el error del servidor en el propio modal (404/400/409/500) sin
-cerrarse, para poder elegir otra cosa.
+
+Modal que pide `/api/library`. Diseñado para una biblioteca grande, siguiendo el
+patrón que ya usa `EmojiPicker` con sus 1.906 emojis: **nunca se pinta todo a la
+vez**.
+
+- **Carpetas en acordeón, agrupadas por `folderPath`.** Cabecera con
+  `folderName`, su ruta relativa en pequeño para desambiguar homónimas, y el
+  número de medios. Solo se renderizan los ítems de la carpeta abierta. Si hay
+  una película puesta, arranca abierta la suya; si no, la primera.
+- **Buscador sobre toda la biblioteca**, con tope de resultados (~120, como
+  `searchEmojis`) y el mismo `normalize` sin diacríticos si se puede reutilizar
+  de `emojiSearch.ts`. Con búsqueda activa, la lista muestra resultados en lugar
+  del acordeón, cada uno con su carpeta al lado.
+- **Cada ítem enseña lo que se sabe sin abrir el fichero**: título limpio y, si
+  `srtFiles.length > 0`, «· N subtítulos externos». Es el dato que decide entre
+  dos copias de la misma película, y ya viaja en `LibraryItem` — no hace falta
+  probar nada. Las pistas incrustadas no se conocen hasta el `probeFile`, así que
+  no se prometen aquí.
+- **La película actual va marcada.** Elegirla otra vez está permitido y equivale
+  a rearrancar desde cero (epoch nuevo, directorio nuevo), pero conviene que el
+  host lo sepa antes de tocarla.
+- **Botón «Volver a escanear»** (`POST /api/library/rescan`, ya existe): es justo
+  aquí donde hace falta cuando el host acaba de copiar un fichero nuevo con la
+  sala ya abierta.
+- Al elegir, `setRoomMedia`. Si ya hay película puesta, confirma antes («Vas a
+  cambiar la película para todos»).
+- Cierre por clic en el fondo y botón `✕`, como `MetaModal`; sin Escape, por el
+  mismo motivo documentado en el spec de emojis. El error del servidor
+  (400/404/409/500) se muestra dentro del modal sin cerrarlo, para poder elegir
+  otra cosa.
 
 #### `web/src/player/Player.tsx`
 - Prop `info: RoomInfo` pasa a `media: RoomMediaInfo` más `streamBase: string`
@@ -381,6 +432,11 @@ componentes.
     pausa, y el mensaje de sistema con el título.
   - Un participante marcado como «cargando» antes del cambio no deja la sala
     nueva congelada tras el primer `play`.
+- **`server/test/scanner.test.ts`** — dos carpetas distintas con el **mismo
+  nombre** producen `folderPath` distintos (hoy se fusionarían); los `.srt`
+  hermanos siguen emparejándose igual tras el cambio a un `readdir` por
+  directorio, incluidos los de sufijo de idioma (`x.es.srt`, `x.en.srt`); un
+  directorio con varios vídeos se lee una sola vez (espiando `readdir`).
 - **`web/test/streamUrl.test.ts`** (ya existe, se amplía) — el epoch aparece en el
   path, y un nombre relativo resuelto contra el master versionado cae dentro de
   `e<n>/`: es la prueba de que `planner.ts` puede seguir sin saber que el epoch
@@ -401,6 +457,9 @@ componentes.
 - Cola o lista de reproducción de varias películas.
 - Que los invitados elijan o voten la película.
 - Persistencia de salas entre reinicios del servidor.
+- Caché en memoria de la biblioteca (el escaneo queda barato sin ella).
+- Rediseñar la cartelera. Solo hereda la agrupación por `folderPath`, que le cae
+  gratis al compartir el tipo.
 - Arreglar que `POST /api/rooms/:token/retry` no exija admin (agujero
   preexistente, anotado en Contexto).
 - Cambiar la maquetación o los controles del reproductor.
