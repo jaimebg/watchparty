@@ -1206,6 +1206,130 @@ details summary:hover { color: var(--marquee); }
   outline-color: var(--marquee);
 }
 
+/* ─── Pantalla completa ───
+   El elemento que va a pantalla completa es .room-grid, porque ya contiene el
+   vídeo Y el chat: así el árbol de React no cambia al entrar y salir, y el
+   ChatPanel no se desmonta (no se pierde lo escrito ni el scroll). */
+
+.room-grid--fs {
+  /* Alturas fijas para poder apilar los tres pisos con calc() desde abajo. */
+  --fs-controls-h: 3.4rem;
+  --fs-emos-h: 2.6rem;
+  --fs-dock-w: min(340px, 38vw);
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+  background: #000;
+}
+
+/* Respaldo para el iPhone, que no deja poner un contenedor HTML a pantalla
+   completa: se ocupa la ventana desde dentro de la propia página. */
+.room-grid--cinema {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.room-grid--fs .video-stage { position: absolute; inset: 0; }
+
+.room-grid--fs .player { height: 100%; }
+
+.room-grid--fs video {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+  object-fit: contain;
+}
+
+.room-grid--fs .controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--fs-controls-h);
+  margin: 0;
+  padding: 0 0.9rem;
+  /* Una fila única con scroll si no cabe. No es cosmético: así la altura es
+     fija y conocida, y el chat puede apilarse encima con calc() en vez de con
+     desplazamientos a ojo que se rompen en cuanto los controles envuelven. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  background: linear-gradient(to top, oklch(0% 0 0 / 0.8), transparent);
+}
+
+.room-grid--fs .reactions-bar {
+  position: absolute;
+  right: 1rem;
+  bottom: calc(var(--fs-controls-h) + 0.5rem);
+  width: var(--fs-dock-w);
+  height: var(--fs-emos-h);
+  margin: 0;
+  padding: 0 0.4rem;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  /* Fondo opaco y NADA de backdrop-filter: un filtro aquí convertiría esta
+     barra en bloque contenedor de sus descendientes `position: fixed`, y el
+     modal de emojis —que se renderiza dentro— quedaría atrapado y recortado
+     dentro de una tira de 2,6 rem. Además, el glassmorphism decorativo es una
+     anti-referencia declarada del proyecto (.impeccable.md). */
+  background: oklch(15% 0.014 65 / 0.94);
+  border: 1px solid color-mix(in oklab, var(--marquee) 20%, transparent);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+}
+
+/* El panel y la barra son hermanos en el DOM, pero encajados se leen como una
+   sola pieza flotante. */
+.room-grid--fs .chat-panel {
+  position: absolute;
+  right: 1rem;
+  bottom: calc(var(--fs-controls-h) + var(--fs-emos-h) + 0.5rem);
+  width: var(--fs-dock-w);
+  max-height: min(60vh, 420px);
+  overflow: hidden;
+  /* Mismo motivo que en la barra: sin backdrop-filter, para no atrapar aquí
+     dentro al buscador de GIFs ni a ningún descendiente posicionado. */
+  background: oklch(15% 0.014 65 / 0.94);
+  border-color: color-mix(in oklab, var(--marquee) 20%, transparent);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+}
+
+/* El panel es flex column con overflow oculto, así que la lista de mensajes
+   cede alto (flex:1 + min-height:0) y el buscador de GIFs cabe entero en vez
+   de quedar cortado por debajo del borde. */
+.room-grid--fs .chat-entries {
+  min-height: 0;
+  max-height: none;
+}
+
+.room-grid--fs .gif-picker { flex-shrink: 0; }
+
+.room-grid--fs .gif-grid { max-height: 32vh; }
+
+.room-grid--fs .controls,
+.room-grid--fs .reactions-bar,
+.room-grid--fs .chat-panel {
+  transition: opacity 0.35s var(--ease-out);
+}
+
+/* El chrome se retira solo tras unos segundos sin actividad. El
+   .reaction-overlay se queda FUERA de la regla a propósito: los emojis volando
+   son justo lo que se quiere ver con la sala a oscuras. */
+.room-grid--fs.is-idle { cursor: none; }
+
+.room-grid--fs.is-idle .controls,
+.room-grid--fs.is-idle .reactions-bar,
+.room-grid--fs.is-idle .chat-panel {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ─── Movimiento reducido ─── */
 
 @media (prefers-reduced-motion: reduce) {
@@ -1233,6 +1357,10 @@ details summary:hover { color: var(--marquee); }
   .film-go,
   .btn-play,
   .reactions-bar button { transition: none; }
+
+  .room-grid--fs .controls,
+  .room-grid--fs .reactions-bar,
+  .room-grid--fs .chat-panel { transition: none; }
 }
 
 @keyframes fade-hold {
