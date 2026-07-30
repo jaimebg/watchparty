@@ -56,7 +56,8 @@ export interface Room {
   token: string
   /** <cacheDir>/<token>. Contiene un subdirectorio por epoch. */
   dir: string
-  media: RoomMedia
+  /** null = sala creada sin película: el host reparte el enlace antes de elegir. */
+  media: RoomMedia | null
   state: PlaybackState
   chat: ChatEntry[]
   error: string[] | null
@@ -76,6 +77,21 @@ export interface Room {
   mediaListeners: Set<(media: RoomMedia) => void>
 }
 
+/**
+ * Un cambio de película (o un reintento) ya está en marcha en esta sala. El
+ * host es una sola persona: se rechaza el segundo en vez de encadenar cerrojos.
+ */
+export class RoomBusyError extends Error {
+  constructor() { super('La sala ya está cambiando de película') }
+}
+
+/** El medio ya construido, antes de que exista su sesión de ffmpeg. */
+interface PreparedMedia {
+  epoch: number; item: LibraryItem; info: MediaInfo; segments: Segment[]
+  subtitles: SubtitleOption[]; meta: RoomMeta | null; dir: string
+  mode: 'copy' | 'transcode'
+}
+
 interface Deps {
   // El modo lo elige RoomManager, no quien construye la sesión: la rejilla de
   // segmentos que se planifica aquí solo es correcta para uno de los dos modos
@@ -91,49 +107,106 @@ export class RoomManager {
   private rooms = new Map<string, Room>()
   constructor(private deps: Deps) {}
 
-  async create(item: LibraryItem): Promise<Room> {
+  async create(item?: LibraryItem): Promise<Room> {
     const token = randomBytes(16).toString('base64url')
     const dir = join(cacheDir(), token)
-    const epoch = 1
-    const mediaDir = join(dir, `e${epoch}`)
-    mkdirSync(mediaDir, { recursive: true })
-    const info = await probeFile(item.path)
-    const mode = pickMode(info)
-    // Solo copy corta donde diga la fuente; transcode fuerza su propia rejilla
-    // de 4 s, así que ahí la lista de keyframes no solo sobra: planificar con
-    // ella describiría cortes que ffmpeg no va a producir. De paso, esto ahorra
-    // el volcado de paquetes de extractKeyframes (hasta 256 MB) en las salas
-    // que van a transcodificar igualmente.
-    const keyframes = mode === 'copy' ? await extractKeyframes(item.path) : null
-    const segments = planSegments(info.durationSec, keyframes)
-    const subtitles = listSubtitleOptions(info, item.srtFiles)
-    for (const s of subtitles) {
-      await extractSubtitle(item.path, info, item.srtFiles, s.id, join(mediaDir, `sub_${s.id}.vtt`)).catch(() => {})
-    }
-    const meta = this.deps.lookupMeta ? await this.deps.lookupMeta(item.title) : null
-    // Pistas de audio sin idioma declarado: se infiere del nombre del archivo o
-    // del idioma original (TMDB) cuando solo hay una pista.
-    info.audio = enrichAudioLangs(info.audio, basename(item.path), meta?.originalLang ?? null)
-    const session = this.deps.createSession(item, info, segments, mediaDir, mode)
+    mkdirSync(dir, { recursive: true })
     const room: Room = {
-      token, dir,
-      media: { epoch, item, info, segments, subtitles, meta, session, dir: mediaDir, setBy: null },
-      state: initialState(Date.now()), chat: [], error: null, busy: false,
+      token, dir, media: null, state: initialState(Date.now()), chat: [], error: null, busy: false,
       errorListeners: new Set(), closeListeners: new Set(), mediaListeners: new Set(),
     }
-    session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
-    session.start()
     this.rooms.set(token, room)
+    if (item) {
+      // Una sala fantasma con media a null sería peor que ninguna: el host
+      // creyó estar creando una sala CON película y el enlace no diría nada.
+      try { await this.setMedia(token, item) } catch (e) { await this.close(token); throw e }
+    }
     return room
   }
 
   get(token: string): Room | undefined { return this.rooms.get(token) }
   all(): Room[] { return [...this.rooms.values()] }
 
+  /**
+   * Todo el trabajo que puede fallar, antes de tocar la sala: si el fichero es
+   * ilegible o ffprobe se atraganta, la película anterior sigue en marcha.
+   */
+  private async prepareMedia(item: LibraryItem, dir: string, epoch: number): Promise<PreparedMedia> {
+    mkdirSync(dir, { recursive: true })
+    const info = await probeFile(item.path)
+    const mode = pickMode(info)
+    // Solo copy corta donde diga la fuente; transcode fuerza su propia rejilla
+    // de 4 s, así que ahí la lista de keyframes no solo sobra: planificar con
+    // ella describiría cortes que ffmpeg no va a producir.
+    const keyframes = mode === 'copy' ? await extractKeyframes(item.path) : null
+    const segments = planSegments(info.durationSec, keyframes)
+    const subtitles = listSubtitleOptions(info, item.srtFiles)
+    for (const s of subtitles) {
+      await extractSubtitle(item.path, info, item.srtFiles, s.id, join(dir, `sub_${s.id}.vtt`)).catch(() => {})
+    }
+    const meta = this.deps.lookupMeta ? await this.deps.lookupMeta(item.title) : null
+    // Pistas de audio sin idioma declarado: se infiere del nombre del archivo o
+    // del idioma original (TMDB) cuando solo hay una pista.
+    info.audio = enrichAudioLangs(info.audio, basename(item.path), meta?.originalLang ?? null)
+    return { epoch, item, info, segments, subtitles, meta, dir, mode }
+  }
+
+  async setMedia(token: string, item: LibraryItem, by: string | null = null): Promise<RoomMedia> {
+    const room = this.rooms.get(token)
+    if (!room) throw new Error(`Sala desconocida: ${token}`)
+    if (room.busy) throw new RoomBusyError()
+    room.busy = true
+
+    const epoch = (room.media?.epoch ?? 0) + 1
+    // Un subdirectorio por epoch, en vez de reutilizar el mismo: un cliente
+    // puede estar descargando seg_0_00042.m4s de la película anterior justo
+    // mientras el ffmpeg nuevo escribe un fichero con ese mismo nombre.
+    const dir = join(room.dir, `e${epoch}`)
+    let prepared: PreparedMedia
+    try {
+      prepared = await this.prepareMedia(item, dir, epoch)
+    } catch (e) {
+      try { rmSync(dir, { recursive: true, force: true }) } catch { /* no llegó a existir */ }
+      room.busy = false
+      throw e
+    }
+
+    try {
+      const previous = room.media
+      // La sesión vieja se para ANTES de arrancar la nueva: así no hay dos
+      // ffmpeg compitiendo por la CPU en el momento del cambio.
+      await previous?.session.stop()
+      const session = this.deps.createSession(prepared.item, prepared.info, prepared.segments, prepared.dir, prepared.mode)
+      session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
+      session.start()
+      const media: RoomMedia = {
+        epoch: prepared.epoch, item: prepared.item, info: prepared.info, segments: prepared.segments,
+        subtitles: prepared.subtitles, meta: prepared.meta, session, dir: prepared.dir,
+        setBy: by === null ? null : by.slice(0, 30),
+      }
+      room.media = media
+      room.state = initialState(Date.now())
+      room.error = null
+      if (previous) {
+        // Best-effort: en Windows un fichero con un descriptor abierto hace
+        // fallar el borrado. Se queda huérfano y se lo lleva close().
+        try { rmSync(previous.dir, { recursive: true, force: true }) } catch { /* se irá al cerrar */ }
+      }
+      for (const cb of room.mediaListeners) cb(media)
+      return media
+    } finally {
+      room.busy = false
+    }
+  }
+
   async retry(token: string): Promise<void> {
     const room = this.rooms.get(token)
     if (!room) return
+    if (room.busy) throw new RoomBusyError()
     const media = room.media
+    // Sin película no hay nada que reintentar. El endpoint ya lo rechaza con
+    // 409 antes de llegar aquí; esto es la segunda barrera.
+    if (!media) return
     await media.session.stop()
     // El set entero de segmentos de la ejecución rota no debe sobrevivir al
     // reintento: un .m4s o init_*.mp4 viejo en disco puede hacer creer a
@@ -162,7 +235,7 @@ export class RoomManager {
   async close(token: string): Promise<void> {
     const room = this.rooms.get(token)
     if (!room) return
-    await room.media.session.stop()
+    await room.media?.session.stop()
     for (const cb of room.closeListeners) cb()
     // El directorio de la sala entero, con todos sus subdirectorios de epoch.
     rmSync(room.dir, { recursive: true, force: true })

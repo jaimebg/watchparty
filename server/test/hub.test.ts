@@ -119,7 +119,7 @@ describe('hub', () => {
     // close handlers (which broadcast presence/system to remaining peers)
     // against this test's own initial recv() calls.
     const room = await rooms.create(items[0])
-    const duration = room.media.info.durationSec
+    const duration = room.media!.info.durationSec
     const a = await connect('Clara', room.token)
     await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
 
@@ -145,7 +145,7 @@ describe('hub', () => {
     await a.recv(); await a.recv() // presence + system de Uve, en A
     await b.recv(); await b.recv() // presence + system, en B
 
-    ;(room.media.session as unknown as { triggerError: (log: string[]) => void }).triggerError(['ffmpeg: boom'])
+    ;(room.media!.session as unknown as { triggerError: (log: string[]) => void }).triggerError(['ffmpeg: boom'])
     const errA = await a.recv()
     const errB = await b.recv()
     expect(errA).toEqual({ t: 'error', log: ['ffmpeg: boom'] })

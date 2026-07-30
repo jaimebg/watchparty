@@ -55,7 +55,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
 
   app.get('/api/status', { preHandler: requireAdmin }, async () => ({
     tunnelUrl: deps.tunnel.url,
-    rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.media.item.title })),
+    rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.media?.item.title ?? 'Sin película' })),
   }))
 
   app.post('/api/rooms', { preHandler: requireAdmin }, async (req, reply) => {
@@ -76,6 +76,9 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) return reply.code(404).send({ error: 'room not found' })
     const media = room.media
+    // La forma final (con media anidado) llega en la Tarea 4; de momento solo
+    // se cubre el caso de nulo para que compile.
+    if (!media) return { media: null, error: null, streamBase: deps.config.streamBaseUrl ?? '' }
     return {
       title: displayTitle(media.meta, media.item.title), durationSec: media.info.durationSec,
       audio: media.info.audio, subtitles: media.subtitles, error: room.error,
@@ -123,6 +126,8 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     const room = deps.rooms.get(token)
     if (!room) return reply.code(404).send()
     const media = room.media
+    // Sin película todavía no hay nada que servir bajo este token.
+    if (!media) return reply.code(404).send()
     if (file === 'master.m3u8') return reply.type(M3U8).send(buildMasterPlaylist(media.info.audio))
     if (file === 'video.m3u8') return reply.type(M3U8).send(buildMediaPlaylist(media.segments, 0))
     // Variant numbering follows ffmpegArgs's -var_stream_map: variant 0 is

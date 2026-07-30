@@ -90,6 +90,9 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
 
         switch (msg.t) {
           case 'play': case 'pause': {
+            // Sin película no hay reloj que mover: ni estado ni mensaje de
+            // sistema. La sala vacía sirve para charlar mientras el host elige.
+            if (!room.media) break
             room.state = apply(room.state, { type: msg.t, at: now })
             broadcast(room, { t: 'state', state: room.state, serverNow: now })
             system(room, msg.t === 'play' ? `${me.name} reanudó` : `${me.name} pausó`)
@@ -97,6 +100,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
             break
           }
           case 'seek': {
+            if (!room.media) break
             if (typeof msg.position !== 'number' || !Number.isFinite(msg.position)) return
             const position = Math.min(Math.max(msg.position, 0), room.media.info.durationSec)
             room.state = apply(room.state, { type: 'seek', position, at: now })

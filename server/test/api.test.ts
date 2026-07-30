@@ -260,7 +260,7 @@ describe('api', () => {
   it('rejects a segment index outside the plan (0..segments.length) without touching the session', async () => {
     fakeSession.openSegment.mockClear()
     const room = rooms.get(token)!
-    const outOfRange = String(room.media.segments.length).padStart(5, '0')
+    const outOfRange = String(room.media!.segments.length).padStart(5, '0')
     const res = await app.inject({ url: `/stream/${token}/seg_0_${outOfRange}.m4s` })
     expect(res.statusCode).toBe(404)
     expect(fakeSession.openSegment).not.toHaveBeenCalled()
