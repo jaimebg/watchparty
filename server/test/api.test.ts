@@ -84,8 +84,8 @@ describe('api', () => {
     const items = await scanLibrary([mediaDir])
     const room = await metaRooms.create(items[0])
     const res = await metaApp.inject({ url: `/api/rooms/${room.token}` })
-    expect(res.json().title).toBe('La Gran Peli (2020)')
-    expect(res.json().meta).toEqual(meta)
+    expect(res.json().media.title).toBe('La Gran Peli (2020)')
+    expect(res.json().media.meta).toEqual(meta)
     await metaRooms.close(room.token)
     await metaApp.close()
   })
@@ -168,8 +168,10 @@ describe('api', () => {
     token = res.json().token
     expect(token.length).toBeGreaterThan(15)
     const info = (await app.inject({ url: `/api/rooms/${token}` })).json()
-    expect(info.audio).toHaveLength(2)
-    expect(info.subtitles.length).toBeGreaterThanOrEqual(1)
+    expect(info.media.epoch).toBe(1)
+    expect(info.media.audio).toHaveLength(2)
+    expect(info.media.subtitles.length).toBeGreaterThanOrEqual(1)
+    expect(info.error).toBeNull()
     // Sin streamBaseUrl configurado el cliente debe quedarse en el mismo origen.
     expect(info.streamBase).toBe('')
   })
@@ -190,12 +192,12 @@ describe('api', () => {
   // Con el vídeo en otro origen, hls.js y los <track> lo piden cross-origin: sin
   // estas cabeceras el navegador descarta la respuesta sin error visible.
   it('permite CORS en el plano de datos, también en el preflight', async () => {
-    const seg = await app.inject({ url: `/stream/${token}/seg_0_00000.m4s` })
+    const seg = await app.inject({ url: `/stream/${token}/e1/seg_0_00000.m4s` })
     expect(seg.headers['access-control-allow-origin']).toBe('*')
-    const master = await app.inject({ url: `/stream/${token}/master.m3u8` })
+    const master = await app.inject({ url: `/stream/${token}/e1/master.m3u8` })
     expect(master.headers['access-control-allow-origin']).toBe('*')
 
-    const pre = await app.inject({ method: 'OPTIONS', url: `/stream/${token}/seg_0_00000.m4s` })
+    const pre = await app.inject({ method: 'OPTIONS', url: `/stream/${token}/e1/seg_0_00000.m4s` })
     expect(pre.statusCode).toBe(204)
     expect(pre.headers['access-control-allow-origin']).toBe('*')
     expect(pre.headers['access-control-allow-methods']).toContain('GET')
@@ -219,28 +221,28 @@ describe('api', () => {
   })
 
   it('serves master and media playlists', async () => {
-    const m = await app.inject({ url: `/stream/${token}/master.m3u8` })
+    const m = await app.inject({ url: `/stream/${token}/e1/master.m3u8` })
     expect(m.statusCode).toBe(200)
     expect(m.body).toContain('audio_1.m3u8')
-    const v = await app.inject({ url: `/stream/${token}/video.m3u8` })
+    const v = await app.inject({ url: `/stream/${token}/e1/video.m3u8` })
     expect(v.body).toContain('#EXT-X-ENDLIST')
   })
 
   it('serves segments via session and rejects weird paths', async () => {
-    const s = await app.inject({ url: `/stream/${token}/seg_0_00000.m4s` })
+    const s = await app.inject({ url: `/stream/${token}/e1/seg_0_00000.m4s` })
     expect(s.statusCode).toBe(200)
     // Traversal codificado: llega como valor del param :file y debe caer en el 404 del handler.
-    expect((await app.inject({ url: `/stream/${token}/..%2F..%2Fetc%2Fpasswd` })).statusCode).toBe(404)
+    expect((await app.inject({ url: `/stream/${token}/e1/..%2F..%2Fetc%2Fpasswd` })).statusCode).toBe(404)
     // Traversal sin codificar: la URL se normaliza fuera de /stream (puede acabar en el SPA
     // fallback si web/dist existe); lo que importa es que el archivo del sistema nunca se sirva.
-    const raw = await app.inject({ url: `/stream/${token}/../../etc/passwd` })
+    const raw = await app.inject({ url: `/stream/${token}/e1/../../etc/passwd` })
     expect(raw.body).not.toContain('root:')
-    expect((await app.inject({ url: `/stream/${token}/evil.txt` })).statusCode).toBe(404)
-    expect((await app.inject({ url: `/stream/NOEXISTE/master.m3u8` })).statusCode).toBe(404)
+    expect((await app.inject({ url: `/stream/${token}/e1/evil.txt` })).statusCode).toBe(404)
+    expect((await app.inject({ url: `/stream/NOEXISTE/e1/master.m3u8` })).statusCode).toBe(404)
   })
 
   it('el segmento se sirve por openSegment, que es quien lo ancla en el tiempo', async () => {
-    const s = await app.inject({ url: `/stream/${token}/seg_0_00000.m4s` })
+    const s = await app.inject({ url: `/stream/${token}/e1/seg_0_00000.m4s` })
     expect(s.statusCode).toBe(200)
     expect(s.body).toBe('seg-retimed')
     expect(fakeSession.openSegment).toHaveBeenCalledWith(0, 0)
@@ -248,7 +250,7 @@ describe('api', () => {
 
   it('rejects a segment variant outside the real range (0..audioCount) without touching the session', async () => {
     fakeSession.openSegment.mockClear()
-    const res = await app.inject({ url: `/stream/${token}/seg_99_00000.m4s` })
+    const res = await app.inject({ url: `/stream/${token}/e1/seg_99_00000.m4s` })
     expect(res.statusCode).toBe(404)
     expect(fakeSession.openSegment).not.toHaveBeenCalled()
   })
@@ -261,17 +263,17 @@ describe('api', () => {
     fakeSession.openSegment.mockClear()
     const room = rooms.get(token)!
     const outOfRange = String(room.media!.segments.length).padStart(5, '0')
-    const res = await app.inject({ url: `/stream/${token}/seg_0_${outOfRange}.m4s` })
+    const res = await app.inject({ url: `/stream/${token}/e1/seg_0_${outOfRange}.m4s` })
     expect(res.statusCode).toBe(404)
     expect(fakeSession.openSegment).not.toHaveBeenCalled()
   })
 
   it('rejects an audio playlist / init file outside the real variant range', async () => {
     // fixture has 2 audio tracks -> valid variants are 0 (video) and 1..2 (audio)
-    expect((await app.inject({ url: `/stream/${token}/audio_0.m3u8` })).statusCode).toBe(404)
-    expect((await app.inject({ url: `/stream/${token}/audio_3.m3u8` })).statusCode).toBe(404)
-    expect((await app.inject({ url: `/stream/${token}/audio_1.m3u8` })).statusCode).toBe(200)
-    expect((await app.inject({ url: `/stream/${token}/init_3.mp4` })).statusCode).toBe(404)
+    expect((await app.inject({ url: `/stream/${token}/e1/audio_0.m3u8` })).statusCode).toBe(404)
+    expect((await app.inject({ url: `/stream/${token}/e1/audio_3.m3u8` })).statusCode).toBe(404)
+    expect((await app.inject({ url: `/stream/${token}/e1/audio_1.m3u8` })).statusCode).toBe(200)
+    expect((await app.inject({ url: `/stream/${token}/e1/init_3.mp4` })).statusCode).toBe(404)
   })
 
   // Con una sola pista el audio va dentro del variant de vídeo (hlsLayout.ts):
@@ -289,30 +291,30 @@ describe('api', () => {
     const created = await monoApp.inject({ method: 'POST', url: '/api/rooms', payload: { itemId: item.id }, ...admin })
     const mono = created.json().token
 
-    const master = await monoApp.inject({ url: `/stream/${mono}/master.m3u8` })
+    const master = await monoApp.inject({ url: `/stream/${mono}/e1/master.m3u8` })
     expect(master.body).not.toContain('#EXT-X-MEDIA')
     expect(master.body).not.toContain('audio_1.m3u8')
 
     fakeSession.openSegment.mockClear()
-    expect((await monoApp.inject({ url: `/stream/${mono}/audio_1.m3u8` })).statusCode).toBe(404)
-    expect((await monoApp.inject({ url: `/stream/${mono}/seg_1_00000.m4s` })).statusCode).toBe(404)
-    expect((await monoApp.inject({ url: `/stream/${mono}/init_1.mp4` })).statusCode).toBe(404)
+    expect((await monoApp.inject({ url: `/stream/${mono}/e1/audio_1.m3u8` })).statusCode).toBe(404)
+    expect((await monoApp.inject({ url: `/stream/${mono}/e1/seg_1_00000.m4s` })).statusCode).toBe(404)
+    expect((await monoApp.inject({ url: `/stream/${mono}/e1/init_1.mp4` })).statusCode).toBe(404)
     expect(fakeSession.openSegment).not.toHaveBeenCalled()
-    expect((await monoApp.inject({ url: `/stream/${mono}/seg_0_00000.m4s` })).statusCode).toBe(200)
+    expect((await monoApp.inject({ url: `/stream/${mono}/e1/seg_0_00000.m4s` })).statusCode).toBe(200)
 
     await monoApp.close()
   })
 
   it('404s (without leaking the filesystem path) for roomDir files missing on disk', async () => {
     // sub id that was never extracted to disk (extractSubtitle failed silently, or id simply doesn't exist)
-    const missingSub = await app.inject({ url: `/stream/${token}/sub_999.vtt` })
+    const missingSub = await app.inject({ url: `/stream/${token}/e1/sub_999.vtt` })
     expect(missingSub.statusCode).toBe(404)
     expect(missingSub.body).not.toContain(process.env.JBG_DATA_DIR!)
 
     // El init ya no se busca en disco desde la ruta: se pide a la sesión, que
     // responde «todavía no» agotando el plazo. Eso es un 504 (no listo), no un
     // 404 (no existe); el 404 queda para variantes fuera de rango.
-    const missingInit = await app.inject({ url: `/stream/${token}/init_0.mp4` })
+    const missingInit = await app.inject({ url: `/stream/${token}/e1/init_0.mp4` })
     expect(missingInit.statusCode).toBe(504)
     expect(missingInit.body).not.toContain(process.env.JBG_DATA_DIR!)
   })
@@ -362,5 +364,103 @@ describe('api', () => {
     expect(res.json().results).toHaveLength(1)
     expect(res.json().results[0]).toEqual({ id: '123', title: 'lol', previewUrl: 'https://k/sm.gif', url: 'https://k/md.gif', width: 200, height: 160 })
     await gifApp.close()
+  })
+
+  it('crea una sala vacía cuando no se manda itemId', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: {}, ...admin })
+    expect(res.statusCode).toBe(200)
+    const empty = res.json().token
+
+    const info = (await app.inject({ url: `/api/rooms/${empty}` })).json()
+    expect(info.media).toBeNull()
+    expect(info.error).toBeNull()
+    expect(info.streamBase).toBe('')
+
+    // Sin película, el plano de datos no existe en ninguna de sus formas.
+    for (const file of ['master.m3u8', 'video.m3u8', 'audio_1.m3u8', 'init_0.mp4', 'seg_0_00000.m4s', 'sub_0.vtt']) {
+      expect((await app.inject({ url: `/stream/${empty}/e1/${file}` })).statusCode).toBe(404)
+    }
+    await rooms.close(empty)
+  })
+
+  it('la sala vacía aparece en /api/status sin título de película', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: {}, ...admin })
+    const empty = res.json().token
+    const status = (await app.inject({ url: '/api/status', ...admin })).json()
+    expect(status.rooms.find((r: any) => r.token === empty).title).toBe('Sin película')
+    await rooms.close(empty)
+  })
+
+  it('cambiar de película exige admin', async () => {
+    const items = (await app.inject({ url: '/api/library', ...admin })).json()
+    const res = await app.inject({ method: 'POST', url: `/api/rooms/${token}/media`, payload: { itemId: items[0].id } })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('cambiar de película rechaza un item inexistente y una sala inexistente', async () => {
+    expect((await app.inject({
+      method: 'POST', url: `/api/rooms/${token}/media`, payload: { itemId: 'no-existe' }, ...admin,
+    })).statusCode).toBe(404)
+    expect((await app.inject({
+      method: 'POST', url: '/api/rooms/NOEXISTE/media', payload: { itemId: 'x' }, ...admin,
+    })).statusCode).toBe(404)
+  })
+
+  // Sin esta validación el endpoint sería un lector arbitrario de ficheros para
+  // quien tenga la cookie: no se hereda de POST /api/rooms, hay que repetirla.
+  it('cambiar de película rechaza un item fuera de las carpetas de medios', async () => {
+    const outsideDir = mkdtempSync(join(tmpdir(), 'apifuera-'))
+    await makeFixtureMkv(outsideDir)
+    const outside = (await scanLibrary([outsideDir]))[0]
+    const wideApp = await buildApp({
+      config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 },
+      // La biblioteca declara el ítem, pero mediaFolders NO lo contiene.
+      library: async () => [...await scanLibrary([mediaDir]), outside],
+      rooms, adminToken: ADMIN, tunnel: { url: null },
+    })
+
+    const res = await wideApp.inject({
+      method: 'POST', url: `/api/rooms/${token}/media`, payload: { itemId: outside.id }, ...admin,
+    })
+    expect(res.statusCode).toBe(400)
+
+    await wideApp.close()
+  })
+
+  it('el epoch de una generación anterior da 410 (con CORS) y una forma inválida da 404', async () => {
+    const items = (await app.inject({ url: '/api/library', ...admin })).json()
+    const changed = await app.inject({
+      method: 'POST', url: `/api/rooms/${token}/media`, payload: { itemId: items[0].id, by: 'Jaime' }, ...admin,
+    })
+    expect(changed.statusCode).toBe(200)
+    expect(changed.json().epoch).toBe(2)
+
+    const stale = await app.inject({ url: `/stream/${token}/e1/master.m3u8` })
+    expect(stale.statusCode).toBe(410)
+    // Un 410 cross-origin sin cabeceras CORS es un fallo mudo en el navegador.
+    expect(stale.headers['access-control-allow-origin']).toBe('*')
+
+    expect((await app.inject({ url: `/stream/${token}/e2/master.m3u8` })).statusCode).toBe(200)
+    for (const bad of ['1', 'x2', 'e', 'ee2']) {
+      expect((await app.inject({ url: `/stream/${token}/${bad}/master.m3u8` })).statusCode).toBe(404)
+    }
+
+    const info = (await app.inject({ url: `/api/rooms/${token}` })).json()
+    expect(info.media.epoch).toBe(2)
+  })
+
+  it('el preflight de CORS cubre la ruta versionada', async () => {
+    const pre = await app.inject({ method: 'OPTIONS', url: `/stream/${token}/e2/seg_0_00000.m4s` })
+    expect(pre.statusCode).toBe(204)
+    expect(pre.headers['access-control-allow-origin']).toBe('*')
+    expect(pre.headers['access-control-allow-methods']).toContain('GET')
+  })
+
+  it('retry devuelve 409 en una sala sin película', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: {}, ...admin })
+    const empty = res.json().token
+    const retry = await app.inject({ method: 'POST', url: `/api/rooms/${empty}/retry` })
+    expect(retry.statusCode).toBe(409)
+    await rooms.close(empty)
   })
 })

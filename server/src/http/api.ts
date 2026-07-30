@@ -6,11 +6,18 @@ import { saveConfig } from '../config.js'
 import { variantCount } from '../media/hlsLayout.js'
 import { buildMasterPlaylist, buildMediaPlaylist } from '../media/planner.js'
 import { displayTitle } from '../media/tmdb.js'
+import { RoomBusyError } from '../rooms/roomManager.js'
 import { pickFolderNative } from './folderPicker.js'
 import { isPathInside, makeRequireAdmin } from './security.js'
 
 const M3U8 = 'application/vnd.apple.mpegurl'
 const RETRY_COOLDOWN_MS = 10_000
+// El epoch va en el path y no en una query porque el plano de datos puede salir
+// por un relevo ajeno (ver streamBaseUrl en config.ts): así el versionado no
+// depende de que ese proxy reenvíe la query ni de cómo calcule su clave de
+// caché. Y de paso planner.ts no necesita saber que el epoch existe: sus URIs
+// son relativas y el navegador las resuelve dentro de e<n>/.
+const EPOCH_RE = /^e(\d+)$/
 
 export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   const requireAdmin = makeRequireAdmin(deps.adminToken)
@@ -58,13 +65,45 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.media?.item.title ?? 'Sin película' })),
   }))
 
-  app.post('/api/rooms', { preHandler: requireAdmin }, async (req, reply) => {
-    const { itemId } = req.body as { itemId: string }
+  // Resuelve el ítem y valida que esté dentro de las carpetas de medios. Envía
+  // la respuesta de error y devuelve null; el llamador hace `return reply`.
+  const resolveItem = async (itemId: string | undefined, reply: FastifyReply) => {
     const item = (await deps.library()).find(i => i.id === itemId)
-    if (!item) return reply.code(404).send({ error: 'item not found' })
-    if (!deps.config.mediaFolders.some(f => isPathInside(f, item.path))) return reply.code(400).send({ error: 'path outside media folders' })
-    const room = await deps.rooms.create(item)
-    return { token: room.token }
+    if (!item) { reply.code(404).send({ error: 'item not found' }); return null }
+    if (!deps.config.mediaFolders.some(f => isPathInside(f, item.path))) {
+      reply.code(400).send({ error: 'path outside media folders' })
+      return null
+    }
+    return item
+  }
+
+  app.post('/api/rooms', { preHandler: requireAdmin }, async (req, reply) => {
+    const { itemId } = (req.body ?? {}) as { itemId?: string }
+    // Sin itemId, sala vacía: el host reparte el enlace y elige luego, con la
+    // gente ya dentro charlando.
+    if (itemId === undefined) return { token: (await deps.rooms.create()).token }
+    const item = await resolveItem(itemId, reply)
+    if (!item) return reply
+    return { token: (await deps.rooms.create(item)).token }
+  })
+
+  app.post('/api/rooms/:token/media', { preHandler: requireAdmin }, async (req, reply) => {
+    const { token } = req.params as { token: string }
+    const room = deps.rooms.get(token)
+    if (!room) return reply.code(404).send({ error: 'room not found' })
+    const { itemId, by } = (req.body ?? {}) as { itemId?: string; by?: string }
+    const item = await resolveItem(itemId, reply)
+    if (!item) return reply
+    try {
+      const media = await deps.rooms.setMedia(token, item, typeof by === 'string' ? by : null)
+      // El enfriamiento de reintento de la película anterior no debe aplicarse
+      // a la nueva: son ejecuciones de ffmpeg distintas.
+      lastRetryAt.delete(token)
+      return { epoch: media.epoch }
+    } catch (e) {
+      if (e instanceof RoomBusyError) return reply.code(409).send({ error: 'room busy' })
+      throw e
+    }
   })
 
   app.delete('/api/rooms/:token', { preHandler: requireAdmin }, async (req) => {
@@ -76,29 +115,42 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) return reply.code(404).send({ error: 'room not found' })
     const media = room.media
-    // La forma final (con media anidado) llega en la Tarea 4; de momento solo
-    // se cubre el caso de nulo para que compile.
-    if (!media) return { media: null, error: null, streamBase: deps.config.streamBaseUrl ?? '' }
+    // '' = mismo origen (ver streamBaseUrl en config.ts). Va al nivel superior y
+    // no dentro de `media` porque describe dónde vive el servidor, no la
+    // película: el cliente lo necesita igual en una sala vacía. Y viaja en esta
+    // respuesta, que el cliente ya espera antes de montar el reproductor, para
+    // no abrir una ventana en la que el <video> exista sin saber su origen.
+    const streamBase = deps.config.streamBaseUrl ?? ''
+    if (!media) return { media: null, error: null, streamBase }
     return {
-      title: displayTitle(media.meta, media.item.title), durationSec: media.info.durationSec,
-      audio: media.info.audio, subtitles: media.subtitles, error: room.error,
-      meta: media.meta,
-      // Viaja aquí y no en un endpoint propio porque el cliente ya espera esta
-      // respuesta antes de montar el reproductor: así no hay ni ida y vuelta
-      // extra ni una ventana en la que el <video> exista sin saber su origen.
-      // '' = mismo origen (ver streamBaseUrl en config.ts).
-      streamBase: deps.config.streamBaseUrl ?? '',
+      media: {
+        epoch: media.epoch,
+        title: displayTitle(media.meta, media.item.title),
+        durationSec: media.info.durationSec,
+        audio: media.info.audio,
+        subtitles: media.subtitles,
+        meta: media.meta,
+      },
+      error: room.error,
+      streamBase,
     }
   })
 
   app.post('/api/rooms/:token/retry', async (req, reply) => {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) return reply.code(404).send()
+    // Sin película no hay ejecución de ffmpeg que reintentar.
+    if (!room.media) return reply.code(409).send({ error: 'room has no media' })
     const now = Date.now()
     const last = lastRetryAt.get(room.token)
     if (last !== undefined && now - last < RETRY_COOLDOWN_MS) return reply.code(429).send({ error: 'retry cooldown' })
     lastRetryAt.set(room.token, now)
-    await deps.rooms.retry(room.token)
+    try {
+      await deps.rooms.retry(room.token)
+    } catch (e) {
+      if (e instanceof RoomBusyError) return reply.code(409).send({ error: 'room busy' })
+      throw e
+    }
     return { ok: true }
   })
 
@@ -114,20 +166,31 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   // Los GET de hls.js son peticiones simples y no disparan preflight, así que
   // esto es red de seguridad: el día que algo pida un Range o una cabecera
   // propia, un preflight sin responder es otra pantalla en negro muda.
-  app.options('/stream/:token/:file', async (_req, reply) => allowCors(reply)
+  app.options('/stream/:token/:epoch/:file', async (_req, reply) => allowCors(reply)
     .header('access-control-allow-methods', 'GET, HEAD, OPTIONS')
     .header('access-control-allow-headers', 'range')
     .header('access-control-max-age', '86400')
     .code(204).send())
 
-  app.get('/stream/:token/:file', async (req, reply) => {
-    const { token, file } = req.params as { token: string; file: string }
+  app.get('/stream/:token/:epoch/:file', async (req, reply) => {
+    const { token, epoch, file } = req.params as { token: string; epoch: string; file: string }
+    // Antes que nada, incluido el 404: un error cross-origin sin cabeceras CORS
+    // se lo traga el navegador sin dejar rastro que mirar.
     allowCors(reply)
     const room = deps.rooms.get(token)
     if (!room) return reply.code(404).send()
     const media = room.media
     // Sin película todavía no hay nada que servir bajo este token.
     if (!media) return reply.code(404).send()
+    const parsed = epoch.match(EPOCH_RE)
+    // Forma inválida: nunca fue una URL nuestra.
+    if (!parsed) return reply.code(404).send()
+    // Generación anterior: existió y ya no. 410 y no 404 porque durante la
+    // transición la instancia vieja de hls.js sigue pidiendo estas URLs, y sin
+    // este corte requestInit las dejaría colgadas 30 s esperando un fichero de
+    // un directorio ya borrado.
+    if (Number(parsed[1]) !== media.epoch) return reply.code(410).send()
+
     if (file === 'master.m3u8') return reply.type(M3U8).send(buildMasterPlaylist(media.info.audio))
     if (file === 'video.m3u8') return reply.type(M3U8).send(buildMediaPlaylist(media.segments, 0))
     // Variant numbering follows ffmpegArgs's -var_stream_map: variant 0 is
