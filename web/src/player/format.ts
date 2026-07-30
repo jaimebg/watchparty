@@ -66,3 +66,14 @@ export function positionGradient(position: number, durationSec: number): string 
   const pct = durationSec > 0 ? (clampPosition(position, durationSec) / durationSec) * 100 : 0
   return `linear-gradient(90deg, var(--seek-fill) ${pct}%, var(--seek-track) ${pct}%)`
 }
+
+// ¿El elemento con foco está recibiendo texto? Los atajos de una sola letra
+// (F = pantalla completa) no deben dispararse mientras se escribe en el chat.
+// No vale `spaceBelongsTo`: esa cuenta BUTTON como propietario porque el
+// espacio pulsa el botón enfocado, pero la F sí debe funcionar ahí.
+export function isTypingTarget(tagName?: string, inputType?: string, isContentEditable?: boolean): boolean {
+  if (isContentEditable) return true
+  if (tagName === 'TEXTAREA' || tagName === 'SELECT') return true
+  if (tagName === 'INPUT') return inputType !== 'range'
+  return false
+}

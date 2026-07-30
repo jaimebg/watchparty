@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clampPosition, formatClock, parseClock, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from '../src/player/format'
+import { clampPosition, formatClock, isTypingTarget, parseClock, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from '../src/player/format'
 
 describe('parseClock', () => {
   it.each([
@@ -115,5 +115,34 @@ describe('positionGradient', () => {
     expect(positionGradient(10, 0)).toBe(
       'linear-gradient(90deg, var(--seek-fill) 0%, var(--seek-track) 0%)',
     )
+  })
+})
+
+describe('isTypingTarget', () => {
+  it.each([
+    ['INPUT', 'text', true],
+    ['INPUT', undefined, true],
+    ['TEXTAREA', undefined, true],
+    ['SELECT', undefined, true],
+  ])('%s/%s se está escribiendo', (tag, type, expected) => {
+    expect(isTypingTarget(tag, type)).toBe(expected)
+  })
+
+  it('un range no recibe texto', () => {
+    expect(isTypingTarget('INPUT', 'range')).toBe(false)
+  })
+
+  it('contenteditable cuenta como escritura', () => {
+    expect(isTypingTarget('DIV', undefined, true)).toBe(true)
+  })
+
+  it('un botón NO cuenta: la F debe funcionar con un botón enfocado', () => {
+    expect(isTypingTarget('BUTTON')).toBe(false)
+    // …a diferencia del espacio, que sí pertenece al botón.
+    expect(spaceBelongsTo('BUTTON')).toBe(true)
+  })
+
+  it('sin foco en nada, no se está escribiendo', () => {
+    expect(isTypingTarget(undefined, undefined, undefined)).toBe(false)
   })
 })
