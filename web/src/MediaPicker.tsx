@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getLibrary, rescanLibrary, setRoomMedia } from './api'
 // Se reutilizan del buscador de emojis en vez de duplicarlos: `normalize` ya
 // hace el NFD sin diacríticos que hace falta para que «corazon» encuentre
@@ -36,6 +36,12 @@ export function MediaPicker({ token, currentTitle, by, onClose }: {
   // nativo puede sacar al host de pantalla completa, y el proyecto ya resuelve
   // esto con modales propios en vez de nativos (ver EmojiPicker).
   const [pending, setPending] = useState<LibraryItem | null>(null)
+  // Sigue montado: `apply` y `rescan` lanzan peticiones que pueden tardar, y el
+  // host puede cerrar el modal (✕ o clic en el fondo) sin esperar a que
+  // acaben. Sin esta bandera sus callbacks harían setState sobre un
+  // componente ya desmontado.
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -47,12 +53,20 @@ export function MediaPicker({ token, currentTitle, by, onClose }: {
 
   const folders = useMemo(() => groupByFolder(items ?? []), [items])
 
+  // Ya se hizo el auto-open inicial: sin esta bandera, cerrar a mano la
+  // carpeta abierta (el toggle pone `open` a null) volvería a disparar este
+  // efecto y la reabriría de inmediato, dejando esa carpeta imposible de
+  // colapsar. `open` se deja fuera de las dependencias a propósito: el efecto
+  // solo debe correr una vez, cuando llega la biblioteca.
+  const autoOpenedRef = useRef(false)
+
   // Arranca abierta la carpeta de la película puesta; si no hay, la primera.
   useEffect(() => {
-    if (open !== null || folders.length === 0) return
+    if (autoOpenedRef.current || folders.length === 0) return
+    autoOpenedRef.current = true
     const current = currentTitle ? folders.find(f => f.items.some(i => i.title === currentTitle)) : null
     setOpen((current ?? folders[0]).path)
-  }, [folders, currentTitle, open])
+  }, [folders, currentTitle])
 
   const searching = query.trim() !== ''
   const results = useMemo(() => {
@@ -67,13 +81,16 @@ export function MediaPicker({ token, currentTitle, by, onClose }: {
     try {
       await setRoomMedia(token, item.id, by)
       // La sala se refresca sola con el {t:'media'} que llega por el socket.
+      // Se llama siempre, montado o no: es el padre quien decide cerrar, y
+      // seguirá estándolo aunque este componente ya no lo esté.
       onClose()
     } catch (e) {
+      if (!mountedRef.current) return
       // Se muestra dentro del modal sin cerrarlo, para poder elegir otra cosa.
       setError(e instanceof Error ? e.message : String(e))
       setPending(null)
     } finally {
-      setBusy(false)
+      if (mountedRef.current) setBusy(false)
     }
   }
 
@@ -85,9 +102,9 @@ export function MediaPicker({ token, currentTitle, by, onClose }: {
     setBusy(true)
     setError(null)
     rescanLibrary()
-      .then(setItems)
-      .catch(e => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setBusy(false))
+      .then(l => { if (mountedRef.current) setItems(l) })
+      .catch(e => { if (mountedRef.current) setError(e instanceof Error ? e.message : String(e)) })
+      .finally(() => { if (mountedRef.current) setBusy(false) })
   }
 
   const row = (i: LibraryItem, withFolder: boolean) => (
