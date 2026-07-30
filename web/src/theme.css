@@ -906,6 +906,119 @@ details summary:hover { color: var(--marquee); }
   100% { transform: translateY(-40vh) scale(1); opacity: 0; }
 }
 
+.btn-add-emoji {
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 0.45rem 0.6rem;
+  border-radius: 999px;
+  color: var(--text-faint);
+  border-color: var(--line-soft);
+}
+
+.btn-add-emoji:hover {
+  color: var(--marquee);
+  border-color: color-mix(in oklab, var(--marquee) 40%, transparent);
+}
+
+.emoji-modal {
+  width: min(460px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.emoji-heading {
+  margin: 0 2rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+}
+
+.quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quick-chips li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--raised);
+  border-radius: 999px;
+  padding: 0.15rem 0.3rem 0.15rem 0.5rem;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.quick-chips button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 0.7rem;
+  line-height: 1;
+  border-radius: 50%;
+  border-color: transparent;
+  color: var(--text-faint);
+}
+
+.quick-chips button:hover {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 45%, transparent);
+}
+
+.emoji-search { width: 100%; }
+
+.emoji-tabs {
+  display: flex;
+  gap: 0.2rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 0.4rem;
+}
+
+.emoji-tabs button {
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 0.3rem 0.45rem;
+  border-color: transparent;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.emoji-tabs button.is-active {
+  background: var(--raised);
+  border-color: color-mix(in oklab, var(--marquee) 40%, transparent);
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 0.15rem;
+  /* Alto fijo: al cambiar de categoría el modal no debe pegar saltos. */
+  height: 44vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.emoji-grid button {
+  font-size: 1.3rem;
+  line-height: 1;
+  padding: 0.3rem 0;
+  border-color: transparent;
+  border-radius: 8px;
+}
+
+.emoji-grid button:hover:not(:disabled) {
+  background: var(--raised);
+  border-color: color-mix(in oklab, var(--marquee) 40%, transparent);
+}
+
+.emoji-grid button:disabled { opacity: 0.28; }
+
 /* ─── Chat ─── */
 
 .chat-panel {
