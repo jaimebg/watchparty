@@ -1307,8 +1307,11 @@ details summary:hover { color: var(--marquee); }
 
 /* Botones más compactos que en el resto de la app: con los 10 emojis por
    defecto (o los 12 del tope) hacen falta en una sola fila dentro de un panel
-   que también tiene que dejar sitio al chat. */
-.room-grid--fs .reactions-bar button {
+   que también tiene que dejar sitio al chat.
+   Hijo directo a propósito: el modal de emojis se renderiza DENTRO de
+   .reactions-bar, así que un selector de descendiente encogería también sus
+   pestañas y su rejilla por debajo del mínimo táctil de 40px. */
+.room-grid--fs .reactions-bar > button {
   font-size: 1rem;
   padding: 0.3rem 0.4rem;
 }
