@@ -122,6 +122,31 @@ Copia la URL pública que aparece en la consola o en la interfaz web. Los invita
 2. Entran con su nombre
 3. Ven la sala en vivo (sin crear una nueva)
 
+## Salas y películas
+
+Una sala y una película son cosas distintas:
+
+- **Crear sala vacía** da un enlace compartible al instante, sin haber elegido
+  nada. Los invitados entran, ponen su nombre y pueden **chatear** mientras el
+  host decide; en el hueco del vídeo ven un cartel de espera.
+- **Solo el host** —quien tiene la cookie de admin, es decir, quien abrió el
+  panel en `localhost`— puede poner o cambiar la película, con el botón
+  «🎬 Elegir/Cambiar película» de la cabecera de la sala. El play, la pausa y la
+  barra de posición siguen siendo de todo el mundo.
+- **Cambiar de película** no cierra la sala ni cambia el enlace. Vuelve a probar
+  el fichero nuevo, así que **recalcula** duración, pistas de audio, subtítulos
+  disponibles y metadatos de TMDB; la reproducción arranca en 0:00 en pausa y el
+  **chat se conserva**. Nadie tiene que recargar.
+
+Cada película de una sala es una «generación» numerada, y ese número va en la URL
+del vídeo: `/stream/<token>/e2/master.m3u8`. No es decorativo. Los segmentos y el
+init se llaman igual en cualquier película (`init_0.mp4`, `seg_0_00000.m4s`), así
+que sin versionar la URL la caché del navegador —o la del relevo, si usas
+`streamBaseUrl`— serviría los bytes de la película anterior. Va en la ruta y no
+en una query para que el versionado no dependa de cómo trate la query el proxy
+del relevo, y para que las URIs relativas de las playlists caigan dentro de la
+generación correcta por sí solas.
+
 ## URL fija con tu dominio (named tunnel)
 
 Por defecto el servidor usa un Quick Tunnel de cloudflared: la URL (`*.trycloudflare.com`)

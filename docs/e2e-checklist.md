@@ -10,6 +10,14 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 - [ ] El invitado entra con su nombre y ve el vídeo en < 15 s
 - [ ] Abrir la URL pública sin /room/… y pegar el código de sala entra a la sala
 
+## Relevo de vídeo
+- [ ] Con `streamBaseUrl` configurado, las peticiones de vídeo salen por ese
+      host y no por el túnel (pestaña Red del navegador: master.m3u8, init_*.mp4
+      y seg_*.m4s apuntan al relevo; la API y el WebSocket, al túnel)
+- [ ] Los subtítulos se pintan con el vídeo en otro origen (el `crossorigin` del
+      <video> es lo que evita que el navegador descarte los <track> en silencio)
+- [ ] Sin `streamBaseUrl` todo sale por el mismo origen, como en LAN
+
 ## Sync
 - [ ] Pausa desde el host → pausa en el invitado en < 1 s, con mensaje de sistema
 - [ ] Play desde el invitado → reanuda en el host
@@ -34,6 +42,29 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
       nueva (antes rebotaba a la primera opción)
 - [ ] Cada selector de subtítulos funciona por espectador (incrustado y .srt externo)
 - [ ] Archivo HEVC → transcodifica y reproduce (CPU/GPU visible en monitor)
+
+## Salas sin película y cambio de película
+- [ ] «Crear sala vacía» navega a /room/<token> y copia el enlace público
+- [ ] El invitado entra en la sala vacía, pone su nombre y ve el cartel de
+      espera; NO ve el botón de elegir película
+- [ ] El chat funciona en la sala vacía, en los dos sentidos
+- [ ] El host elige película y el vídeo aparece para todos SIN recargar: nadie
+      vuelve a poner su nombre y el chat conserva los mensajes anteriores
+- [ ] Cambiar de película a mitad de otra, entre dos ficheros con audio y
+      subtítulos DISTINTOS: los dos selectores del reproductor listan lo nuevo
+- [ ] Tras el cambio no se ve ni un fotograma de la película anterior (es lo que
+      comprueba el epoch en la URL: sin él, la caché sirve los segmentos viejos)
+- [ ] Tras el cambio la reproducción arranca en 0:00 y en pausa
+- [ ] Aparece el mensaje de sistema «<host> puso «<título>»»
+- [ ] Cambiar mientras un invitado está en pantalla completa no lo saca de ella
+- [ ] Con la película puesta, el picker marca «en emisión» la actual y avisa
+      antes de cambiar
+- [ ] Copiar un fichero nuevo en la carpeta y darle a «Volver a escanear» dentro
+      del picker lo hace aparecer sin reiniciar el servidor
+- [ ] Una carpeta con muchos medios (>100): el picker abre solo una carpeta a la
+      vez, el buscador filtra y la sala sigue fluida mientras el modal está abierto
+- [ ] Dos series con una carpeta «Season 1» cada una salen como DOS secciones,
+      tanto en la cartelera como en el picker
 
 ## Cobertura de la película (lo que rompió la sesión del 29/07/2026)
 - [ ] `video.m3u8` lista segmentos hasta el final real: el último `#EXTINF` suma
