@@ -27,9 +27,11 @@ export function Library() {
     }
   }
 
-  const start = async (item: LibraryItem) => {
+  // Sin ítem: sala vacía. El enlace se copia igual, así que el host puede
+  // repartirlo y elegir película con la gente ya dentro.
+  const start = async (item?: LibraryItem) => {
     try {
-      const { token } = await createRoom(item.id)
+      const { token } = await createRoom(item?.id)
       const { tunnelUrl } = await getStatus()
       await navigator.clipboard.writeText(roomLink(tunnelUrl ?? location.origin, token)).catch(() => {})
       location.pathname = `/room/${token}`
@@ -151,13 +153,20 @@ export function Library() {
         <p>{folders.length === 0
           ? 'Aún no hay nada en cartel: falta configurar carpetas de medios.'
           : 'Las carpetas configuradas no contienen vídeos (MKV, MP4, AVI, M4V, WebM).'}</p>
+        <p>
+          <button type="button" className="btn-primary" onClick={() => void start()}>
+            🎬 Crear sala vacía
+          </button>
+        </p>
         <h2>{folders.length === 0 ? 'Añade tu primera carpeta de medios' : 'Carpetas de medios'}</h2>
         {foldersSection}
       </main>
     )
   }
 
-  const groups = [...new Set(items.map(i => i.folderName))]
+  // Por folderPath y no por folderName: dos series con una «Season 1» cada una
+  // se fusionarían en una sección con los episodios de ambas mezclados.
+  const groups = [...new Map(items.map(i => [i.folderPath, i.folderName])).entries()]
   return (
     <main className="page">
       <header className="masthead">
@@ -165,12 +174,18 @@ export function Library() {
         <h1>La cartelera</h1>
         <div className="marquee-rule" aria-hidden="true" />
       </header>
-      {groups.map(g => (
-        <section key={g} className="bill">
-          <h2>{g}</h2>
-          <ul className="film-list">{items.filter(i => i.folderName === g).map((i, idx) => (
+      <p className="hint">
+        <button type="button" className="btn-primary" onClick={() => void start()}>
+          🎬 Crear sala vacía
+        </button>
+        {' '}Reparte el enlace ahora y elige la película dentro de la sala.
+      </p>
+      {groups.map(([path, name]) => (
+        <section key={path} className="bill">
+          <h2>{name}</h2>
+          <ul className="film-list">{items.filter(i => i.folderPath === path).map((i, idx) => (
             <li key={i.id} style={{ animationDelay: `${Math.min(idx, 10) * 45}ms` }}>
-              <button type="button" className="film-btn" onClick={() => start(i)}>
+              <button type="button" className="film-btn" onClick={() => void start(i)}>
                 <span className="film-title">{i.title}</span>
                 <span className="film-go" aria-hidden="true">Crear sala →</span>
               </button>
