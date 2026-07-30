@@ -2,7 +2,7 @@ import Hls from 'hls.js'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, PlaybackState, RoomInfo } from '../types'
 import { bufferedAhead, computeCorrection, targetPosition } from '../sync/driftControl'
-import { clampPosition, formatClock, isTypingTarget, MAX_VOLUME, parseClock, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from './format'
+import { clampPosition, formatClock, isTypingTarget, MAX_VOLUME, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from './format'
 
 export interface LastState { state: PlaybackState; serverNow: number; receivedAt: number }
 
@@ -66,9 +66,6 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
   const hlsRef = useRef<Hls | null>(null)
   const [audioTracks, setAudioTracks] = useState<{ id: number; name: string }[]>([])
   const [sub, setSub] = useState<number>(-1)
-  // Salto manual por texto ("1:27:00"): lo usa cualquiera, igual que la barra.
-  const [jumpTo, setJumpTo] = useState('')
-  const [jumpError, setJumpError] = useState<string | null>(null)
   // Volumen y silencio son POR ESPECTADOR (no se sincronizan) y persisten.
   const [volume, setVolume] = useState(() => parseStoredVolume(localStorage.getItem(VOLUME_KEY)))
   const [muted, setMuted] = useState(() => localStorage.getItem(MUTED_KEY) === '1')
@@ -112,20 +109,6 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
   const infoRef = useRef(info)
   infoRef.current = info
   const togglePlay = () => sendRef.current({ t: pausedRef.current ? 'play' : 'pause' })
-
-  const jump = () => {
-    const position = parseClock(jumpTo)
-    if (position === null) { setJumpError('Usa 1:27:00, 87:00 o 5220'); return }
-    // El servidor recorta al rango igualmente, pero avisar aquí evita que un
-    // dedazo mande la sala al final de la película sin que nadie sepa por qué.
-    if (info.durationSec > 0 && position > info.durationSec) {
-      setJumpError(`La película dura ${formatClock(info.durationSec)}`)
-      return
-    }
-    setJumpError(null)
-    setJumpTo('')
-    sendRef.current({ t: 'seek', position })
-  }
 
   // `welcome` is the one message meaning "the server just learned about me
   // from scratch": a fresh join, or ws.ts's transparent reconnect after a
@@ -451,14 +434,6 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
           // llega un keyup a este input: mismo motivo que pointercancel.
           onBlur={() => { draggingRef.current = false; pointerDownRef.current = false; disarmDragWatchdog() }} />
         <span className="time-label" title={`Duración total ${formatClock(info.durationSec)}`}>−{formatClock(remaining)}</span>
-        <form className="jump-group" onSubmit={e => { e.preventDefault(); jump() }}>
-          <label className="jump-label" htmlFor="jump-to">Ir a</label>
-          <input id="jump-to" className="jump-input" value={jumpTo} placeholder="1:27:00"
-            aria-label="Saltar a un momento de la película"
-            aria-invalid={jumpError !== null}
-            onChange={e => { setJumpTo(e.target.value); setJumpError(null) }} />
-          <button type="submit" className="btn-jump" disabled={jumpTo.trim() === ''}>Saltar</button>
-        </form>
         {/* Con una sola pista el audio va muxeado en el propio segmento de vídeo
             y hls.js no anuncia ninguna: no hay nada entre lo que elegir. */}
         {mode === 'hls' && audioTracks.length > 1 && (
@@ -477,7 +452,6 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
           {fullscreen ? <ExitFullscreenIcon /> : <EnterFullscreenIcon />}
         </button>
       </div>
-      {jumpError && <p className="field-error" role="alert">{jumpError}</p>}
     </div>
   )
 }

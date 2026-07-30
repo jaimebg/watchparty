@@ -8,19 +8,6 @@ export function formatClock(sec: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`
 }
 
-// Inverso de formatClock, para el campo «Ir a»: lo usa cualquiera, no solo el
-// host. Acepta «5220», «87:00» y «1:27:00» (y cualquiera con espacios
-// alrededor). Devuelve null si no es ninguna de esas formas, en vez de un NaN
-// que acabaría viajando por el socket.
-// Cada grupo debe ser un entero sin signo: un «-2» colado en los minutos daría
-// un total plausible pero equivocado.
-export function parseClock(raw: string): number | null {
-  const parts = raw.trim().split(':')
-  if (parts.length > 3) return null
-  if (!parts.every(p => /^\d+$/.test(p))) return null
-  return parts.reduce((acc, p) => acc * 60 + Number(p), 0)
-}
-
 // Tope del slider de volumen: el 100% es el volumen nativo del <video> y de ahí
 // al 200% amplifica un GainNode de Web Audio.
 export const MAX_VOLUME = 2
