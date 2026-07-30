@@ -216,7 +216,8 @@ export interface Room {
 - `GET /api/rooms/:token` — público, sigue devolviendo `404` solo si la sala no
   existe. Forma nueva:
   ```ts
-  interface RoomMediaInfo { epoch: number; title: string; durationSec: number
+  interface RoomMediaInfo { epoch: number; itemId: string; title: string
+    durationSec: number
     audio: AudioTrack[]; subtitles: SubtitleOption[]; meta: RoomMeta | null }
   interface RoomInfo { media: RoomMediaInfo | null; error: string[] | null
     streamBase: string }
@@ -254,7 +255,17 @@ cambian.
 
 ### 5. WebSocket (`server/src/ws/messages.ts`, `server/src/ws/hub.ts`)
 
-- `ServerMsg` gana `{ t: 'media'; epoch: number }`.
+- `ServerMsg` gana `{ t: 'media'; epoch: number }`, y el `welcome` gana
+  `epoch: number | null` (`null` = sala sin película).
+  **Corregido durante la implementación:** el `{t:'media'}` solo llega a quien
+  tiene el socket abierto en ese instante, y hay dos momentos en que un cliente
+  no lo tiene: mientras está en la puerta del nombre —justo donde esta
+  funcionalidad lo pone a esperar mientras el host elige— y durante una
+  reconexión. Sin el epoch en el `welcome`, ese cliente se queda pegado a la
+  generación anterior para siempre: o viendo el cartel de espera de una sala que
+  ya tiene película, o pidiendo segmentos de la generación vieja y comiéndose
+  410 en silencio. El cliente compara el epoch del `welcome` con el que tiene y
+  refetchea si difieren.
 - `play` / `pause` / `seek`: **return temprano** si `media === null` — sin
   broadcast y sin mensaje de sistema. `seek` clampa con
   `room.media.info.durationSec` y usa `room.media.segments` /
@@ -370,9 +381,16 @@ vez**.
   dos copias de la misma película, y ya viaja en `LibraryItem` — no hace falta
   probar nada. Las pistas incrustadas no se conocen hasta el `probeFile`, así que
   no se prometen aquí.
-- **La película actual va marcada.** Elegirla otra vez está permitido y equivale
-  a rearrancar desde cero (epoch nuevo, directorio nuevo), pero conviene que el
-  host lo sepa antes de tocarla.
+- **La película actual va marcada**, y su carpeta arranca abierta. Elegirla otra
+  vez está permitido y equivale a rearrancar desde cero (epoch nuevo, directorio
+  nuevo), pero conviene que el host lo sepa antes de tocarla.
+  **Corregido durante la implementación:** se identifica por `itemId`, no por
+  título. El título que devuelve la API es el compuesto con los metadatos de
+  TMDB («La Gran Peli (2020)») y el de la biblioteca es el limpiado del nombre
+  del fichero («La Gran Peli»): con `tmdbApiKey` configurado —el caso normal en
+  este repo— no coinciden nunca, así que comparar por título dejaba muertas las
+  dos cosas. El `itemId` es un sha1 de la ruta, así que no filtra la ruta del
+  disco del host.
 - **Botón «Volver a escanear»** (`POST /api/library/rescan`, ya existe): es justo
   aquí donde hace falta cuando el host acaba de copiar un fichero nuevo con la
   sala ya abierta.
