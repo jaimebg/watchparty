@@ -3,6 +3,7 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, PlaybackState, RoomInfo } from '../types'
 import { bufferedAhead, computeCorrection, targetPosition } from '../sync/driftControl'
 import { clampPosition, formatClock, isTypingTarget, MAX_VOLUME, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from './format'
+import { streamUrl } from './streamUrl'
 
 export interface LastState { state: PlaybackState; serverNow: number; receivedAt: number }
 
@@ -143,17 +144,19 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
   useEffect(() => {
     const video = videoRef.current!
 
+    const master = streamUrl(info.streamBase, token, 'master.m3u8')
+
     let hls: Hls | null = null
     if (Hls.isSupported()) {
       hls = new Hls()
       hlsRef.current = hls
-      hls.loadSource(`/stream/${token}/master.m3u8`)
+      hls.loadSource(master)
       hls.attachMedia(video)
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () =>
         setAudioTracks(hls!.audioTracks.map((t, id) => ({ id, name: t.name }))))
       setMode('hls')
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = `/stream/${token}/master.m3u8`
+      video.src = master
       setMode('native')
     } else {
       setMode('unsupported')
@@ -163,7 +166,9 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
       if (hls) { hls.destroy(); hlsRef.current = null }
       else video.removeAttribute('src')
     }
-  }, [token])
+    // `info.streamBase` y no `info`: el objeto entero llega nuevo de cada fetch
+    // de la sala y remontaría hls.js sin motivo. La cadena es estable.
+  }, [token, info.streamBase])
 
   // Espacio = play/pausa global, salvo que el foco esté escribiendo (chat) o
   // sobre un control al que el espacio pertenece (botones, selects).
@@ -376,9 +381,16 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
 
   return (
     <div className="player">
-      <video ref={videoRef} playsInline onClick={onVideoClick} onDoubleClick={onVideoDoubleClick}>
+      {/* `crossOrigin` solo con el vídeo en otro origen: un <track> cross-origin
+          sin él lo descarta el navegador sin decir nada. Se deja fuera en el caso
+          de mismo origen para no cambiar en nada el camino de siempre — y
+          'anonymous' es lo que toca de todas formas, porque estas rutas no
+          miran cookies. */}
+      <video ref={videoRef} playsInline crossOrigin={info.streamBase ? 'anonymous' : undefined}
+        onClick={onVideoClick} onDoubleClick={onVideoDoubleClick}>
         {info.subtitles.map(s => (
-          <track key={s.id} kind="subtitles" label={s.label} srcLang={s.lang} src={`/stream/${token}/sub_${s.id}.vtt`} />
+          <track key={s.id} kind="subtitles" label={s.label} srcLang={s.lang}
+            src={streamUrl(info.streamBase, token, `sub_${s.id}.vtt`)} />
         ))}
       </video>
       <div className="controls">

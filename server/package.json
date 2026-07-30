@@ -4,6 +4,10 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "setup": "tsx src/setup/setup.ts",
+    "preflight": "tsx src/setup/preflight.ts",
+    "tunnel:up": "tsx src/setup/tunnel-cli.ts up",
+    "tunnel:down": "tsx src/setup/tunnel-cli.ts down",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

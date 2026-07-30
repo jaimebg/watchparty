@@ -67,6 +67,8 @@ Ejemplo completo (mismos campos en ambos archivos):
 - **`klipyApiKey`** (string, opcional): API key de Klipy para buscar y enviar GIFs en el chat. Si no está presente, el botón de GIFs se oculta.
 - **`tunnelToken`** (string, opcional): Token de un named tunnel de Cloudflare. Con él (junto a `tunnelUrl`), el servidor usa tu túnel con URL fija en vez del Quick Tunnel aleatorio. Ver [URL fija con tu dominio](#url-fija-con-tu-dominio-named-tunnel).
 - **`tunnelUrl`** (string, opcional): URL pública fija del túnel, p. ej. `https://watchparty.tudominio.com`. Obligatorio si usas `tunnelToken` (deben configurarse juntos).
+- **`streamBaseUrl`** (string, opcional): Origen desde el que los clientes piden el vídeo, p. ej. `https://stream.tudominio.com`. Sin él (por defecto), el vídeo sale por el mismo sitio que la app. Ver [Sacar el vídeo del CDN](#sacar-el-vídeo-del-cdn-plano-de-datos-aparte).
+- **`relayPeerPublicKey`**, **`relayEndpoint`**, **`relayPeerIp`**, **`relayLocalIp`** (strings, opcionales): Datos del VPS del relevo, para que `npm run setup` pueda montar el túnel en una máquina nueva sin que nadie recuerde nada. Van en `config.defaults.json` porque describen el VPS y no la máquina, y ninguno es secreto (una clave pública y un endpoint). `relayLocalIp` es fija a propósito: el `reverse_proxy` del VPS apunta a una sola dirección, así que solo sirve un host a la vez.
 - **`tmdbApiKey`** (string, opcional): API key de TMDB (themoviedb.org → Ajustes → API). Con ella, al crear una sala se buscan metadatos por el nombre del archivo: el título de la sala pasa a ser «Título (año)» y aparece un botón **ℹ️ Info** con carátula, nota y sinopsis en español. Los episodios (`S01E02` en el nombre) se buscan como series. Sin key, todo funciona igual pero con el nombre del archivo pelado.
 - **`port`** (número): Puerto HTTP del servidor (por defecto: 8400).
 - **`cacheLimitGB`** (número): Límite de caché HLS en GB (por defecto: 10). Se limpia automáticamente al cerrar salas.
@@ -77,11 +79,41 @@ Ejemplo completo (mismos campos en ambos archivos):
 npm start
 ```
 
-El servidor:
+`npm start` empieza por una **comprobación del entorno** que corre en macOS y en Windows:
+arregla solo lo que puede arreglarse solo (levantar el túnel del relevo si está
+configurado) y avisa del resto con la acción concreta al lado. Solo aborta si arrancar no
+tendría sentido: Node por debajo de 20, sin ffmpeg, o el puerto ya ocupado por otra
+instancia. Los avisos (biblioteca vacía, carpeta que ya no existe, túnel caído) no frenan
+nada, porque el panel y la red local siguen funcionando.
+
+```
+🎬 jbg-watchparty — comprobación del entorno
+
+✅ Node 22
+✅ ffmpeg y ffprobe empaquetados
+✅ Interfaz web compilada
+✅ 1 carpeta(s) de medios
+✅ Puerto 8400 libre
+✅ Relevo activo hacia https://stream.example.com
+
+▶️  Todo listo.
+```
+
+Puedes lanzarla suelta con `npm run preflight`. Después, el servidor:
 1. Escanea las carpetas de medios configuradas
 2. Lanza automáticamente un túnel HTTPS seguro (cloudflared Quick Tunnel)
 3. Abre tu navegador en `http://localhost:8400/?key=<token-admin>` — el `key` es un token generado al arrancar que autentica el panel del host (se guarda en una cookie tras la primera visita)
 4. Muestra la URL pública segura para compartir con los invitados
+
+**Todos los comandos:**
+
+| Comando | Para qué |
+|---|---|
+| `npm start` | Comprueba el entorno, compila la web y arranca el servidor |
+| `npm run setup` | Puesta a punto de una máquina nueva (genera el túnel del relevo) |
+| `npm run preflight` | Solo la comprobación del entorno, sin arrancar nada |
+| `npm run tunnel:up` / `tunnel:down` | Control manual del túnel del relevo |
+| `npm test` | Toda la batería de tests |
 
 ### Paso 4: Compartir el enlace
 
@@ -111,6 +143,94 @@ URL fija (p. ej. `https://watchparty.tudominio.com`) con un setup único:
 Al arrancar, el servidor lanza tu túnel con esa URL fija (la misma en cada reinicio). Si
 falta alguno de los dos campos, avisa por consola y vuelve al Quick Tunnel. La app usa su
 propio binario de cloudflared; no hace falta instalarlo ni correr ningún servicio del sistema.
+
+## Sacar el vídeo del CDN (plano de datos aparte)
+
+Los términos del CDN de Cloudflare para planes Free/Pro/Business se reservan el derecho de
+limitar el servicio a quien lo use «to serve video or a disproportionate percentage of
+pictures, audio files, or other large files», con exención solo si el contenido está alojado
+en un servicio de Cloudflare (Stream, Images, R2). El hostname público de un túnel es un
+CNAME a `<uuid>.cfargotunnel.com`, que **solo resuelve a través del proxy** — no se puede
+dejar en gris —, así que todo el vídeo pasa por el CDN por construcción. Una sesión de 6
+personas y 2 horas son unos 30 GB.
+
+`streamBaseUrl` separa los dos planos:
+
+| Plano | Qué lleva | Por dónde sale |
+|---|---|---|
+| Control | HTML, API, WebSocket (chat, sync, presencia) | Túnel de Cloudflare — uso previsto, tráfico despreciable |
+| Datos | `master.m3u8`, `init_*.mp4`, `seg_*.m4s`, `sub_*.vtt` | Tu relevo, sin pasar por el CDN |
+
+Basta con apuntar el `master.m3u8` al relevo: HLS resuelve los nombres relativos de la
+playlist contra la URL de esta, así que init y segmentos van detrás solos.
+
+### Montar el relevo en un VPS (ejemplo con Oracle Cloud)
+
+Oracle es buen encaje: 10 TB/mes de salida en Always Free, y su política de uso aceptable no
+tiene cláusula de tipo de contenido equivalente a la del CDN de Cloudflare.
+
+1. **Instancia y red.** Crea la VM y abre el 443 en la *Security List* del VCN (ingress
+   0.0.0.0/0 → TCP 443). **Ojo con el paso que todo el mundo se salta:** las imágenes de
+   Oracle traen `iptables` restrictivo persistido, así que abrir el VCN no basta:
+   ```bash
+   sudo iptables -I INPUT 5 -p tcp --dport 443 -j ACCEPT
+   sudo netfilter-persistent save     # Ubuntu; en Oracle Linux: firewall-cmd --add-port=443/tcp --permanent
+   ```
+2. **DNS.** Registro `A` de `stream.tudominio.com` a la IP pública del VPS, **en gris
+   (DNS-only)**. Es lo que mantiene el tráfico fuera del CDN; el DNS autoritativo gratuito no
+   tiene restricción de contenido porque no transporta bytes.
+3. **Túnel casa → VPS.** WireGuard entre las dos máquinas (el VPS como *endpoint* fijo). El
+   host de casa no necesita ni IP pública ni port forwarding, y funciona detrás de CGNAT.
+4. **TLS y proxy en el VPS.** Con Caddy, el `Caddyfile` entero es:
+   ```
+   stream.tudominio.com {
+       reverse_proxy 10.0.0.2:8400   # la IP WireGuard del host de casa
+   }
+   ```
+   Caddy saca y renueva el certificado de Let's Encrypt solo.
+5. **Config del host.** En `config.json`:
+   ```json
+   { "streamBaseUrl": "https://stream.tudominio.com" }
+   ```
+
+**Reclamación por inactividad:** Oracle puede reclamar instancias Always Free que durante 7
+días queden por debajo del percentil 95 del 20% de CPU **y** 20% de red (y 20% de memoria en
+shapes A1). Un relevo que se usa dos horas a la semana entra de lleno en ese perfil. Opciones:
+pasar la instancia a pago (céntimos al mes), mantenerla ocupada, o dar por hecho que tocará
+recrearla y dejar los pasos de arriba en un script. No afecta a instancias de pago.
+
+Sin `streamBaseUrl` todo sigue exactamente igual que antes (mismo origen), que es lo correcto
+en LAN.
+
+### Montar el extremo de casa en otra máquina (macOS o Windows)
+
+Con los campos `relay*` ya en `config.defaults.json`, una máquina nueva se pone a punto con
+un comando. Instala WireGuard primero — `brew install wireguard-tools` en macOS,
+[el instalador oficial](https://www.wireguard.com/install/) en Windows — y luego:
+
+```bash
+npm run setup
+```
+
+Genera el par de claves de esa máquina, escribe su `wg0.conf` donde toque según la
+plataforma, y te imprime el único comando que queda por lanzar en el VPS, con la clave
+pública ya sustituida. Es idempotente: si el túnel ya está configurado no regenera nada,
+porque hacerlo invalidaría la clave que el VPS tiene autorizada.
+
+A partir de ahí, `npm start` levanta el túnel solo. Detalles de cómo lo hace:
+
+- **Solo pide elevación si el túnel no está ya arriba** (contraseña de administrador en
+  macOS, UAC en Windows). Arrancar el servidor dos veces la misma tarde no vuelve a
+  preguntar.
+- **No lo baja al terminar.** Un túnel inactivo cuesta un paquete cada 25 s, y bajarlo
+  obligaría a una segunda autenticación por sesión. Para bajarlo: `npm run tunnel:down`.
+- **Comprueba que el otro extremo responde**, no solo que la interfaz existe: un VPS caído
+  deja una interfaz levantada que parece sana pero no sirve vídeo.
+
+La elevación se pide por el diálogo del sistema y **no** por una regla `NOPASSWD` en
+sudoers a propósito: en macOS el prefijo de Homebrew es escribible por el usuario, así que
+dar sudo sin contraseña a un binario que ese mismo usuario puede reemplazar sería una
+escalada a root para cualquier proceso que corra como él.
 
 ## Obtener API Key de Klipy (opcional)
 

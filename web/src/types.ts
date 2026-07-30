@@ -60,4 +60,6 @@ export interface RoomInfo {
   subtitles: SubtitleOption[]
   error: string[] | null
   meta: RoomMeta | null
+  // Origen del que pedir el vídeo; '' = mismo origen que la app.
+  streamBase: string
 }

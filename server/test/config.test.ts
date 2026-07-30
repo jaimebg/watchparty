@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { dataDir, loadConfig, saveConfig, cacheDir } from '../src/config.js'
 
-const FACTORY = { mediaFolders: [], klipyApiKey: null, tmdbApiKey: null, tunnelToken: null, tunnelUrl: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 }
+const FACTORY = {
+  mediaFolders: [], klipyApiKey: null, tmdbApiKey: null, tunnelToken: null, tunnelUrl: null,
+  streamBaseUrl: null,
+  relayPeerPublicKey: null, relayEndpoint: null, relayPeerIp: null, relayLocalIp: '10.77.0.2',
+  port: 8400, hostName: 'Host', cacheLimitGB: 10,
+}
 
 describe('config', () => {
   const noDefaults = process.env.JBG_DEFAULTS_FILE!

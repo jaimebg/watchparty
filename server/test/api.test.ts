@@ -170,6 +170,35 @@ describe('api', () => {
     const info = (await app.inject({ url: `/api/rooms/${token}` })).json()
     expect(info.audio).toHaveLength(2)
     expect(info.subtitles.length).toBeGreaterThanOrEqual(1)
+    // Sin streamBaseUrl configurado el cliente debe quedarse en el mismo origen.
+    expect(info.streamBase).toBe('')
+  })
+
+  it('anuncia el origen del relevo cuando hay streamBaseUrl', async () => {
+    const relayApp = await buildApp({
+      config: {
+        mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10,
+        streamBaseUrl: 'https://stream.example.com',
+      },
+      library: () => scanLibrary([mediaDir]), rooms, adminToken: ADMIN, tunnel: { url: null },
+    })
+    const info = (await relayApp.inject({ url: `/api/rooms/${token}` })).json()
+    expect(info.streamBase).toBe('https://stream.example.com')
+    await relayApp.close()
+  })
+
+  // Con el vídeo en otro origen, hls.js y los <track> lo piden cross-origin: sin
+  // estas cabeceras el navegador descarta la respuesta sin error visible.
+  it('permite CORS en el plano de datos, también en el preflight', async () => {
+    const seg = await app.inject({ url: `/stream/${token}/seg_0_00000.m4s` })
+    expect(seg.headers['access-control-allow-origin']).toBe('*')
+    const master = await app.inject({ url: `/stream/${token}/master.m3u8` })
+    expect(master.headers['access-control-allow-origin']).toBe('*')
+
+    const pre = await app.inject({ method: 'OPTIONS', url: `/stream/${token}/seg_0_00000.m4s` })
+    expect(pre.statusCode).toBe(204)
+    expect(pre.headers['access-control-allow-origin']).toBe('*')
+    expect(pre.headers['access-control-allow-methods']).toContain('GET')
   })
 
   it('rate-limits /retry to one call per room per 10s', async () => {

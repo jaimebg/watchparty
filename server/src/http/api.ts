@@ -79,6 +79,11 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
       title: displayTitle(room.meta, room.item.title), durationSec: room.info.durationSec,
       audio: room.info.audio, subtitles: room.subtitles, error: room.error,
       meta: room.meta,
+      // Viaja aquí y no en un endpoint propio porque el cliente ya espera esta
+      // respuesta antes de montar el reproductor: así no hay ni ida y vuelta
+      // extra ni una ventana en la que el <video> exista sin saber su origen.
+      // '' = mismo origen (ver streamBaseUrl en config.ts).
+      streamBase: deps.config.streamBaseUrl ?? '',
     }
   })
 
@@ -93,8 +98,27 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     return { ok: true }
   })
 
+  // Con el plano de datos en otro origen (streamBaseUrl), hls.js pide las
+  // playlists y los segmentos cross-origin y el <video> pide los VTT con
+  // `crossorigin`: sin estas cabeceras el navegador se los traga en silencio y
+  // la sala se queda en negro sin un error que mirar. `*` es la respuesta
+  // correcta y no una relajación: esta ruta nunca lee cookies —el token de sala
+  // ES el secreto, y va en el path— y `*` es precisamente lo que impide al
+  // navegador enviar credenciales.
+  const allowCors = (reply: FastifyReply) => reply.header('access-control-allow-origin', '*')
+
+  // Los GET de hls.js son peticiones simples y no disparan preflight, así que
+  // esto es red de seguridad: el día que algo pida un Range o una cabecera
+  // propia, un preflight sin responder es otra pantalla en negro muda.
+  app.options('/stream/:token/:file', async (_req, reply) => allowCors(reply)
+    .header('access-control-allow-methods', 'GET, HEAD, OPTIONS')
+    .header('access-control-allow-headers', 'range')
+    .header('access-control-max-age', '86400')
+    .code(204).send())
+
   app.get('/stream/:token/:file', async (req, reply) => {
     const { token, file } = req.params as { token: string; file: string }
+    allowCors(reply)
     const room = deps.rooms.get(token)
     if (!room) return reply.code(404).send()
     if (file === 'master.m3u8') return reply.type(M3U8).send(buildMasterPlaylist(room.info.audio))

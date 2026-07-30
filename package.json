@@ -4,7 +4,11 @@
   "type": "module",
   "workspaces": ["server", "web"],
   "scripts": {
-    "start": "npm run build -w web && npm run start -w server",
+    "setup": "npm run setup -w server",
+    "preflight": "npm run preflight -w server",
+    "start": "npm run build -w web && npm run preflight -w server && npm run start -w server",
+    "tunnel:up": "npm run tunnel:up -w server",
+    "tunnel:down": "npm run tunnel:down -w server",
     "test": "npm run test -w server && npm run test -w web"
   }
 }
