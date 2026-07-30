@@ -2,7 +2,7 @@ import Hls from 'hls.js'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, PlaybackState, RoomInfo } from '../types'
 import { bufferedAhead, computeCorrection, targetPosition } from '../sync/driftControl'
-import { clampPosition, formatClock, MAX_VOLUME, parseClock, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from './format'
+import { clampPosition, formatClock, isTypingTarget, MAX_VOLUME, parseClock, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from './format'
 
 export interface LastState { state: PlaybackState; serverNow: number; receivedAt: number }
 
@@ -15,6 +15,11 @@ const HARD_SEEK_MIN_INTERVAL_MS = 3000
 // hoy, pero no hay por qué asumir que es la única): sin actividad durante
 // este margen, el watchdog de más abajo suelta `drag` solo.
 const DRAG_WATCHDOG_MS = 2000
+// Ventana para distinguir un clic (play/pausa) de un doble clic (pantalla
+// completa). Sin ella, el doble clic mandaría dos play/pausa al servidor y
+// llenaría el chat de dos mensajes de sistema por cada entrada a pantalla
+// completa.
+const DOUBLE_CLICK_MS = 220
 
 const PlayIcon = () => (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
@@ -36,10 +41,22 @@ const MutedIcon = () => (
     <path d="M3 9v6h4l5 5V4L7 9H3zm13.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4-2.7-2.7z" />
   </svg>
 )
+const EnterFullscreenIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden>
+    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+  </svg>
+)
+const ExitFullscreenIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden>
+    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+  </svg>
+)
 
-export function Player({ token, info, send, lastState, welcomeCount }: {
+export function Player({ token, info, send, lastState, welcomeCount, fullscreen, onToggleFullscreen }: {
   token: string; info: RoomInfo; send: (m: ClientMsg) => void; lastState: LastState | null
   welcomeCount: number
+  fullscreen: boolean
+  onToggleFullscreen: () => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -83,6 +100,9 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
   pausedRef.current = paused
   const sendRef = useRef(send)
   sendRef.current = send
+  const toggleFsRef = useRef(onToggleFullscreen)
+  toggleFsRef.current = onToggleFullscreen
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastHardSeekRef = useRef(0)
   const bufferingRef = useRef(false)
   const infoRef = useRef(info)
@@ -171,6 +191,33 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // F = pantalla completa, salvo que se esté escribiendo. Aquí no vale
+  // `spaceBelongsTo`: cuenta BUTTON como propietario de la tecla, y la F sí
+  // debe funcionar con un botón enfocado.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'f' && e.key !== 'F') return
+      const t = e.target as HTMLElement | null
+      if (isTypingTarget(t?.tagName, (t as HTMLInputElement | null)?.type, t?.isContentEditable)) return
+      e.preventDefault()
+      toggleFsRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => () => { if (clickTimerRef.current !== null) clearTimeout(clickTimerRef.current) }, [])
+
+  const onVideoClick = () => {
+    if (clickTimerRef.current !== null) return
+    clickTimerRef.current = setTimeout(() => { clickTimerRef.current = null; togglePlay() }, DOUBLE_CLICK_MS)
+  }
+
+  const onVideoDoubleClick = () => {
+    if (clickTimerRef.current !== null) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null }
+    toggleFsRef.current()
+  }
 
   // Un estado nuevo del servidor (seek, play/pausa, congelar/reanudar) desbloquea
   // una corrección inmediata: el límite de abajo solo debe frenar al bucle de
@@ -337,7 +384,7 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
 
   return (
     <div className="player">
-      <video ref={videoRef} playsInline onClick={togglePlay}>
+      <video ref={videoRef} playsInline onClick={onVideoClick} onDoubleClick={onVideoDoubleClick}>
         {info.subtitles.map(s => (
           <track key={s.id} kind="subtitles" label={s.label} srcLang={s.lang} src={`/stream/${token}/sub_${s.id}.vtt`} />
         ))}
@@ -414,6 +461,12 @@ export function Player({ token, info, send, lastState, welcomeCount }: {
           <option value={-1}>Sin subtítulos</option>
           {info.subtitles.map((s, i) => <option key={s.id} value={i}>{s.label}</option>)}
         </select>
+        <button type="button" className="btn-fullscreen"
+          aria-label={fullscreen ? 'Salir de pantalla completa (F)' : 'Pantalla completa (F)'}
+          title={fullscreen ? 'Salir de pantalla completa (F)' : 'Pantalla completa (F)'}
+          onClick={onToggleFullscreen}>
+          {fullscreen ? <ExitFullscreenIcon /> : <EnterFullscreenIcon />}
+        </button>
       </div>
       {jumpError && <p className="field-error" role="alert">{jumpError}</p>}
     </div>

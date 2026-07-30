@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { getRoom, getStatus } from '../api'
 import { connectRoom } from '../ws'
 import { Player, type LastState } from '../player/Player'
+import { useFullscreen } from '../player/useFullscreen'
 import { ChatPanel } from '../chat/ChatPanel'
 import { ReactionsBar } from '../chat/ReactionsBar'
 import { ReactionOverlay } from '../chat/ReactionOverlay'
@@ -66,6 +67,8 @@ export function Room({ token }: { token: string }) {
   const [chat, dispatchChat] = useReducer(roomChatReducer, initialChat)
   const [showMeta, setShowMeta] = useState(false)
   const sendRef = useRef<(m: ClientMsg) => void>(() => {})
+  const gridRef = useRef<HTMLDivElement>(null)
+  const { active: fullscreen, cinema, toggle: toggleFullscreen } = useFullscreen(gridRef)
 
   const shareUrl = tunnelUrl ? roomLink(tunnelUrl, token) : null
 
@@ -232,9 +235,10 @@ export function Room({ token }: { token: string }) {
         </p>
       )}
       {showMeta && info.meta && <MetaModal meta={info.meta} onClose={() => setShowMeta(false)} />}
-      <div className="room-grid">
+      <div ref={gridRef} className={`room-grid${fullscreen ? ' room-grid--fs' : ''}${cinema ? ' room-grid--cinema' : ''}`}>
         <div className="video-stage">
-          <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount} />
+          <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount}
+            fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} />
           <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />
           <ReactionsBar send={m => sendRef.current(m)} />
         </div>
