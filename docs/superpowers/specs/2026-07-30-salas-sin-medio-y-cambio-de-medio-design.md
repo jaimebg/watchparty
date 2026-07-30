@@ -42,6 +42,19 @@ Desacoplar la sala de la película:
 - Las URLs de segmentos e inits **no dependen del fichero**: `init_0.mp4` y
   `seg_0_00000.m4s` se llaman igual en cualquier película
   (`server/src/media/planner.ts:65-75`, `server/src/media/transcoder.ts:98-100`).
+- El plano de datos puede vivir en **otro origen**: `streamBaseUrl` saca el vídeo
+  por un relevo propio (Caddy con `reverse_proxy` sobre WireGuard,
+  `README.md:184-187`) mientras HTML, API y WebSocket siguen por el túnel
+  (`server/src/config.ts`, commit `0044371`). `GET /api/rooms/:token` ya devuelve
+  ese origen como `streamBase` (`server/src/http/api.ts:79-83`), y `/stream`
+  responde `access-control-allow-origin: *` **antes de cualquier otra
+  comprobación**, incluido el 404 de sala inexistente (`api.ts:98-121`): un error
+  cross-origin sin esas cabeceras se lo traga el navegador en silencio.
+- `web/src/player/streamUrl.ts` ya compone las URLs del plano de datos
+  (`streamUrl(base, token, file)`), y el efecto de hls.js ya depende de
+  primitivas y no del objeto `info`, precisamente porque ese objeto llega nuevo
+  de cada fetch de la sala y remontaría el reproductor sin motivo
+  (`web/src/player/Player.tsx:169-171`).
 - `requestInit` espera hasta 30 s a que aparezca un init
   (`transcoder.ts:126-154`); una petición de una generación ya muerta se
   quedaría colgada todo ese plazo.
@@ -65,11 +78,15 @@ Desacoplar la sala de la película:
   grupo entero.
 - **Un contador `epoch` por sala, incremental, empezando en 1.** Versiona las
   URLs de `/stream` y sirve de `key` para remontar el `<Player>`.
-- **Las URLs de `/stream` llevan `?e=<epoch>`.** No es cosmético: sin versionar,
-  la caché HTTP del navegador serviría los bytes de `init_0.mp4` y
-  `seg_0_00000.m4s` de la película anterior. El epoch va en las URIs que genera
-  el servidor dentro de las playlists, así que hls.js lo propaga solo al
-  resolverlas relativas a la playlist.
+- **El epoch va en el path: `/stream/<token>/e<n>/<file>`.** No es cosmético: sin
+  versionar, la caché del navegador —y la del relevo— servirían los bytes de
+  `init_0.mp4` y `seg_0_00000.m4s` de la película anterior, porque esos nombres
+  son idénticos en cualquier película. En el path y no en una query (`?e=`) por
+  dos razones: **`planner.ts` no se toca en absoluto**, porque hls.js resuelve
+  los nombres relativos de una playlist contra la URL de esa playlist y todos
+  caen dentro de `e<n>/` solos —el mismo truco que ya hace funcionar el relevo—;
+  y así el versionado no depende de que un proxy que no se configura desde este
+  repo reenvíe la query ni de cómo calcule su clave de caché.
 - **Un subdirectorio de caché por epoch** (`<cacheDir>/<token>/e<n>/`) en vez de
   reutilizar el mismo directorio. Evita una carrera real: un cliente
   descargando `seg_0_00042.m4s` de la película anterior mientras el ffmpeg nuevo
@@ -100,10 +117,10 @@ Desacoplar la sala de la película:
   ffmpeg compitiendo por la CPU.
 - **Un cambio a la vez, con 409.** El host es una sola persona; un sistema de
   cerrojos encadenados no se paga.
-- **`?e=` obsoleto → 410 Gone, no 404.** Durante la transición la instancia
-  vieja de hls.js aún pide URLs de la generación anterior. Sin esta
-  comprobación, `requestInit` las dejaría colgadas 30 s esperando un fichero de
-  un directorio ya borrado.
+- **Epoch obsoleto → 410 Gone, no 404.** Durante la transición la instancia vieja
+  de hls.js aún pide URLs de la generación anterior. Sin esta comprobación
+  explícita, `requestInit` las dejaría colgadas 30 s esperando un fichero de un
+  directorio ya borrado.
 - **La autenticación de `retry` no se toca.** Es un agujero preexistente
   (cualquier invitado puede reintentar); arreglarlo aquí sería ampliar el
   alcance por la puerta de atrás. Queda anotado.
@@ -201,29 +218,39 @@ export interface Room {
   ```ts
   interface RoomMediaInfo { epoch: number; title: string; durationSec: number
     audio: AudioTrack[]; subtitles: SubtitleOption[]; meta: RoomMeta | null }
-  interface RoomInfo { media: RoomMediaInfo | null; error: string[] | null }
+  interface RoomInfo { media: RoomMediaInfo | null; error: string[] | null
+    streamBase: string }
   ```
   Con `media: null`, `error` es siempre `null` (el error solo lo produce ffmpeg,
-  que solo existe con película).
-- `GET /stream/:token/:file` — `404` en todo si `media === null`. El resto igual,
-  leyendo de `room.media`: `info.audio`, `segments`, `session`, y `sub_N.vtt`
-  desde `media.dir`. Comprobación de epoch nueva, una sola vez al principio del
-  handler y por tanto válida para **todos** los ficheros (playlists, inits,
-  segmentos y subtítulos): `?e=` ausente → se sirve el epoch actual; presente y
-  distinto de `media.epoch` → `410`.
+  que solo existe con película). `streamBase` **se queda al nivel superior**, no
+  dentro de `media`: describe dónde vive el servidor, no la película, y el
+  cliente lo necesita igual en una sala vacía.
+- `GET /stream/:token/:epoch/:file` — la ruta gana un segmento, y el
+  `app.options` de CORS (`api.ts:112-117`) gana el mismo. `404` en todo si
+  `media === null`. El resto igual, leyendo de `room.media`: `info.audio`,
+  `segments`, `session`, y `sub_N.vtt` desde `media.dir`. Comprobación de epoch
+  nueva, una sola vez al principio del handler y por tanto válida para **todos**
+  los ficheros (playlists, inits, segmentos y subtítulos):
+  - `:epoch` que no encaje con `/^e(\d+)$/` → `404`: nunca fue una URL nuestra.
+  - encaja pero su número no es `media.epoch` → `410`: existió y ya no.
+
+  Va **después** de `allowCors(reply)`. Un 410 cross-origin sin cabeceras CORS es
+  un fallo mudo, que es justo lo que ese `allowCors` de la primera línea existe
+  para evitar. La ruta vieja de dos segmentos desaparece: el cliente siempre
+  construye la versionada.
 - `POST /api/rooms/:token/retry` — `409` si `media === null` o si `busy`.
   Autenticación sin cambios.
 - `GET /api/status` — `rooms: [{ token, title }]` con `title: 'Sin película'`
   cuando `media === null`.
 
-### 4. Playlists (`server/src/media/planner.ts`)
+### 4. Playlists (`server/src/media/planner.ts`): sin cambios
 
-- `buildMasterPlaylist(audio, epoch)` — las URIs `video.m3u8` y
-  `audio_N.m3u8` pasan a llevar `?e=<epoch>`.
-- `buildMediaPlaylist(segments, variant, epoch)` — `#EXT-X-MAP:URI` y cada
-  `seg_V_NNNNN.m4s` llevan `?e=<epoch>`.
-- Fastify no incluye la query en `:file`, así que las expresiones regulares de
-  `/stream` (`api.ts:110-141`) siguen funcionando sin cambios.
+Las URIs que emite siguen siendo relativas (`video.m3u8`, `audio_N.m3u8`,
+`#EXT-X-MAP:URI="init_0.mp4"`, `seg_V_NNNNN.m4s`) y el navegador las resuelve
+contra la URL de la playlist que las contiene, que ya cuelga de `…/e<n>/`. Con el
+epoch en el path el versionado se propaga sin que `planner.ts` sepa que existe.
+Las expresiones regulares de `:file` en `/stream` (`api.ts:110-141`) tampoco
+cambian.
 
 ### 5. WebSocket (`server/src/ws/messages.ts`, `server/src/ws/hub.ts`)
 
@@ -262,15 +289,18 @@ podido borrar quedan fuera de la poda: se los lleva `close()`.
 
 #### `web/src/types.ts`
 Espejo manual de `RoomInfo` / `RoomMediaInfo` y del `ServerMsg` nuevo, como se
-viene haciendo (no hay dependencia cruzada entre workspaces).
+viene haciendo (no hay dependencia cruzada entre workspaces). `streamBase`
+sobrevive donde está, al nivel superior de `RoomInfo`.
 
 #### `web/src/api.ts`
 - `createRoom(itemId?: string)` — omite `itemId` del cuerpo si no llega.
 - `setRoomMedia(token, itemId, by?)` — `POST /api/rooms/:token/media`.
 
-#### `web/src/player/streamUrl.ts` (nuevo, puro)
-`streamUrl(token, epoch, file)` → `/stream/<token>/<file>?e=<epoch>`. Módulo
-suelto y testeable, en línea con `format.ts` y `roomToken.ts`.
+#### `web/src/player/streamUrl.ts` (ya existe, se extiende)
+`streamUrl(base, token, file)` pasa a `streamUrl(base, token, epoch, file)` y
+compone `<base>/stream/<token>/e<epoch>/<file>`. El recorte de barras finales y
+el trato de `null`/`undefined` como mismo origen se quedan intactos: sus tests
+los cubren y siguen siendo correctos.
 
 #### `web/src/pages/Library.tsx`
 `start(item?)`: sin ítem crea sala vacía. Botón «🎬 Crear sala vacía» en la
@@ -287,7 +317,7 @@ carpetas). Los botones por ítem se quedan como están.
 - `{t:'media'}` → refetch de `getRoom(token)` y `setWsError(null)`. **También
   para el host que lo provocó**: el `POST` no actualiza estado por su cuenta, así
   que hay un único camino de refresco en vez de dos que puedan divergir.
-- `<Player key={info.media.epoch} media={info.media} …>`.
+- `<Player key={info.media.epoch} media={info.media} streamBase={info.streamBase} …>`.
 - La puerta del nombre usa `info?.media?.title ?? 'la función'`; el botón de
   Info y el `MetaModal` se guardan con `info.media?.meta`.
 - En la pantalla de error de ffmpeg, si `isHost`, aparece «Cambiar película»
@@ -303,13 +333,16 @@ emojis. Muestra el error del servidor en el propio modal (404/400/409/500) sin
 cerrarse, para poder elegir otra cosa.
 
 #### `web/src/player/Player.tsx`
-- Prop `info: RoomInfo` pasa a `media: RoomMediaInfo`.
-- Las dos URLs que construye el propio componente van por `streamUrl`:
-  `master.m3u8` y los `<track src>` de `sub_N.vtt`. Las internas de las
-  playlists ya vienen versionadas del servidor.
-- Las dependencias del efecto de hls.js pasan a `[token, epoch]`. El remonte por
-  `key` ya lo garantiza, pero dejar `epoch` fuera de la lista sería una
-  dependencia mentida.
+- Prop `info: RoomInfo` pasa a `media: RoomMediaInfo` más `streamBase: string`
+  aparte, porque `streamBase` no vive dentro de `media`.
+- Las dos URLs que construye el propio componente ya van por `streamUrl`
+  (`master.m3u8` y los `<track src>` de `sub_N.vtt`): solo se les añade el epoch.
+  Las internas de las playlists las resuelve el navegador relativas al master.
+- Las dependencias del efecto de hls.js pasan a `[token, streamBase, epoch]`,
+  todas primitivas. Es la regla que el fichero ya sigue y documenta: el objeto de
+  la sala llega nuevo de cada fetch y remontaría hls.js sin motivo. El remonte por
+  `key={epoch}` sí es intencionado y debe ocurrir.
+- `crossOrigin` sigue gobernado por `streamBase`, sin cambios.
 
 ## Tests
 
@@ -337,9 +370,9 @@ componentes.
     inexistente → 404.
   - Cambio correcto → 200 `{epoch: 2}`, y `GET` refleja la duración, las pistas
     de audio y los subtítulos **de la película nueva**.
-  - `/stream/:token/*` → 404 en todas sus formas con `media === null`.
-  - `?e=` de una generación anterior → 410; sin `?e=` → se sirve.
-  - Las playlists que devuelve `/stream` llevan `?e=` en sus URIs.
+  - `/stream/:token/e1/*` → 404 en todas sus formas con `media === null`.
+  - Un `e<n>` de una generación anterior → 410, **con las cabeceras CORS
+    puestas**; un `:epoch` con forma inválida (`3`, `x1`) → 404.
   - `/api/status` muestra «Sin película» para la sala vacía.
 - **`server/test/hub.test.ts`**
   - `play` y `seek` en sala sin película no difunden nada ni escriben en el chat.
@@ -348,9 +381,10 @@ componentes.
     pausa, y el mensaje de sistema con el título.
   - Un participante marcado como «cargando» antes del cambio no deja la sala
     nueva congelada tras el primer `play`.
-- **`server/test/planner.test.ts`** — master y media playlist llevan `?e=` en
-  todas sus URIs, incluido `#EXT-X-MAP`.
-- **`web/test/streamUrl.test.ts`** (nuevo) — construcción de la URL versionada.
+- **`web/test/streamUrl.test.ts`** (ya existe, se amplía) — el epoch aparece en el
+  path, y un nombre relativo resuelto contra el master versionado cae dentro de
+  `e<n>/`: es la prueba de que `planner.ts` puede seguir sin saber que el epoch
+  existe. `planner.test.ts` no cambia.
 - **`docs/e2e-checklist.md`** — sección manual nueva: crear sala vacía y copiar
   el enlace antes de elegir; el invitado entra y ve el cartel de espera y puede
   chatear; el host elige y el vídeo aparece para todos sin recargar; cambiar de
