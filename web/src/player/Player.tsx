@@ -18,8 +18,12 @@ const DRAG_WATCHDOG_MS = 2000
 // Ventana para distinguir un clic (play/pausa) de un doble clic (pantalla
 // completa). Sin ella, el doble clic mandaría dos play/pausa al servidor y
 // llenaría el chat de dos mensajes de sistema por cada entrada a pantalla
-// completa.
-const DOUBLE_CLICK_MS = 220
+// completa. 400ms porque el doble clic real del sistema operativo ronda ahí
+// (algo más lento que corta), no los ~220ms de una pulsación de botón: un
+// valor menor deja pasar dobles clics lentos como un solo clic + doble clic.
+// A cambio, el clic sobre el vídeo tarda esos 400ms en pausar; el botón y la
+// barra espaciadora, en cambio, siguen siendo instantáneos.
+const DOUBLE_CLICK_MS = 400
 
 const PlayIcon = () => (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
@@ -198,6 +202,11 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'f' && e.key !== 'F') return
+      // `key` sigue siendo 'f' aunque haya un modificador pulsado: sin esta
+      // guarda, Ctrl+F/Cmd+F (buscar del navegador) entraría en pantalla
+      // completa y se tragaría el preventDefault, dejando el buscador
+      // inservible mientras se está en la sala.
+      if (e.ctrlKey || e.metaKey || e.altKey) return
       const t = e.target as HTMLElement | null
       if (isTypingTarget(t?.tagName, (t as HTMLInputElement | null)?.type, t?.isContentEditable)) return
       e.preventDefault()
