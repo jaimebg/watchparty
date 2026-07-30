@@ -3,6 +3,8 @@ import { getRoom, getStatus } from '../api'
 import { connectRoom } from '../ws'
 import { Player, type LastState } from '../player/Player'
 import { useFullscreen } from '../player/useFullscreen'
+import { useIdleChrome } from '../player/useIdleChrome'
+import { isTypingTarget } from '../player/format'
 import { ChatPanel } from '../chat/ChatPanel'
 import { ReactionsBar } from '../chat/ReactionsBar'
 import { ReactionOverlay } from '../chat/ReactionOverlay'
@@ -69,6 +71,34 @@ export function Room({ token }: { token: string }) {
   const sendRef = useRef<(m: ClientMsg) => void>(() => {})
   const gridRef = useRef<HTMLDivElement>(null)
   const { active: fullscreen, cinema, toggle: toggleFullscreen } = useFullscreen(gridRef)
+
+  // El temporizador consulta esto al vencer: con la sala en pausa o con alguien
+  // escribiendo, el chrome no se va.
+  const pausedRef = useRef(true)
+  pausedRef.current = lastState?.state.paused ?? true
+  const { awake: chromeAwake, wake: wakeChrome } = useIdleChrome({
+    enabled: fullscreen,
+    container: gridRef,
+    isBlocked: () => {
+      if (pausedRef.current) return true
+      const el = document.activeElement as HTMLElement | null
+      return isTypingTarget(el?.tagName, (el as HTMLInputElement | null)?.type, el?.isContentEditable)
+    },
+  })
+
+  // Un mensaje nuevo despierta el chrome sin necesidad de tocar el ratón. Los
+  // de sistema («X pausó») no cuentan: son ruido, no conversación. La primera
+  // pasada se ignora para que el historial que llega en el `welcome` no cuente
+  // como mensaje nuevo.
+  const lastEntryRef = useRef<string | null>(null)
+  useEffect(() => {
+    const last = chat.entries.at(-1)
+    const previous = lastEntryRef.current
+    lastEntryRef.current = last?.id ?? null
+    if (!last || previous === null || last.id === previous) return
+    if (last.kind === 'system') return
+    wakeChrome()
+  }, [chat.entries, wakeChrome])
 
   const shareUrl = tunnelUrl ? roomLink(tunnelUrl, token) : null
 
@@ -235,7 +265,7 @@ export function Room({ token }: { token: string }) {
         </p>
       )}
       {showMeta && info.meta && <MetaModal meta={info.meta} onClose={() => setShowMeta(false)} />}
-      <div ref={gridRef} className={`room-grid${fullscreen ? ' room-grid--fs' : ''}${cinema ? ' room-grid--cinema' : ''}`}>
+      <div ref={gridRef} className={`room-grid${fullscreen ? ' room-grid--fs' : ''}${cinema ? ' room-grid--cinema' : ''}${fullscreen && !chromeAwake ? ' is-idle' : ''}`}>
         <div className="video-stage">
           <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount}
             fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} />
