@@ -124,7 +124,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
           }
           case 'reaction': {
             if (typeof msg.emoji !== 'string') return
-            broadcast(room, { t: 'reaction', emoji: msg.emoji.slice(0, 8), from: me.name })
+            broadcast(room, { t: 'reaction', emoji: msg.emoji.slice(0, 8), fromId: me.id })
             break
           }
           case 'buffering': {

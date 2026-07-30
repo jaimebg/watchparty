@@ -81,7 +81,10 @@ describe('hub', () => {
 
     a.ws.send(JSON.stringify({ t: 'reaction', emoji: '🔥' }))
     const rB = await b.recv()
-    expect(rB).toMatchObject({ t: 'reaction', emoji: '🔥', from: 'Ana' })
+    expect(rB).toMatchObject({ t: 'reaction', emoji: '🔥' })
+    expect(typeof rB.fromId).toBe('string')
+    expect(rB.fromId).toBe(wA.self.id)
+    expect(rB).not.toHaveProperty('from')
     a.ws.close(); b.ws.close()
   })
 

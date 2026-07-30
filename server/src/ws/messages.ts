@@ -17,6 +17,6 @@ export type ServerMsg =
   | { t: 'state'; state: PlaybackState; serverNow: number }
   | { t: 'presence'; participants: Participant[] }
   | { t: 'chat'; entry: ChatEntry }
-  | { t: 'reaction'; emoji: string; from: string }
+  | { t: 'reaction'; emoji: string; fromId: string }
   | { t: 'buffering'; name: string; value: boolean }
   | { t: 'error'; log: string[] }
