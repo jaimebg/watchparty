@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { chatReducer, initialChat, dropReaction, resetReactionIds, type ChatState } from '../src/chat/chatStore'
+import { chatReducer, initialChat, dropFlash, dropReaction, resetReactionIds, type ChatState } from '../src/chat/chatStore'
 
 const p = { id: 'u1', name: 'Ana', color: '#f00', active: true }
 const entry = (text: string) => ({ id: text, from: p, kind: 'text' as const, text, at: 1 })
@@ -36,5 +36,39 @@ describe('chatReducer', () => {
     s = chatReducer(s, { t: 'reaction', emoji: '❤️', from: 'Ana' } as any)
     expect(s.reactions.map(r => r.id)).toEqual([1, 2])
     expect(dropReaction(s, 1).reactions.map(r => r.id)).toEqual([2])
+  })
+
+  it('la reacción deja un destello indexado por participante', () => {
+    const s = chatReducer(initialChat, { t: 'reaction', emoji: '🔥', fromId: 'u1' } as any)
+    expect(s.flashes).toEqual({ u1: { id: 1, emoji: '🔥' } })
+    // Overlay y destello comparten el mismo id.
+    expect(s.reactions).toEqual([{ id: 1, emoji: '🔥' }])
+  })
+
+  it('un destello nuevo del mismo participante reemplaza al anterior', () => {
+    let s = chatReducer(initialChat, { t: 'reaction', emoji: '🔥', fromId: 'u1' } as any)
+    s = chatReducer(s, { t: 'reaction', emoji: '😂', fromId: 'u1' } as any)
+    expect(s.flashes).toEqual({ u1: { id: 2, emoji: '😂' } })
+  })
+
+  it('dropFlash con un id caducado no borra el destello nuevo', () => {
+    let s = chatReducer(initialChat, { t: 'reaction', emoji: '🔥', fromId: 'u1' } as any)
+    s = chatReducer(s, { t: 'reaction', emoji: '😂', fromId: 'u1' } as any)
+    // Llega tarde el animationend del primer destello.
+    expect(dropFlash(s, 'u1', 1).flashes).toEqual({ u1: { id: 2, emoji: '😂' } })
+    expect(dropFlash(s, 'u1', 2).flashes).toEqual({})
+  })
+
+  it('welcome limpia los destellos', () => {
+    let s = chatReducer(initialChat, { t: 'reaction', emoji: '🔥', fromId: 'u1' } as any)
+    s = chatReducer(s, { t: 'welcome', self: p, participants: [p], state: { paused: true, positionBase: 0, updatedAt: 0 }, serverNow: 0, history: [] } as any)
+    expect(s.flashes).toEqual({})
+  })
+
+  it('presence poda el destello de quien ya no está y conserva el de quien sí', () => {
+    let s = chatReducer(initialChat, { t: 'reaction', emoji: '🔥', fromId: 'u1' } as any)
+    s = chatReducer(s, { t: 'reaction', emoji: '😂', fromId: 'u2' } as any)
+    s = chatReducer(s, { t: 'presence', participants: [p] } as any)
+    expect(s.flashes).toEqual({ u1: { id: 1, emoji: '🔥' } })
   })
 })
