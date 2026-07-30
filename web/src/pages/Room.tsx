@@ -5,7 +5,7 @@ import { Player, type LastState } from '../player/Player'
 import { ChatPanel } from '../chat/ChatPanel'
 import { ReactionsBar } from '../chat/ReactionsBar'
 import { ReactionOverlay } from '../chat/ReactionOverlay'
-import { chatReducer, dropReaction, initialChat, type ChatState } from '../chat/chatStore'
+import { chatReducer, dropFlash, dropReaction, initialChat, type ChatState } from '../chat/chatStore'
 import { MetaModal } from '../MetaModal'
 import { roomLink } from './roomToken'
 import type { ClientMsg, RoomInfo, ServerMsg } from '../types'
@@ -33,10 +33,15 @@ const CheckIcon = () => (
 // Superset of ServerMsg with a UI-only action to retire a reaction once its
 // float-up animation finishes. Keeps chatReducer's exported signature (tested
 // directly in chatStore.test.ts) limited to ServerMsg, as the brief requires.
-type RoomChatAction = ServerMsg | { t: 'drop-reaction'; id: number }
+type RoomChatAction =
+  | ServerMsg
+  | { t: 'drop-reaction'; id: number }
+  | { t: 'drop-flash'; pid: string; id: number }
 
 function roomChatReducer(s: ChatState, a: RoomChatAction): ChatState {
-  return a.t === 'drop-reaction' ? dropReaction(s, a.id) : chatReducer(s, a)
+  if (a.t === 'drop-reaction') return dropReaction(s, a.id)
+  if (a.t === 'drop-flash') return dropFlash(s, a.pid, a.id)
+  return chatReducer(s, a)
 }
 
 export function Room({ token }: { token: string }) {
@@ -233,7 +238,8 @@ export function Room({ token }: { token: string }) {
           <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />
           <ReactionsBar send={m => sendRef.current(m)} />
         </div>
-        <ChatPanel token={token} state={chat} send={m => sendRef.current(m)} />
+        <ChatPanel token={token} state={chat} send={m => sendRef.current(m)}
+          onFlashEnd={(pid, id) => dispatchChat({ t: 'drop-flash', pid, id })} />
       </div>
     </main>
   )

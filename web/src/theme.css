@@ -950,6 +950,20 @@ details summary:hover { color: var(--marquee); }
   flex-shrink: 0;
 }
 
+.reaction-flash {
+  font-size: 0.85rem;
+  line-height: 1;
+  animation: flash-pop 2.5s var(--ease-out) forwards;
+}
+
+@keyframes flash-pop {
+  0% { opacity: 0; transform: scale(0.4); }
+  12% { opacity: 1; transform: scale(1.25); }
+  22% { transform: scale(1); }
+  75% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
 .chat-entries {
   flex: 1;
   min-height: 240px;
@@ -1099,7 +1113,8 @@ details summary:hover { color: var(--marquee); }
 
   /* Las reacciones conservan su duración (la lógica de retirada depende de
      animationend) pero se desvanecen en el sitio en vez de volar. */
-  .reaction-overlay span { animation-name: fade-hold; }
+  .reaction-overlay span,
+  .reaction-flash { animation-name: fade-hold; }
 
   .film-title,
   .film-go,

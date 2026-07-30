@@ -5,11 +5,12 @@ import type { ChatState } from './chatStore'
 import type { ClientMsg } from '../types'
 
 export function ChatPanel({
-  token, state, send,
+  token, state, send, onFlashEnd,
 }: {
   token: string
   state: ChatState
   send: (m: ClientMsg) => void
+  onFlashEnd: (pid: string, id: number) => void
 }) {
   const [text, setText] = useState('')
   const [gifOpen, setGifOpen] = useState(false)
@@ -51,12 +52,24 @@ export function ChatPanel({
   return (
     <aside className="chat-panel">
       <ul className="participants">
-        {state.participants.map(p => (
-          <li key={p.id} className={p.active ? undefined : 'away'} title={p.active ? undefined : 'ausente'}>
-            <span className="dot" style={{ background: p.color }} />
-            {p.name}
-          </li>
-        ))}
+        {state.participants.map(p => {
+          const flash = state.flashes[p.id]
+          return (
+            <li key={p.id} className={p.active ? undefined : 'away'} title={p.active ? undefined : 'ausente'}>
+              <span className="dot" style={{ background: p.color }} />
+              {p.name}
+              {/* La key es el id del destello, no el del participante: así una
+                  reacción nueva remonta el span y la animación arranca de cero
+                  en vez de quedarse a medias. */}
+              {flash && (
+                <span key={flash.id} className="reaction-flash" aria-hidden
+                  onAnimationEnd={() => onFlashEnd(p.id, flash.id)}>
+                  {flash.emoji}
+                </span>
+              )}
+            </li>
+          )
+        })}
       </ul>
 
       <div className="chat-entries" ref={entriesRef}>
