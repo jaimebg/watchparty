@@ -169,8 +169,12 @@ Sin API key, el chat funciona perfectamente; solo no está disponible el botón 
 - Mensajes bidireccionales en tiempo real
 
 ### Reacciones
-- Barra de emojis rápidos (😂 ❤️ 😱 🔥 👏 😭)
+- Barra de emojis rápidos, personalizable por espectador
+- El botón «+» abre un selector con el catálogo completo en español y buscador
+- La selección se guarda en el navegador (hasta 12 emojis)
 - Los emojis flotan subiendo sobre el vídeo en ambas pantallas (estilo Instagram Live)
+- El emoji aparece además, pequeño y durante unos segundos, junto al nombre de
+  quien lo mandó en la lista de participantes
 - No aparecen en el historial del chat
 
 ### GIFs
@@ -180,6 +184,14 @@ Sin API key, el chat funciona perfectamente; solo no está disponible el botón 
 
 ### Mensajes de sistema
 - Notificaciones cuando alguien se une, sale, pausa, reanuda o cambia de vídeo
+
+## Pantalla completa
+- Botón en los controles, doble clic sobre el vídeo o tecla `F`
+- El chat y las reacciones flotan abajo a la derecha sobre el vídeo
+- Todo se oculta tras unos segundos sin actividad y vuelve al mover el ratón o
+  al llegar un mensaje
+- En iPhone, donde el navegador no permite pantalla completa con overlays, se
+  usa un «modo cine» que ocupa la ventana
 
 ## Desarrollo
 
@@ -221,6 +233,16 @@ cd web && npx tsc --noEmit
 ```
 
 En web/: verifica tipos TypeScript del cliente.
+
+### Regenerar el catálogo de emojis
+
+```bash
+node web/scripts/gen-emoji-catalog.mjs
+```
+
+Reescribe `web/src/chat/emojiCatalog.ts` desde emojibase-data en español.
+Solo hace falta cuando Unicode saca emojis nuevos. Necesita red, y por eso
+queda fuera del build y de los tests.
 
 ### Build de producción
 

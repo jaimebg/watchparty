@@ -48,3 +48,34 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 - [ ] Archivo corrupto → la sala muestra error con log y botón reintentar
 - [ ] Matar cloudflared a mano → se relanza y loguea nueva URL
 - [ ] Cerrar sala (DELETE) → caché de la sala borrada
+
+## Reacciones y emojis
+- [ ] Al pulsar un emoji, aparece pequeño junto al nombre de quien lo pulsó, en
+      TODAS las pestañas, y desaparece a los ~2,5 s
+- [ ] Pulsar dos emojis seguidos reinicia el destello con el segundo
+- [ ] Dos invitados con el MISMO nombre: el destello cae en el chip correcto
+- [ ] El botón «+» abre el modal; el catálogo carga y se ve la rejilla
+- [ ] Buscar «palomitas» encuentra 🍿; buscar «corazon» sin tilde encuentra corazones
+- [ ] Añadir un emoji lo pone al final de la barra y lo deshabilita en la rejilla
+- [ ] La ✕ de un chip lo quita de la barra
+- [ ] Al llegar a 12 sale el aviso y la rejilla se deshabilita entera
+- [ ] Recargar la página conserva la selección; otro navegador tiene la suya
+
+## Pantalla completa
+- [ ] El botón de los controles entra y sale de pantalla completa
+- [ ] La tecla F entra y sale; escribir una «f» en el chat NO la dispara
+- [ ] Doble clic en el vídeo entra y sale SIN dejar dos mensajes de sistema
+- [ ] Escape sale de pantalla completa
+- [ ] El vídeo llena la pantalla sin recortes; los controles quedan superpuestos
+      abajo en una sola fila
+- [ ] El chat flota abajo a la derecha, encajado con la barra de reacciones
+- [ ] Se puede escribir y hacer scroll en el chat flotante; el buscador de GIFs
+      y el modal de emojis se abren y se ven
+- [ ] Tras ~3 s sin tocar nada, controles/chat/reacciones se ocultan y el cursor
+      desaparece; los emojis volando siguen viéndose
+- [ ] Un mensaje de otra pestaña despierta el chrome SIN tocar el ratón
+- [ ] Con el foco en el input del chat, el chrome no se oculta nunca
+- [ ] Con la sala en pausa, el chrome no se oculta
+- [ ] Escribir algo a medias, entrar y salir de pantalla completa: el texto SIGUE ahí
+- [ ] En iPhone el botón activa el «modo cine» (ocupa la ventana, con la barra
+      de Safari a la vista) y el chat flotante se ve
