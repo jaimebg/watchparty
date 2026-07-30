@@ -99,7 +99,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
           if (typeof msg.name !== 'string') return
           me = { id: randomBytes(6).toString('hex'), name: msg.name.slice(0, 30) || 'Anónimo', color: COLORS[peers.size % COLORS.length], active: true }
           peers.set(socket, me)
-          send(socket, { t: 'welcome', self: me, participants: [...peers.values()], state: room.state, serverNow: now, history: room.chat })
+          send(socket, { t: 'welcome', self: me, participants: [...peers.values()], state: room.state, serverNow: now, history: room.chat, epoch: room.media?.epoch ?? null })
           broadcast(room, { t: 'presence', participants: [...peers.values()] })
           system(room, `${me.name} se unió`)
           return

@@ -21,9 +21,15 @@ export function groupByFolder(items: LibraryItem[]): Folder[] {
   return [...byPath.values()]
 }
 
-export function MediaPicker({ token, currentTitle, by, onClose }: {
+// `currentItemId` y no el título: el que enseña la sala sale de displayTitle
+// («La Gran Peli (2020)») y el de la biblioteca de cleanName del nombre de
+// fichero («La Gran Peli»), así que con TMDB resolviendo —el caso normal— nunca
+// son iguales. Comparar por texto pintado ata este modal a cómo se compone un
+// título en el servidor y se rompe cada vez que alguien lo toca; el id es un
+// identificador estable que ya viaja en la respuesta de la sala.
+export function MediaPicker({ token, currentItemId, by, onClose }: {
   token: string
-  currentTitle: string | null
+  currentItemId: string | null
   by: string
   onClose: () => void
 }) {
@@ -64,9 +70,9 @@ export function MediaPicker({ token, currentTitle, by, onClose }: {
   useEffect(() => {
     if (autoOpenedRef.current || folders.length === 0) return
     autoOpenedRef.current = true
-    const current = currentTitle ? folders.find(f => f.items.some(i => i.title === currentTitle)) : null
+    const current = currentItemId ? folders.find(f => f.items.some(i => i.id === currentItemId)) : null
     setOpen((current ?? folders[0]).path)
-  }, [folders, currentTitle])
+  }, [folders, currentItemId])
 
   const searching = query.trim() !== ''
   const results = useMemo(() => {
@@ -96,7 +102,7 @@ export function MediaPicker({ token, currentTitle, by, onClose }: {
 
   // Cambiar interrumpe a todo el mundo, así que se confirma. Poner la primera
   // película en una sala vacía no interrumpe nada: va directa.
-  const pick = (item: LibraryItem) => { if (currentTitle) setPending(item); else void apply(item) }
+  const pick = (item: LibraryItem) => { if (currentItemId) setPending(item); else void apply(item) }
 
   const rescan = () => {
     setBusy(true)
@@ -112,7 +118,7 @@ export function MediaPicker({ token, currentTitle, by, onClose }: {
       <button type="button" className="media-btn" disabled={busy} onClick={() => pick(i)}>
         <span className="media-title">
           {i.title}
-          {i.title === currentTitle && <span className="media-current"> · en emisión</span>}
+          {i.id === currentItemId && <span className="media-current"> · en emisión</span>}
         </span>
         <span className="hint">
           {withFolder && <>{i.folderName} · </>}
@@ -131,7 +137,7 @@ export function MediaPicker({ token, currentTitle, by, onClose }: {
           que funciona a medias. Se cierra con el fondo y con la ✕. */}
       <div className="modal media-modal" onClick={e => e.stopPropagation()}>
         <button className="modal-close" aria-label="Cerrar" onClick={onClose}>✕</button>
-        <h2>{currentTitle ? 'Cambiar película' : 'Elegir película'}</h2>
+        <h2>{currentItemId ? 'Cambiar película' : 'Elegir película'}</h2>
 
         <input className="emoji-search" value={query} onChange={e => setQuery(e.target.value)}
           placeholder="Buscar por título…" aria-label="Buscar película" />

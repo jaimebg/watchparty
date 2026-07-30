@@ -169,6 +169,9 @@ describe('api', () => {
     expect(token.length).toBeGreaterThan(15)
     const info = (await app.inject({ url: `/api/rooms/${token}` })).json()
     expect(info.media.epoch).toBe(1)
+    // El selector de película identifica la que está en emisión por este id: el
+    // título de la sala pasa por displayTitle y no coincide con el del ítem.
+    expect(info.media.itemId).toBe(items[0].id)
     expect(info.media.audio).toHaveLength(2)
     expect(info.media.subtitles.length).toBeGreaterThanOrEqual(1)
     expect(info.error).toBeNull()
@@ -441,7 +444,11 @@ describe('api', () => {
     expect(stale.headers['access-control-allow-origin']).toBe('*')
 
     expect((await app.inject({ url: `/stream/${token}/e2/master.m3u8` })).statusCode).toBe(200)
-    for (const bad of ['1', 'x2', 'e', 'ee2']) {
+    // 'e01' y 'e02' son las generaciones escritas con un cero delante: `Number`
+    // las aceptaría (`Number('02') === 2`, y 'e02' llegaría a servir los bytes de
+    // la actual), y cada variante es una clave de caché distinta para los mismos
+    // bytes en el relevo de vídeo.
+    for (const bad of ['1', 'x2', 'e', 'ee2', 'e01', 'e02']) {
       expect((await app.inject({ url: `/stream/${token}/${bad}/master.m3u8` })).statusCode).toBe(404)
     }
 

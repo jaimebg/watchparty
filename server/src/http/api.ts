@@ -17,7 +17,11 @@ const RETRY_COOLDOWN_MS = 10_000
 // depende de que ese proxy reenvíe la query ni de cómo calcule su clave de
 // caché. Y de paso planner.ts no necesita saber que el epoch existe: sus URIs
 // son relativas y el navegador las resuelve dentro de e<n>/.
-const EPOCH_RE = /^e(\d+)$/
+// Sin ceros a la izquierda: `Number('007') === 7`, así que e7, e007 y e0000007
+// servirían los mismos bytes bajo infinitas URLs distintas, y cada una es una
+// clave de caché propia en el relevo de vídeo. Quien tenga el enlace de la sala
+// podría llenarle el disco al VPS con copias del mismo segmento.
+const EPOCH_RE = /^e([1-9]\d*)$/
 
 export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   const requireAdmin = makeRequireAdmin(deps.adminToken)
@@ -125,6 +129,12 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     return {
       media: {
         epoch: media.epoch,
+        // El identificador del ítem de biblioteca, para que el selector sepa
+        // cuál está en emisión sin comparar títulos: `title` de aquí abajo pasa
+        // por displayTitle (año, nombre de TMDB, etiqueta de episodio) y deja de
+        // parecerse al título del ítem en cuanto TMDB resuelve. Es un sha1 de la
+        // ruta, así que no filtra dónde vive el fichero.
+        itemId: media.item.id,
         title: displayTitle(media.meta, media.item.title),
         durationSec: media.info.durationSec,
         audio: media.info.audio,

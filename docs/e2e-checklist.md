@@ -50,6 +50,13 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 - [ ] El chat funciona en la sala vacía, en los dos sentidos
 - [ ] El host elige película y el vídeo aparece para todos SIN recargar: nadie
       vuelve a poner su nombre y el chat conserva los mensajes anteriores
+- [ ] El invitado abre el enlace y se queda en la puerta del nombre (todavía sin
+      socket); el host elige película ANTES de que entre: al poner su nombre ve
+      el vídeo, no el cartel de espera
+- [ ] Con un invitado dentro, tumbar su conexión unos segundos (modo avión o
+      matar el túnel), cambiar de película durante la caída y dejarlo reconectar:
+      al volver carga la película NUEVA, no se queda en negro con el reloj
+      corriendo ni le sale «Sala no encontrada»
 - [ ] Cambiar de película a mitad de otra, entre dos ficheros con audio y
       subtítulos DISTINTOS: los dos selectores del reproductor listan lo nuevo
 - [ ] Tras el cambio no se ve ni un fotograma de la película anterior (es lo que

@@ -38,7 +38,10 @@ export type ClientMsg =
   | { t: 'visibility'; active: boolean }
 
 export type ServerMsg =
-  | { t: 'welcome'; self: Participant; participants: Participant[]; state: PlaybackState; serverNow: number; history: ChatEntry[] }
+  // `epoch` (null = sala sin película) es la generación viva en el servidor: el
+  // cliente la compara con la suya al recibir el `welcome` porque {t:'media'}
+  // solo lo vio quien tenía el socket abierto en ese instante.
+  | { t: 'welcome'; self: Participant; participants: Participant[]; state: PlaybackState; serverNow: number; history: ChatEntry[]; epoch: number | null }
   | { t: 'state'; state: PlaybackState; serverNow: number }
   | { t: 'presence'; participants: Participant[] }
   | { t: 'chat'; entry: ChatEntry }
@@ -64,6 +67,10 @@ export interface RoomMeta {
 export interface RoomMediaInfo {
   /** Generación de película de la sala: versiona las URLs y remonta el player. */
   epoch: number
+  /** Id del ítem de biblioteca en emisión: identifica la película sin depender
+   *  de cómo se pinte su título (`title` pasa por displayTitle y no coincide con
+   *  el `title` de LibraryItem en cuanto TMDB resuelve). */
+  itemId: string
   title: string
   durationSec: number
   audio: AudioTrack[]

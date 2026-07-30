@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { getRoom, getStatus } from '../api'
-import { connectRoom } from '../ws'
+import { connectRoom, nextDelay } from '../ws'
 import { Player, type LastState } from '../player/Player'
 import { useFullscreen } from '../player/useFullscreen'
 import { useIdleChrome } from '../player/useIdleChrome'
@@ -126,11 +126,46 @@ export function Room({ token }: { token: string }) {
     return () => clearTimeout(id)
   }, [copied])
 
+  // El reintento se llama a sí mismo, y `reloadInfo` no puede depender de su
+  // propia identidad: cambiarla reengancharía el efecto del socket (reconectar
+  // tira chat y presencia). El ref rompe ese ciclo.
+  const reloadRef = useRef<() => Promise<void>>(async () => {})
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryAttemptRef = useRef(0)
+
+  // `getRoom` lanza igual con un 404 que con un 502 del túnel o un corte de red,
+  // y esto ya no corre solo al montar: corre en mitad de la sesión con cada
+  // cambio de película. Solo el 404 significa «esta sala ya no existe»; dar la
+  // sala por perdida ante un error pasajero pintaría «Sala no encontrada» y, de
+  // paso, cerraría el socket por la guarda del efecto de abajo, dejando al
+  // invitado sin chat, sin presencia y sin nada que reintentar. Lo transitorio
+  // no toca el `info` que ya se esté enseñando y se reintenta solo, con el mismo
+  // backoff que usa la reconexión del socket.
   const reloadInfo = useCallback(async () => {
-    try { setInfo(await getRoom(token)) } catch { setNotFound(true) }
+    try {
+      setInfo(await getRoom(token))
+      if (retryRef.current !== null) { clearTimeout(retryRef.current); retryRef.current = null }
+      retryAttemptRef.current = 0
+    } catch (e) {
+      if (e instanceof Error && e.message.includes('404')) { setNotFound(true); return }
+      // Un solo reintento en vuelo: varios {t:'media'} seguidos con la red caída
+      // no deben encadenar temporizadores.
+      if (retryRef.current !== null) return
+      retryRef.current = setTimeout(() => {
+        retryRef.current = null
+        void reloadRef.current()
+      }, nextDelay(retryAttemptRef.current++))
+    }
   }, [token])
+  reloadRef.current = reloadInfo
 
   useEffect(() => { void reloadInfo() }, [reloadInfo])
+  useEffect(() => () => { if (retryRef.current !== null) clearTimeout(retryRef.current) }, [])
+
+  // Espejo de `info` para el callback del socket: si entrara en las
+  // dependencias del efecto, cada refresco reconectaría el socket.
+  const infoRef = useRef<RoomInfo | null>(null)
+  infoRef.current = info
 
   useEffect(() => {
     if (!name || notFound) return
@@ -139,7 +174,27 @@ export function Room({ token }: { token: string }) {
       if (m.t === 'welcome' || m.t === 'state') {
         setLastState({ state: m.state, serverNow: m.serverNow, receivedAt: Date.now() })
       }
-      if (m.t === 'welcome') setWelcomeCount(c => c + 1)
+      if (m.t === 'welcome') {
+        setWelcomeCount(c => c + 1)
+        // {t:'media'} solo lo recibe quien tuviera el socket abierto en el
+        // instante del cambio: el invitado que seguía en la puerta del nombre no
+        // lo ve nunca, y el que estaba reconectando tampoco. Sin esto se quedan
+        // con la generación anterior para siempre: cartel de «el host está
+        // eligiendo» en una sala que ya tiene película, o un reproductor pidiendo
+        // URLs que ahora responden 410, en negro y sin ruido. El `welcome` trae
+        // la generación viva, así que se compara y se refresca si no casan.
+        // Con `info` aún sin llegar no se compara: la petición REST del montaje
+        // va en vuelo (o reintentándose) y traerá esa misma generación, y pedirla
+        // aquí sería una petición de más en cada arranque normal.
+        const known = infoRef.current
+        if (known && m.epoch !== (known.media?.epoch ?? null)) {
+          // Mismo tratamiento que el {t:'media'} que este cliente se perdió,
+          // incluido el `wsError`: el fallo de ffmpeg que pudiera arrastrar era
+          // de la generación anterior.
+          setWsError(null)
+          void reloadInfo()
+        }
+      }
       if (m.t === 'error') setWsError(m.log)
       if (m.t === 'media') {
         // Un solo camino de refresco, también para el host que lo provocó: el
@@ -258,7 +313,7 @@ export function Room({ token }: { token: string }) {
         <button className="btn-primary" onClick={retry}>Reintentar</button>
         {isHost && <button className="btn-head" onClick={() => setShowPicker(true)}>🎬 Cambiar película</button>}
         {showPicker && (
-          <MediaPicker token={token} currentTitle={info.media?.title ?? null}
+          <MediaPicker token={token} currentItemId={info.media?.itemId ?? null}
             by={name} onClose={() => setShowPicker(false)} />
         )}
       </main>
@@ -306,7 +361,7 @@ export function Room({ token }: { token: string }) {
       )}
       {showMeta && info.media?.meta && <MetaModal meta={info.media.meta} onClose={() => setShowMeta(false)} />}
       {showPicker && (
-        <MediaPicker token={token} currentTitle={info.media?.title ?? null}
+        <MediaPicker token={token} currentItemId={info.media?.itemId ?? null}
           by={name} onClose={() => setShowPicker(false)} />
       )}
       <div ref={gridRef} className={`room-grid${fullscreen ? ' room-grid--fs' : ''}${cinema ? ' room-grid--cinema' : ''}${fullscreen && !chromeAwake ? ' is-idle' : ''}`}>

@@ -13,7 +13,12 @@ export type ClientMsg =
   | { t: 'visibility'; active: boolean }
 
 export type ServerMsg =
-  | { t: 'welcome'; self: Participant; participants: Participant[]; state: PlaybackState; serverNow: number; history: ChatEntry[] }
+  // `epoch` (null = sala sin película) va aquí porque {t:'media'} solo llega a
+  // quien tenía el socket abierto en el instante del cambio: el invitado que
+  // aún no había puesto su nombre, o el que estaba reconectando, se quedarían
+  // pegados a la generación anterior para siempre. Con la generación viva en el
+  // `welcome`, el cliente compara y se pone al día por su cuenta.
+  | { t: 'welcome'; self: Participant; participants: Participant[]; state: PlaybackState; serverNow: number; history: ChatEntry[]; epoch: number | null }
   | { t: 'state'; state: PlaybackState; serverNow: number }
   | { t: 'presence'; participants: Participant[] }
   | { t: 'chat'; entry: ChatEntry }

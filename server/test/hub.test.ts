@@ -349,6 +349,37 @@ describe('hub', () => {
     expect(state.state.paused).toBe(false)
     expect(state.state.stalled).toBe(false)
 
+    // Con el set sin limpiar salen TRES mensajes tras el play: `state`
+    // (stalled:false), el de sistema, y un tercer `state` con stalled:true que
+    // dispara el refresh() del play al reevaluar la marca que sobrevivió. Leer
+    // solo los dos de arriba dejaría verde el borrado del re-attach, así que se
+    // asevera que no hay tercero y que la sala sigue descongelada.
+    const extra = await Promise.race([a.recv(), new Promise<null>(r => setTimeout(() => r(null), 300))])
+    expect(extra).toBeNull()
+    expect(room.state.stalled).toBe(false)
+
     a.ws.close()
+  })
+
+  // Un cliente que no tenía el socket abierto durante el cambio no vio su
+  // {t:'media'}: el epoch del `welcome` es su única forma de descubrir que la
+  // película que tiene ya no es la de la sala.
+  it('el welcome trae la generación viva de la sala', async () => {
+    const room = await rooms.create()
+    const a = await connect('Uma', room.token)
+    const vacia = await a.recv()
+    expect(vacia.t).toBe('welcome')
+    expect(vacia.epoch).toBeNull()
+    await a.recv(); await a.recv() // presence propio + system "se unió"
+
+    await rooms.setMedia(room.token, items[0], 'Jaime')
+    await a.recv(); await a.recv(); await a.recv() // media, state, system
+
+    const b = await connect('Val', room.token)
+    const conPeli = await b.recv()
+    expect(conPeli.t).toBe('welcome')
+    expect(conPeli.epoch).toBe(1)
+
+    a.ws.close(); b.ws.close()
   })
 })
