@@ -1362,3 +1362,68 @@ details summary:hover { color: var(--marquee); }
   70% { opacity: 1; }
   100% { opacity: 0; transform: none; }
 }
+
+/* El modal del picker: alto acotado y scroll interno, porque la biblioteca
+   puede tener cientos de títulos. */
+.media-modal {
+  width: min(560px, 92vw);
+  max-height: min(80vh, 640px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  overflow-y: auto;
+}
+.media-folders { display: flex; flex-direction: column; gap: 0.35rem; }
+.media-folder {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  text-align: left;
+}
+.media-folder-path {
+  margin: 0.1rem 0 0.3rem;
+  font-size: 0.7rem;
+  word-break: break-all;
+}
+.media-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+.media-btn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  text-align: left;
+}
+.media-title { font-weight: 600; }
+.media-current { font-weight: 400; opacity: 0.75; }
+
+/* Confirmación en dos pasos, dentro del modal: un window.confirm nativo puede
+   sacar al host de pantalla completa. */
+.media-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.7rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.media-confirm p { margin: 0; }
+
+/* Cartel de la sala sin película, en el hueco del vídeo. Borde con la misma
+   variable que usa `.modal` (`--line-soft`): el proyecto no usa currentColor
+   ni glassmorphism decorativo (nada de backdrop-filter). */
+.stage-waiting {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 40vh;
+  padding: 2rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--line-soft);
+  border-radius: 10px;
+}
+.stage-waiting h2 { margin: 0; }

@@ -10,6 +10,7 @@ import { ReactionsBar } from '../chat/ReactionsBar'
 import { ReactionOverlay } from '../chat/ReactionOverlay'
 import { chatReducer, dropFlash, dropReaction, initialChat, type ChatState } from '../chat/chatStore'
 import { MetaModal } from '../MetaModal'
+import { MediaPicker } from '../MediaPicker'
 import { roomLink } from './roomToken'
 import type { ClientMsg, RoomInfo, ServerMsg } from '../types'
 
@@ -72,6 +73,7 @@ export function Room({ token }: { token: string }) {
   const [wsError, setWsError] = useState<string[] | null>(null)
   const [chat, dispatchChat] = useReducer(roomChatReducer, initialChat)
   const [showMeta, setShowMeta] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
   const sendRef = useRef<(m: ClientMsg) => void>(() => {})
   const gridRef = useRef<HTMLDivElement>(null)
   const { active: fullscreen, cinema, toggle: toggleFullscreen, exit: exitFullscreen } = useFullscreen(gridRef)
@@ -254,6 +256,11 @@ export function Room({ token }: { token: string }) {
         <h1>Error al preparar la sala</h1>
         <pre className="error-log">{errorLog.join('\n')}</pre>
         <button className="btn-primary" onClick={retry}>Reintentar</button>
+        {isHost && <button className="btn-head" onClick={() => setShowPicker(true)}>🎬 Cambiar película</button>}
+        {showPicker && (
+          <MediaPicker token={token} currentTitle={info.media?.title ?? null}
+            by={name} onClose={() => setShowPicker(false)} />
+        )}
       </main>
     )
   }
@@ -282,6 +289,12 @@ export function Room({ token }: { token: string }) {
               <InfoIcon /> Info
             </button>
           )}
+          {isHost && (
+            <button type="button" className="btn-head" onClick={() => setShowPicker(true)}
+              title={info.media ? 'Cambiar la película de la sala' : 'Elegir la película de la sala'}>
+              🎬 {info.media ? 'Cambiar película' : 'Elegir película'}
+            </button>
+          )}
         </div>
       </div>
       {copied === 'fail' && shareUrl && (
@@ -292,6 +305,10 @@ export function Room({ token }: { token: string }) {
         </p>
       )}
       {showMeta && info.media?.meta && <MetaModal meta={info.media.meta} onClose={() => setShowMeta(false)} />}
+      {showPicker && (
+        <MediaPicker token={token} currentTitle={info.media?.title ?? null}
+          by={name} onClose={() => setShowPicker(false)} />
+      )}
       <div ref={gridRef} className={`room-grid${fullscreen ? ' room-grid--fs' : ''}${cinema ? ' room-grid--cinema' : ''}${fullscreen && !chromeAwake ? ' is-idle' : ''}`}>
         <div className="video-stage">
           {info.media ? (
