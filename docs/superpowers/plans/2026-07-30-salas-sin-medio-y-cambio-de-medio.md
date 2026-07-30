@@ -1370,7 +1370,10 @@ git commit -m "feat: el hub difunde el cambio de película y la sala vacía deja
 - Consumes: la forma de `GET /api/rooms/:token` y las rutas `/stream/:token/e<n>/:file` (Tarea 4); `{t:'media', epoch}` (Tarea 5).
 - Produces:
   ```ts
-  // web/src/types.ts
+  // web/src/types.ts — el espejo de LibraryItem gana el folderPath que la
+  // Tarea 1 añadió en el servidor y que consumen las Tareas 8 y 9.
+  export interface LibraryItem { id: string; path: string; title: string
+    folderName: string; folderPath: string; srtFiles: string[] }
   export interface RoomMediaInfo { epoch: number; title: string; durationSec: number
     audio: AudioTrack[]; subtitles: SubtitleOption[]; meta: RoomMeta | null }
   export interface RoomInfo { media: RoomMediaInfo | null; error: string[] | null; streamBase: string }
@@ -1494,7 +1497,22 @@ Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Actualizar los tipos**
 
-En `web/src/types.ts`, sustituye la interfaz `RoomInfo` (líneas 56-63) por:
+En `web/src/types.ts`, **primero** añade `folderPath` al espejo de `LibraryItem`
+(línea 4). Lo añadió la Tarea 1 en el servidor y las Tareas 8 y 9 lo consumen
+desde el cliente; sin esto, `tsc` falla en el picker y en la cartelera:
+
+```ts
+export interface LibraryItem {
+  id: string; path: string; title: string
+  folderName: string
+  /** Ruta absoluta de la carpeta: identifica el grupo, porque dos series pueden
+   *  tener una «Season 1» cada una y el basename las fusionaría. */
+  folderPath: string
+  srtFiles: string[]
+}
+```
+
+Después sustituye la interfaz `RoomInfo` (líneas 56-63) por:
 
 ```ts
 export interface RoomMediaInfo {
