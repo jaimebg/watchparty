@@ -188,8 +188,9 @@ Sin API key, el chat funciona perfectamente; solo no está disponible el botón 
 ## Pantalla completa
 - Botón en los controles, doble clic sobre el vídeo o tecla `F`
 - El chat y las reacciones flotan abajo a la derecha sobre el vídeo
-- Todo se oculta tras unos segundos sin actividad y vuelve al mover el ratón o
-  al llegar un mensaje
+- Todo se oculta tras unos segundos sin actividad y vuelve al mover el ratón,
+  pulsar una tecla o llegar un mensaje nuevo; con el chat enfocado o la sala
+  en pausa, no llega a ocultarse
 - En iPhone, donde el navegador no permite pantalla completa con overlays, se
   usa un «modo cine» que ocupa la ventana
 

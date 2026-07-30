@@ -55,6 +55,8 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 - [ ] Pulsar dos emojis seguidos reinicia el destello con el segundo
 - [ ] Dos invitados con el MISMO nombre: el destello cae en el chip correcto
 - [ ] El botón «+» abre el modal; el catálogo carga y se ve la rejilla
+- [ ] El modal tiene 9 pestañas de categoría; cambiar de pestaña cambia la
+      rejilla de emojis que se muestra
 - [ ] Buscar «palomitas» encuentra 🍿; buscar «corazon» sin tilde encuentra corazones
 - [ ] Añadir un emoji lo pone al final de la barra y lo deshabilita en la rejilla
 - [ ] La ✕ de un chip lo quita de la barra
@@ -64,7 +66,11 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 ## Pantalla completa
 - [ ] El botón de los controles entra y sale de pantalla completa
 - [ ] La tecla F entra y sale; escribir una «f» en el chat NO la dispara
+- [ ] Ctrl+F (Windows) o Cmd+F (Mac) abre el buscador del navegador; NO entra
+      ni sale de pantalla completa
 - [ ] Doble clic en el vídeo entra y sale SIN dejar dos mensajes de sistema
+- [ ] Tras el doble clic, la película sigue en el mismo estado de play/pausa
+      que tenía justo antes (el doble clic no lo cambia)
 - [ ] Escape sale de pantalla completa
 - [ ] El vídeo llena la pantalla sin recortes; los controles quedan superpuestos
       abajo en una sola fila
@@ -73,6 +79,10 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
       y el modal de emojis se abren y se ven
 - [ ] Tras ~3 s sin tocar nada, controles/chat/reacciones se ocultan y el cursor
       desaparece; los emojis volando siguen viéndose
+- [ ] Tras ocultarse, mover el ratón hace que controles, chat y reacciones
+      vuelvan a aparecer
+- [ ] Tras ocultarse, pulsar cualquier tecla también hace que vuelvan a
+      aparecer
 - [ ] Un mensaje de otra pestaña despierta el chrome SIN tocar el ratón
 - [ ] Con el foco en el input del chat, el chrome no se oculta nunca
 - [ ] Con la sala en pausa, el chrome no se oculta
