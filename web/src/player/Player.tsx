@@ -66,6 +66,11 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const [audioTracks, setAudioTracks] = useState<{ id: number; name: string }[]>([])
+  // Pista activa según hls.js, no según el <select>: es él quien la elige al
+  // cargar (DEFAULT=YES de la playlist maestra, o el idioma del navegador), así
+  // que un select sin `value` pintaría siempre la primera opción y mentiría
+  // sobre lo que se está oyendo.
+  const [audioTrack, setAudioTrack] = useState(0)
   const [sub, setSub] = useState<number>(-1)
   // Volumen y silencio son POR ESPECTADOR (no se sincronizan) y persisten.
   const [volume, setVolume] = useState(() => parseStoredVolume(localStorage.getItem(VOLUME_KEY)))
@@ -152,8 +157,19 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
       hlsRef.current = hls
       hls.loadSource(master)
       hls.attachMedia(video)
-      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () =>
-        setAudioTracks(hls!.audioTracks.map((t, id) => ({ id, name: t.name }))))
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+        setAudioTracks(hls!.audioTracks.map((t, id) => ({ id, name: t.name })))
+        setAudioTrack(hls!.audioTrack)
+      })
+      // Se lee el getter `hls.audioTrack` —índice en la lista de pistas, que es
+      // justo lo que indexa el <select>— y no el `id` del evento: ese es un campo
+      // de MediaPlaylist y solo coincide con el índice mientras haya un único
+      // grupo de audio. SWITCHING responde al instante (el setter ya ha movido el
+      // índice) y SWITCHED confirma; sin el primero, el select rebotaría a la
+      // pista vieja hasta que el cambio aterrizara.
+      const syncTrack = () => setAudioTrack(hls!.audioTrack)
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHING, syncTrack)
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, syncTrack)
       setMode('hls')
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = master
@@ -449,7 +465,8 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
         {/* Con una sola pista el audio va muxeado en el propio segmento de vídeo
             y hls.js no anuncia ninguna: no hay nada entre lo que elegir. */}
         {mode === 'hls' && audioTracks.length > 1 && (
-          <select aria-label="Pista de audio" onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
+          <select aria-label="Pista de audio" value={audioTrack}
+            onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
             {audioTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         )}
