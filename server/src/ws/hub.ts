@@ -98,9 +98,9 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
           }
           case 'seek': {
             if (typeof msg.position !== 'number' || !Number.isFinite(msg.position)) return
-            const position = Math.min(Math.max(msg.position, 0), room.info.durationSec)
+            const position = Math.min(Math.max(msg.position, 0), room.media.info.durationSec)
             room.state = apply(room.state, { type: 'seek', position, at: now })
-            room.session.seekTo(segmentForTime(room.segments, position))
+            room.media.session.seekTo(segmentForTime(room.media.segments, position))
             broadcast(room, { t: 'state', state: room.state, serverNow: now })
             system(room, `${me.name} saltó a ${formatTime(position)}`)
             stall.refresh(room, now)

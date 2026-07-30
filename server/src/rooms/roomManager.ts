@@ -28,11 +28,40 @@ export interface SessionLike {
   lastLog: string[]
 }
 
-export interface Room {
-  token: string; item: LibraryItem; info: MediaInfo; segments: Segment[]
-  subtitles: SubtitleOption[]; session: SessionLike; state: PlaybackState
-  chat: ChatEntry[]; error: string[] | null; roomDir: string
+/**
+ * Todo lo que depende del fichero que se está viendo. Vive aparte de `Room`
+ * porque una sala puede existir sin película (el host la crea y reparte el
+ * enlace antes de elegir) y porque puede cambiarla sin cerrar la sala.
+ */
+export interface RoomMedia {
+  /** 1, 2, 3… Versiona las URLs de /stream y remonta el reproductor. */
+  epoch: number
+  item: LibraryItem
+  info: MediaInfo
+  segments: Segment[]
+  subtitles: SubtitleOption[]
   meta: RoomMeta | null
+  session: SessionLike
+  /** <cacheDir>/<token>/e<epoch> */
+  dir: string
+  /**
+   * Nombre de quien la puso, para el mensaje de sistema. Lo aporta el navegador
+   * del host: el servidor no puede saber que la cookie de admin es el
+   * participante «Jaime», son dos canales distintos. null = mensaje impersonal.
+   */
+  setBy: string | null
+}
+
+export interface Room {
+  token: string
+  /** <cacheDir>/<token>. Contiene un subdirectorio por epoch. */
+  dir: string
+  media: RoomMedia
+  state: PlaybackState
+  chat: ChatEntry[]
+  error: string[] | null
+  /** Un cambio de película o un reintento en vuelo. Evita pisarse. */
+  busy: boolean
   // TranscodeSession.onError only keeps a single callback (see transcoder.ts),
   // and RoomManager already needs that slot to record room.error. Rather than
   // fighting over the one callback, RoomManager registers its own single
@@ -43,6 +72,8 @@ export interface Room {
   // lets the ws hub close every live socket for the room (see hub.ts's
   // closeRoomSockets) instead of leaving zombie connections around.
   closeListeners: Set<() => void>
+  /** Mismo patrón: el hub difunde el cambio de película a los clientes. */
+  mediaListeners: Set<(media: RoomMedia) => void>
 }
 
 interface Deps {
@@ -62,8 +93,10 @@ export class RoomManager {
 
   async create(item: LibraryItem): Promise<Room> {
     const token = randomBytes(16).toString('base64url')
-    const roomDir = join(cacheDir(), token)
-    mkdirSync(roomDir, { recursive: true })
+    const dir = join(cacheDir(), token)
+    const epoch = 1
+    const mediaDir = join(dir, `e${epoch}`)
+    mkdirSync(mediaDir, { recursive: true })
     const info = await probeFile(item.path)
     const mode = pickMode(info)
     // Solo copy corta donde diga la fuente; transcode fuerza su propia rejilla
@@ -75,16 +108,18 @@ export class RoomManager {
     const segments = planSegments(info.durationSec, keyframes)
     const subtitles = listSubtitleOptions(info, item.srtFiles)
     for (const s of subtitles) {
-      await extractSubtitle(item.path, info, item.srtFiles, s.id, join(roomDir, `sub_${s.id}.vtt`)).catch(() => {})
+      await extractSubtitle(item.path, info, item.srtFiles, s.id, join(mediaDir, `sub_${s.id}.vtt`)).catch(() => {})
     }
     const meta = this.deps.lookupMeta ? await this.deps.lookupMeta(item.title) : null
     // Pistas de audio sin idioma declarado: se infiere del nombre del archivo o
     // del idioma original (TMDB) cuando solo hay una pista.
     info.audio = enrichAudioLangs(info.audio, basename(item.path), meta?.originalLang ?? null)
-    const session = this.deps.createSession(item, info, segments, roomDir, mode)
+    const session = this.deps.createSession(item, info, segments, mediaDir, mode)
     const room: Room = {
-      token, item, info, segments, subtitles, session, state: initialState(Date.now()), chat: [], error: null, roomDir,
-      meta, errorListeners: new Set(), closeListeners: new Set(),
+      token, dir,
+      media: { epoch, item, info, segments, subtitles, meta, session, dir: mediaDir, setBy: null },
+      state: initialState(Date.now()), chat: [], error: null, busy: false,
+      errorListeners: new Set(), closeListeners: new Set(), mediaListeners: new Set(),
     }
     session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
     session.start()
@@ -98,7 +133,8 @@ export class RoomManager {
   async retry(token: string): Promise<void> {
     const room = this.rooms.get(token)
     if (!room) return
-    await room.session.stop()
+    const media = room.media
+    await media.session.stop()
     // El set entero de segmentos de la ejecución rota no debe sobrevivir al
     // reintento: un .m4s o init_*.mp4 viejo en disco puede hacer creer a
     // requestInit() de la sesión nueva que su propio init ya está completo
@@ -107,9 +143,9 @@ export class RoomManager {
     // llevan los de libx264: un desajuste de decodificador permanente. Los
     // subtítulos extraídos (sub_*.vtt) siguen siendo válidos — un reintento no
     // los regenera — así que esos se conservan.
-    for (const f of readdirSync(room.roomDir)) {
+    for (const f of readdirSync(media.dir)) {
       if (f.endsWith('.stable.mp4') || f.endsWith('.m4s') || f.startsWith('init_')) {
-        rmSync(join(room.roomDir, f), { force: true })
+        rmSync(join(media.dir, f), { force: true })
       }
     }
     room.error = null
@@ -117,18 +153,19 @@ export class RoomManager {
     // 4 s: quedarse con la rejilla de keyframes de la fuente que planificó el
     // modo copy dejaría la playlist anunciando cortes que el ffmpeg nuevo no va
     // a producir. El cliente recarga tras el retry, así que recoge la lista nueva.
-    room.segments = planSegments(room.info.durationSec, null)
-    room.session = this.deps.createSession(room.item, room.info, room.segments, room.roomDir, 'transcode')
-    room.session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
-    room.session.start()
+    media.segments = planSegments(media.info.durationSec, null)
+    media.session = this.deps.createSession(media.item, media.info, media.segments, media.dir, 'transcode')
+    media.session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
+    media.session.start()
   }
 
   async close(token: string): Promise<void> {
     const room = this.rooms.get(token)
     if (!room) return
-    await room.session.stop()
+    await room.media.session.stop()
     for (const cb of room.closeListeners) cb()
-    rmSync(room.roomDir, { recursive: true, force: true })
+    // El directorio de la sala entero, con todos sus subdirectorios de epoch.
+    rmSync(room.dir, { recursive: true, force: true })
     this.rooms.delete(token)
   }
 }

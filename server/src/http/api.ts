@@ -55,7 +55,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
 
   app.get('/api/status', { preHandler: requireAdmin }, async () => ({
     tunnelUrl: deps.tunnel.url,
-    rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.item.title })),
+    rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.media.item.title })),
   }))
 
   app.post('/api/rooms', { preHandler: requireAdmin }, async (req, reply) => {
@@ -75,10 +75,11 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   app.get('/api/rooms/:token', async (req, reply) => {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) return reply.code(404).send({ error: 'room not found' })
+    const media = room.media
     return {
-      title: displayTitle(room.meta, room.item.title), durationSec: room.info.durationSec,
-      audio: room.info.audio, subtitles: room.subtitles, error: room.error,
-      meta: room.meta,
+      title: displayTitle(media.meta, media.item.title), durationSec: media.info.durationSec,
+      audio: media.info.audio, subtitles: media.subtitles, error: room.error,
+      meta: media.meta,
       // Viaja aquí y no en un endpoint propio porque el cliente ya espera esta
       // respuesta antes de montar el reproductor: así no hay ni ida y vuelta
       // extra ni una ventana en la que el <video> exista sin saber su origen.
@@ -121,8 +122,9 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     allowCors(reply)
     const room = deps.rooms.get(token)
     if (!room) return reply.code(404).send()
-    if (file === 'master.m3u8') return reply.type(M3U8).send(buildMasterPlaylist(room.info.audio))
-    if (file === 'video.m3u8') return reply.type(M3U8).send(buildMediaPlaylist(room.segments, 0))
+    const media = room.media
+    if (file === 'master.m3u8') return reply.type(M3U8).send(buildMasterPlaylist(media.info.audio))
+    if (file === 'video.m3u8') return reply.type(M3U8).send(buildMediaPlaylist(media.segments, 0))
     // Variant numbering follows ffmpegArgs's -var_stream_map: variant 0 is
     // video (con el audio dentro si solo hay una pista) y, cuando hay varias,
     // las variantes 1..audioCount son una por pista (audio_1..audio_N en la
@@ -130,19 +132,19 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     // request and must 404 without ever touching the transcode session — y con
     // un solo variant eso incluye audio_1, que ffmpeg no escribe: dejarlo pasar
     // colgaría la petición 30 s esperando un archivo que nunca llega.
-    const variants = variantCount(room.info.audio.length)
+    const variants = variantCount(media.info.audio.length)
     const audio = file.match(/^audio_(\d+)\.m3u8$/)
     if (audio) {
       const n = Number(audio[1])
       if (n < 1 || n >= variants) return reply.code(404).send()
-      return reply.type(M3U8).send(buildMediaPlaylist(room.segments, n))
+      return reply.type(M3U8).send(buildMediaPlaylist(media.segments, n))
     }
     const init = file.match(/^init_(\d+)\.mp4$/)
     if (init) {
       const variant = Number(init[1])
       if (variant < 0 || variant >= variants) return reply.code(404).send()
       try {
-        const p = await room.session.requestInit(variant)
+        const p = await media.session.requestInit(variant)
         return reply.type('video/mp4').send(createReadStream(p))
       } catch { return reply.code(504).send() }
     }
@@ -156,15 +158,15 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
       // resolvería mirando solo existsSync y acabaría sirviendo bytes sin
       // reanclar en silencio (el fallo que openSegment existe para matar). Se
       // rechaza aquí, sin tocar la sesión, igual que la variante de arriba.
-      if (index < 0 || index >= room.segments.length) return reply.code(404).send()
+      if (index < 0 || index >= media.segments.length) return reply.code(404).send()
       try {
-        return reply.type('video/mp4').send(await room.session.openSegment(variant, index))
+        return reply.type('video/mp4').send(await media.session.openSegment(variant, index))
       } catch { return reply.code(504).send() }
     }
     const sub = file.match(/^sub_(\d+)\.vtt$/)
     if (sub) {
-      const p = join(room.roomDir, file)
-      if (!isPathInside(room.roomDir, p) || !existsSync(p)) return reply.code(404).send()
+      const p = join(media.dir, file)
+      if (!isPathInside(media.dir, p) || !existsSync(p)) return reply.code(404).send()
       return reply.type('text/vtt').send(createReadStream(p))
     }
     return reply.code(404).send()

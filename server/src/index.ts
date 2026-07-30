@@ -27,7 +27,7 @@ const rooms = new RoomManager({
 
 setInterval(() => {
   const limit = config.cacheLimitGB * 2 ** 30
-  const files = rooms.all().flatMap(r => segmentFilesWithStats(r.roomDir))
+  const files = rooms.all().flatMap(r => segmentFilesWithStats(r.media.dir))
   for (const p of pickPrunable(files, limit)) rmSync(p, { force: true })
 }, 60_000).unref()
 

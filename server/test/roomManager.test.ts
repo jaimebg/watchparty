@@ -47,14 +47,14 @@ describe('RoomManager.create plans the grid the chosen mode will actually produc
     const { manager, modes } = capturing()
     const room = await manager.create(monoItems[0])
     expect(modes).toEqual(['transcode'])
-    expect(room.segments.map(s => s.start)).toEqual([0, 4, 8])
+    expect(room.media.segments.map(s => s.start)).toEqual([0, 4, 8])
   })
 
   it('plans the uniform 4s grid ffmpeg will force, for several audio tracks', async () => {
     const { manager, modes } = capturing()
     const room = await manager.create(items[0])
     expect(modes).toEqual(['transcode'])
-    expect(room.segments.map(s => s.start)).toEqual([0, 4, 8])
+    expect(room.media.segments.map(s => s.start)).toEqual([0, 4, 8])
   })
 
   // Los keyframes de la FUENTE ya no deciden nada: ffmpeg va a poner los suyos
@@ -63,8 +63,8 @@ describe('RoomManager.create plans the grid the chosen mode will actually produc
   it('does not let the source keyframes shape the grid', async () => {
     const { manager } = capturing()
     const room = await manager.create(monoItems[0])
-    for (const s of room.segments.slice(0, -1)) expect(s.duration).toBe(4)
-    for (const s of room.segments) expect(s.seekAt).toBe(s.start)
+    for (const s of room.media.segments.slice(0, -1)) expect(s.duration).toBe(4)
+    for (const s of room.media.segments) expect(s.seekAt).toBe(s.start)
   })
 })
 
@@ -73,14 +73,14 @@ describe('RoomManager.retry', () => {
   // para siempre: requestInit corta en cuanto ve el .stable.mp4 en disco.
   it('deletes stale init snapshots so a broken run cannot survive the retry', async () => {
     const room = await rooms.create(items[0])
-    const stale = join(room.roomDir, 'init_0.stable.mp4')
+    const stale = join(room.media.dir, 'init_0.stable.mp4')
     writeFileSync(stale, 'roto')
-    const previous = room.session
+    const previous = room.media.session
 
     await rooms.retry(room.token)
 
     expect(existsSync(stale)).toBe(false)
-    expect(room.session).not.toBe(previous)
+    expect(room.media.session).not.toBe(previous)
   })
 
   // Un .m4s o un init_*.mp4 vivo de la ejecución rota puede hacer creer a
@@ -91,9 +91,9 @@ describe('RoomManager.retry', () => {
   // los regenera, así que deben sobrevivir.
   it('deletes stale segments and init files but keeps extracted subtitles', async () => {
     const room = await rooms.create(items[0])
-    const staleSegment = join(room.roomDir, 'seg_0_00000.m4s')
-    const staleInit = join(room.roomDir, 'init_0.mp4')
-    const staleSub = join(room.roomDir, 'sub_0.vtt')
+    const staleSegment = join(room.media.dir, 'seg_0_00000.m4s')
+    const staleInit = join(room.media.dir, 'init_0.mp4')
+    const staleSub = join(room.media.dir, 'sub_0.vtt')
     writeFileSync(staleSegment, 'roto')
     writeFileSync(staleInit, 'roto')
     writeFileSync(staleSub, 'WEBVTT\n')
@@ -117,6 +117,6 @@ describe('RoomManager.retry', () => {
     await manager.retry(room.token)
 
     expect(modes).toEqual(['transcode', 'transcode'])
-    expect(room.segments.map(s => s.start)).toEqual([0, 4, 8])
+    expect(room.media.segments.map(s => s.start)).toEqual([0, 4, 8])
   })
 })
