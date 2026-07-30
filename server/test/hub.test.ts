@@ -13,6 +13,7 @@ import { stallTiming } from '../src/rooms/stallControl.js'
 let app: Awaited<ReturnType<typeof buildApp>>, url: string, token: string
 let rooms: RoomManager
 let items: Awaited<ReturnType<typeof scanLibrary>>
+let monoItems: Awaited<ReturnType<typeof scanLibrary>>
 
 // A fresh fake session per room (rather than one shared object) so each
 // room's onError callback and error trigger stay independent of the others.
@@ -50,6 +51,9 @@ beforeAll(async () => {
   const port = (app.server.address() as any).port
   url = `ws://127.0.0.1:${port}`
   items = await scanLibrary([mediaDir])
+  const monoDir = mkdtempSync(join(tmpdir(), 'hubmono-'))
+  await makeFixtureMkv(monoDir, { audioTracks: 1 })
+  monoItems = await scanLibrary([monoDir])
   token = (await rooms.create(items[0])).token
 })
 afterAll(async () => { await app.close() })
@@ -267,5 +271,84 @@ describe('hub', () => {
     expect(presB2.participants.find((p: any) => p.name === 'Vera').active).toBe(true)
 
     a.ws.close(); b.ws.close()
+  })
+
+  it('una sala sin película deja chatear pero ignora play y seek', async () => {
+    const room = await rooms.create()
+    const a = await connect('Kira', room.token)
+    const w = await a.recv()
+    expect(w.t).toBe('welcome')
+    await a.recv(); await a.recv() // presence propio + system "se unió"
+
+    // Ni estado ni mensaje de sistema: no hay reloj que mover.
+    a.ws.send(JSON.stringify({ t: 'play' }))
+    a.ws.send(JSON.stringify({ t: 'seek', position: 10 }))
+    // El chat sí funciona, y es lo único que debe llegar.
+    a.ws.send(JSON.stringify({ t: 'chat', text: 'esperando' }))
+    const next = await a.recv()
+    expect(next.t).toBe('chat')
+    expect(next.entry.text).toBe('esperando')
+    expect(room.state.paused).toBe(true)
+    expect(room.state.positionBase).toBe(0)
+
+    a.ws.close()
+  })
+
+  it('poner película difunde media + state y lo cuenta en el chat', async () => {
+    const room = await rooms.create()
+    const a = await connect('Lena', room.token)
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system
+
+    await rooms.setMedia(room.token, items[0], 'Jaime')
+
+    const msgs = [await a.recv(), await a.recv(), await a.recv()]
+    const media = msgs.find(m => m.t === 'media')!
+    expect(media.epoch).toBe(1)
+    const state = msgs.find(m => m.t === 'state')!
+    expect(state.state.paused).toBe(true)
+    expect(state.state.positionBase).toBe(0)
+    const sys = msgs.find(m => m.t === 'chat')!
+    expect(sys.entry.kind).toBe('system')
+    expect(sys.entry.text).toContain('Jaime')
+
+    a.ws.close()
+  })
+
+  it('sin `by` el mensaje de sistema es impersonal', async () => {
+    const room = await rooms.create()
+    const a = await connect('Ona', room.token)
+    await a.recv(); await a.recv(); await a.recv()
+
+    await rooms.setMedia(room.token, items[0])
+
+    const msgs = [await a.recv(), await a.recv(), await a.recv()]
+    const sys = msgs.find(m => m.t === 'chat')!
+    expect(sys.entry.text).toContain('ahora se ve')
+
+    a.ws.close()
+  })
+
+  // Un socket marcado como «cargando» en la película anterior no vuelve a emitir
+  // el flanco: si su marca sobrevive al cambio, la sala nueva se congela en el
+  // primer play y nadie la saca de ahí hasta agotar el tope.
+  it('el cambio de película limpia el set de buffering', async () => {
+    const room = await rooms.create(items[0])
+    const a = await connect('Bruno', room.token)
+    await a.recv(); await a.recv(); await a.recv()
+
+    a.ws.send(JSON.stringify({ t: 'buffering', value: true }))
+    const frozen = [await a.recv(), await a.recv()]
+    expect(frozen.find(m => m.t === 'state')!.state.stalled).toBe(true)
+
+    await rooms.setMedia(room.token, monoItems[0], 'Jaime')
+    await a.recv(); await a.recv(); await a.recv() // media, state, system
+
+    a.ws.send(JSON.stringify({ t: 'play' }))
+    const afterPlay = [await a.recv(), await a.recv()]
+    const state = afterPlay.find(m => m.t === 'state')!
+    expect(state.state.paused).toBe(false)
+    expect(state.state.stalled).toBe(false)
+
+    a.ws.close()
   })
 })

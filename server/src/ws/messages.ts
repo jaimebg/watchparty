@@ -20,3 +20,7 @@ export type ServerMsg =
   | { t: 'reaction'; emoji: string; fromId: string }
   | { t: 'buffering'; name: string; value: boolean }
   | { t: 'error'; log: string[] }
+  // El cliente refetchea GET /api/rooms/:token y remonta el reproductor con
+  // `epoch` como key. No se manda la info aquí para no duplicar la forma de esa
+  // respuesta en dos sitios que puedan divergir.
+  | { t: 'media'; epoch: number }

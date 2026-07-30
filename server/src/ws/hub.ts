@@ -2,10 +2,11 @@ import { randomBytes } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { WebSocket } from 'ws'
 import type { AppDeps } from '../app.js'
-import type { Room } from '../rooms/roomManager.js'
+import type { Room, RoomMedia } from '../rooms/roomManager.js'
 import { apply } from '../rooms/syncState.js'
 import * as stall from '../rooms/stallControl.js'
 import { segmentForTime } from '../media/planner.js'
+import { displayTitle } from '../media/tmdb.js'
 import type { ChatEntry, ClientMsg, Participant, ServerMsg } from './messages.js'
 
 const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c']
@@ -49,6 +50,21 @@ export function closeRoomSockets(room: Room): void {
   conns.delete(room)
 }
 
+// Un cambio de película: el reloj vuelve a cero, el reproductor de cada cliente
+// se reconstruye y el chat se queda como estaba.
+function onMediaChanged(room: Room, media: RoomMedia): void {
+  const now = Date.now()
+  // Re-attach y no solo un refresh: `attach` hace `detach` primero, así que el
+  // set de buffering nace vacío. Un socket que quedó marcado como «cargando» en
+  // la película anterior no va a emitir otro flanco, y su marca congelaría la
+  // nueva desde el primer play sin que nadie pueda sacarla de ahí.
+  stall.attach(room, () => broadcast(room, { t: 'state', state: room.state, serverNow: Date.now() }))
+  broadcast(room, { t: 'media', epoch: media.epoch })
+  broadcast(room, { t: 'state', state: room.state, serverNow: now })
+  const title = displayTitle(media.meta, media.item.title)
+  system(room, media.setBy ? `${media.setBy} puso «${title}»` : `ahora se ve «${title}»`)
+}
+
 export function registerHub(app: FastifyInstance, deps: AppDeps): void {
   app.get('/ws/:token', { websocket: true }, (socket: WebSocket, req) => {
     const room = deps.rooms.get((req.params as any).token)
@@ -56,10 +72,12 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
     if (!conns.has(room)) {
       conns.set(room, new Map())
       // One-time-per-room hookups: fan out ffmpeg errors from RoomManager to
-      // every client currently (and later) connected to this room, and close
-      // every socket once the room itself is torn down.
+      // every client currently (and later) connected to this room, close every
+      // socket once the room itself is torn down, y avisar del cambio de
+      // película.
       room.errorListeners.add(log => broadcast(room, { t: 'error', log }))
       room.closeListeners.add(() => closeRoomSockets(room))
+      room.mediaListeners.add(media => onMediaChanged(room, media))
       stall.attach(room, () => broadcast(room, { t: 'state', state: room.state, serverNow: Date.now() }))
     }
     const peers = conns.get(room)!
