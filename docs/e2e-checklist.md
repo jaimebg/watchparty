@@ -29,6 +29,9 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 ## Pistas
 - [ ] Vídeo con UNA pista de audio → suena, y el selector de audio no aparece
 - [ ] Cambiar audio en el invitado NO cambia el audio del host (vídeo multi-audio)
+- [ ] El selector de audio muestra la pista que SUENA, no siempre la primera:
+      al cargar refleja la que eligió hls.js, y tras cambiarla se queda en la
+      nueva (antes rebotaba a la primera opción)
 - [ ] Cada selector de subtítulos funciona por espectador (incrustado y .srt externo)
 - [ ] Archivo HEVC → transcodifica y reproduce (CPU/GPU visible en monitor)
 
