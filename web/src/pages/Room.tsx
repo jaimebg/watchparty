@@ -210,7 +210,7 @@ export function Room({ token }: { token: string }) {
       <main className="page page--gate">
         <div className="ticket">
           <p className="eyebrow">Tu entrada para</p>
-          <h1 className="ticket-title">{info?.title ?? 'la función'}</h1>
+          <h1 className="ticket-title">{info?.media?.title ?? 'la función'}</h1>
           <div className="ticket-rule" aria-hidden="true" />
           <form
             className="name-form"
@@ -231,6 +231,8 @@ export function Room({ token }: { token: string }) {
   }
 
   if (!info) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
+
+  if (!info.media) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
 
   if (errorLog) {
     const retry = async () => {
@@ -257,7 +259,7 @@ export function Room({ token }: { token: string }) {
       )}
       <div className="room-head">
         <div className="room-head-titles">
-          <h1>{info.title}</h1>
+          <h1>{info.media.title}</h1>
         </div>
         <div className="room-head-actions">
           {shareUrl && (
@@ -266,7 +268,7 @@ export function Room({ token }: { token: string }) {
               {copied === 'ok' ? <CheckIcon /> : <LinkIcon />} {copied === 'ok' ? '¡Copiado!' : 'Copiar enlace'}
             </button>
           )}
-          {info.meta && (
+          {info.media.meta && (
             <button type="button" className="btn-head" onClick={() => setShowMeta(true)} title="Información de la película">
               <InfoIcon /> Info
             </button>
@@ -280,10 +282,11 @@ export function Room({ token }: { token: string }) {
             onFocus={e => e.currentTarget.select()} />
         </p>
       )}
-      {showMeta && info.meta && <MetaModal meta={info.meta} onClose={() => setShowMeta(false)} />}
+      {showMeta && info.media.meta && <MetaModal meta={info.media.meta} onClose={() => setShowMeta(false)} />}
       <div ref={gridRef} className={`room-grid${fullscreen ? ' room-grid--fs' : ''}${cinema ? ' room-grid--cinema' : ''}${fullscreen && !chromeAwake ? ' is-idle' : ''}`}>
         <div className="video-stage">
-          <Player token={token} info={info} send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount}
+          <Player key={info.media.epoch} token={token} media={info.media} streamBase={info.streamBase}
+            send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount}
             fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} />
           <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />
           <ReactionsBar send={m => sendRef.current(m)} />

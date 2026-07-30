@@ -15,8 +15,32 @@ export const bootstrapAdmin = async (search: string): Promise<boolean> => {
 }
 
 export const getLibrary = () => fetch('/api/library').then(r => json<LibraryItem[]>(r))
-export const createRoom = (itemId: string) =>
-  fetch('/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ itemId }) }).then(r => json<{ token: string }>(r))
+
+// Sin itemId el servidor crea una sala vacía: el host reparte el enlace y elige
+// película después, con la gente ya dentro.
+export const createRoom = (itemId?: string) =>
+  fetch('/api/rooms', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(itemId === undefined ? {} : { itemId }),
+  }).then(r => json<{ token: string }>(r))
+
+export const rescanLibrary = () =>
+  fetch('/api/library/rescan', { method: 'POST' }).then(r => json<LibraryItem[]>(r))
+
+// `by` es el nombre del propio host, que su navegador conoce por el `welcome`:
+// el servidor no puede saber que la cookie de admin es el participante «Jaime».
+export const setRoomMedia = async (token: string, itemId: string, by?: string) => {
+  const r = await fetch(`/api/rooms/${token}/media`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ itemId, by }),
+  })
+  if (!r.ok) {
+    const body = await r.json().catch(() => null) as { error?: string } | null
+    throw new Error(body?.error ?? `HTTP ${r.status}`)
+  }
+  return r.json() as Promise<{ epoch: number }>
+}
+
 export const getMediaFolders = () =>
   fetch('/api/config/folders').then(r => json<{ folders: string[] }>(r)).then(b => b.folders)
 

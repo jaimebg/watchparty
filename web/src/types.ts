@@ -1,7 +1,14 @@
 // Espejo de los tipos del server (sin dependencia cruzada entre workspaces en v1).
 
 // server/src/library/scanner.ts
-export interface LibraryItem { id: string; path: string; title: string; folderName: string; srtFiles: string[] }
+export interface LibraryItem {
+  id: string; path: string; title: string
+  folderName: string
+  /** Ruta absoluta de la carpeta: identifica el grupo, porque dos series pueden
+   *  tener una «Season 1» cada una y el basename las fusionaría. */
+  folderPath: string
+  srtFiles: string[]
+}
 
 // server/src/media/probe.ts
 export interface AudioTrack { index: number; codec: string; lang: string; label: string; channels: number }
@@ -38,6 +45,7 @@ export type ServerMsg =
   | { t: 'reaction'; emoji: string; fromId: string }
   | { t: 'buffering'; name: string; value: boolean }
   | { t: 'error'; log: string[] }
+  | { t: 'media'; epoch: number }
 
 // server/src/http/klipy.ts
 export interface GifResult { id: string; title: string; previewUrl: string; url: string; width: number; height: number }
@@ -53,13 +61,22 @@ export interface RoomMeta {
   originalLang: string | null
 }
 
-export interface RoomInfo {
+export interface RoomMediaInfo {
+  /** Generación de película de la sala: versiona las URLs y remonta el player. */
+  epoch: number
   title: string
   durationSec: number
   audio: AudioTrack[]
   subtitles: SubtitleOption[]
-  error: string[] | null
   meta: RoomMeta | null
-  // Origen del que pedir el vídeo; '' = mismo origen que la app.
+}
+
+export interface RoomInfo {
+  /** null = el host todavía no ha elegido película. */
+  media: RoomMediaInfo | null
+  error: string[] | null
+  // Origen del que pedir el vídeo; '' = mismo origen que la app. Al nivel
+  // superior y no dentro de `media`: describe dónde vive el servidor, no la
+  // película, y hace falta igual en una sala vacía.
   streamBase: string
 }

@@ -1,6 +1,6 @@
 import Hls from 'hls.js'
 import { useEffect, useReducer, useRef, useState } from 'react'
-import type { ClientMsg, PlaybackState, RoomInfo } from '../types'
+import type { ClientMsg, PlaybackState, RoomMediaInfo } from '../types'
 import { bufferedAhead, computeCorrection, targetPosition } from '../sync/driftControl'
 import { clampPosition, formatClock, isTypingTarget, MAX_VOLUME, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from './format'
 import { streamUrl } from './streamUrl'
@@ -57,8 +57,9 @@ const ExitFullscreenIcon = () => (
   </svg>
 )
 
-export function Player({ token, info, send, lastState, welcomeCount, fullscreen, onToggleFullscreen }: {
-  token: string; info: RoomInfo; send: (m: ClientMsg) => void; lastState: LastState | null
+export function Player({ token, media, streamBase, send, lastState, welcomeCount, fullscreen, onToggleFullscreen }: {
+  token: string; media: RoomMediaInfo; streamBase: string
+  send: (m: ClientMsg) => void; lastState: LastState | null
   welcomeCount: number
   fullscreen: boolean
   onToggleFullscreen: () => void
@@ -112,8 +113,8 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastHardSeekRef = useRef(0)
   const bufferingRef = useRef(false)
-  const infoRef = useRef(info)
-  infoRef.current = info
+  const mediaRef = useRef(media)
+  mediaRef.current = media
   const togglePlay = () => sendRef.current({ t: pausedRef.current ? 'play' : 'pause' })
 
   // `welcome` is the one message meaning "the server just learned about me
@@ -149,7 +150,7 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
   useEffect(() => {
     const video = videoRef.current!
 
-    const master = streamUrl(info.streamBase, token, 'master.m3u8')
+    const master = streamUrl(streamBase, token, media.epoch, 'master.m3u8')
 
     let hls: Hls | null = null
     if (Hls.isSupported()) {
@@ -182,9 +183,10 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
       if (hls) { hls.destroy(); hlsRef.current = null }
       else video.removeAttribute('src')
     }
-    // `info.streamBase` y no `info`: el objeto entero llega nuevo de cada fetch
-    // de la sala y remontaría hls.js sin motivo. La cadena es estable.
-  }, [token, info.streamBase])
+    // Primitivas y no el objeto: el de la sala llega nuevo de cada fetch y
+    // remontaría hls.js sin motivo. El remonte por `key={epoch}` en Room.tsx
+    // sí es intencionado, y `epoch` está aquí para que la lista no mienta.
+  }, [token, streamBase, media.epoch])
 
   // Espacio = play/pausa global, salvo que el foco esté escribiendo (chat) o
   // sobre un control al que el espacio pertenece (botones, selects).
@@ -250,7 +252,7 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
       // durationSec en 0 significa «desconocida» (ffprobe no la reportó), no
       // «ya estamos al final»: sin la guarda `> 0` se leería como el final de
       // cualquier vídeo y la señal de listo quedaría desactivada para siempre.
-      const nearEnd = infoRef.current.durationSec > 0 && target >= infoRef.current.durationSec - READY_AHEAD_S
+      const nearEnd = mediaRef.current.durationSec > 0 && target >= mediaRef.current.durationSec - READY_AHEAD_S
       const starved = !nearEnd && bufferedAhead(video.buffered, target) < READY_AHEAD_S
       if (starved !== bufferingRef.current) {
         bufferingRef.current = starved
@@ -369,10 +371,10 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
   useEffect(() => () => disarmDragWatchdog(), [])
 
   const roomPosition = lastState
-    ? Math.min(info.durationSec, targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now()))
+    ? Math.min(media.durationSec, targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now()))
     : 0
   const shownPosition = drag ?? roomPosition
-  const remaining = Math.max(0, info.durationSec - shownPosition)
+  const remaining = Math.max(0, media.durationSec - shownPosition)
 
   const commitSeek = () => {
     draggingRef.current = false
@@ -384,7 +386,7 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
     // interacción, aunque el evento de soltar se dispare de más.
     if (drag === null || committedRef.current) return
     committedRef.current = true
-    sendRef.current({ t: 'seek', position: clampPosition(drag, info.durationSec) })
+    sendRef.current({ t: 'seek', position: clampPosition(drag, media.durationSec) })
   }
 
   if (mode === 'unsupported') {
@@ -402,11 +404,11 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
           de mismo origen para no cambiar en nada el camino de siempre — y
           'anonymous' es lo que toca de todas formas, porque estas rutas no
           miran cookies. */}
-      <video ref={videoRef} playsInline crossOrigin={info.streamBase ? 'anonymous' : undefined}
+      <video ref={videoRef} playsInline crossOrigin={streamBase ? 'anonymous' : undefined}
         onClick={onVideoClick} onDoubleClick={onVideoDoubleClick}>
-        {info.subtitles.map(s => (
+        {media.subtitles.map(s => (
           <track key={s.id} kind="subtitles" label={s.label} srcLang={s.lang}
-            src={streamUrl(info.streamBase, token, `sub_${s.id}.vtt`)} />
+            src={streamUrl(streamBase, token, media.epoch, `sub_${s.id}.vtt`)} />
         ))}
       </video>
       <div className="controls">
@@ -430,11 +432,11 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
         </div>
         <span className="time-label">{formatClock(shownPosition)}</span>
         <input className="seek position" type="range" step={1}
-          min={0} max={Math.max(1, Math.round(info.durationSec))}
-          disabled={info.durationSec <= 0}
+          min={0} max={Math.max(1, Math.round(media.durationSec))}
+          disabled={media.durationSec <= 0}
           aria-label="Posición en la película"
-          aria-valuetext={`${formatClock(shownPosition)} de ${formatClock(info.durationSec)}`}
-          style={{ background: positionGradient(shownPosition, info.durationSec) }}
+          aria-valuetext={`${formatClock(shownPosition)} de ${formatClock(media.durationSec)}`}
+          style={{ background: positionGradient(shownPosition, media.durationSec) }}
           value={Math.round(shownPosition)}
           onPointerDown={() => { draggingRef.current = true; committedRef.current = false; pointerDownRef.current = true; armDragWatchdog() }}
           // Un pointercancel (el gesto táctil se reinterpreta como scroll de la
@@ -461,7 +463,7 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
           // Si el foco se va a media pulsación (raro, pero posible) tampoco
           // llega un keyup a este input: mismo motivo que pointercancel.
           onBlur={() => { draggingRef.current = false; pointerDownRef.current = false; disarmDragWatchdog() }} />
-        <span className="time-label" title={`Duración total ${formatClock(info.durationSec)}`}>−{formatClock(remaining)}</span>
+        <span className="time-label" title={`Duración total ${formatClock(media.durationSec)}`}>−{formatClock(remaining)}</span>
         {/* Con una sola pista el audio va muxeado en el propio segmento de vídeo
             y hls.js no anuncia ninguna: no hay nada entre lo que elegir. */}
         {mode === 'hls' && audioTracks.length > 1 && (
@@ -472,7 +474,7 @@ export function Player({ token, info, send, lastState, welcomeCount, fullscreen,
         )}
         <select aria-label="Subtítulos" value={sub} onChange={e => setSub(Number(e.target.value))}>
           <option value={-1}>Sin subtítulos</option>
-          {info.subtitles.map((s, i) => <option key={s.id} value={i}>{s.label}</option>)}
+          {media.subtitles.map((s, i) => <option key={s.id} value={i}>{s.label}</option>)}
         </select>
         <button type="button" className="btn-fullscreen"
           aria-label={fullscreen ? 'Salir de pantalla completa (F)' : 'Pantalla completa (F)'}
