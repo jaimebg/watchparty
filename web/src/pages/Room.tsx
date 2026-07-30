@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { getRoom, getStatus } from '../api'
 import { connectRoom } from '../ws'
 import { Player, type LastState } from '../player/Player'
@@ -60,6 +60,10 @@ export function Room({ token }: { token: string }) {
   // the server's stall-tracking set was just rebuilt empty for this socket.
   const [welcomeCount, setWelcomeCount] = useState(0)
   const [tunnelDown, setTunnelDown] = useState(false)
+  // Solo el host: /api/status responde 401 a los invitados. Es la misma señal
+  // que ya se usaba para el enlace del túnel, ahora con nombre propio, porque
+  // gobierna también el botón de elegir película.
+  const [isHost, setIsHost] = useState(false)
   // Solo el host la conoce: /api/status responde 401 a los invitados. Por eso
   // el botón de copiar aparece únicamente en la pestaña del host (localhost),
   // que es justo la que necesita el enlace del túnel en vez de su propia URL.
@@ -120,13 +124,11 @@ export function Room({ token }: { token: string }) {
     return () => clearTimeout(id)
   }, [copied])
 
-  useEffect(() => {
-    let cancelled = false
-    getRoom(token)
-      .then(r => { if (!cancelled) setInfo(r) })
-      .catch(() => { if (!cancelled) setNotFound(true) })
-    return () => { cancelled = true }
+  const reloadInfo = useCallback(async () => {
+    try { setInfo(await getRoom(token)) } catch { setNotFound(true) }
   }, [token])
+
+  useEffect(() => { void reloadInfo() }, [reloadInfo])
 
   useEffect(() => {
     if (!name || notFound) return
@@ -137,10 +139,18 @@ export function Room({ token }: { token: string }) {
       }
       if (m.t === 'welcome') setWelcomeCount(c => c + 1)
       if (m.t === 'error') setWsError(m.log)
+      if (m.t === 'media') {
+        // Un solo camino de refresco, también para el host que lo provocó: el
+        // POST no actualiza estado por su cuenta, así que no hay dos rutas que
+        // puedan divergir. El `wsError` se limpia porque el fallo de ffmpeg era
+        // de la película anterior.
+        setWsError(null)
+        void reloadInfo()
+      }
     })
     sendRef.current = conn.send
     return () => conn.close()
-  }, [token, name, notFound])
+  }, [token, name, notFound, reloadInfo])
 
   // Presencia: avisa cuando la pestaña pasa a segundo plano o vuelve (Page
   // Visibility API; ver spec 2026-07-29-presence-visibility-design.md).
@@ -160,12 +170,13 @@ export function Room({ token }: { token: string }) {
       getStatus()
         .then(s => {
           if (cancelled) return
+          setIsHost(true)
           setTunnelUrl(s.tunnelUrl)
           setTunnelDown(s.tunnelUrl === null)
         })
-        // 401: es un invitado. Se deja de sondear y no se le enseña el enlace
-        // del túnel.
-        .catch(() => { polling = false })
+        // 401: es un invitado. Se deja de sondear, no se le enseña el enlace del
+        // túnel y no verá el botón de elegir película.
+        .catch(() => { polling = false; setIsHost(false) })
     }
     poll()
     const id = setInterval(poll, STATUS_POLL_MS)
@@ -232,8 +243,6 @@ export function Room({ token }: { token: string }) {
 
   if (!info) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
 
-  if (!info.media) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
-
   if (errorLog) {
     const retry = async () => {
       setWsError(null)
@@ -259,7 +268,7 @@ export function Room({ token }: { token: string }) {
       )}
       <div className="room-head">
         <div className="room-head-titles">
-          <h1>{info.media.title}</h1>
+          <h1>{info.media ? info.media.title : 'Sala sin película'}</h1>
         </div>
         <div className="room-head-actions">
           {shareUrl && (
@@ -268,7 +277,7 @@ export function Room({ token }: { token: string }) {
               {copied === 'ok' ? <CheckIcon /> : <LinkIcon />} {copied === 'ok' ? '¡Copiado!' : 'Copiar enlace'}
             </button>
           )}
-          {info.media.meta && (
+          {info.media?.meta && (
             <button type="button" className="btn-head" onClick={() => setShowMeta(true)} title="Información de la película">
               <InfoIcon /> Info
             </button>
@@ -282,14 +291,28 @@ export function Room({ token }: { token: string }) {
             onFocus={e => e.currentTarget.select()} />
         </p>
       )}
-      {showMeta && info.media.meta && <MetaModal meta={info.media.meta} onClose={() => setShowMeta(false)} />}
+      {showMeta && info.media?.meta && <MetaModal meta={info.media.meta} onClose={() => setShowMeta(false)} />}
       <div ref={gridRef} className={`room-grid${fullscreen ? ' room-grid--fs' : ''}${cinema ? ' room-grid--cinema' : ''}${fullscreen && !chromeAwake ? ' is-idle' : ''}`}>
         <div className="video-stage">
-          <Player key={info.media.epoch} token={token} media={info.media} streamBase={info.streamBase}
-            send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount}
-            fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} />
-          <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />
-          <ReactionsBar send={m => sendRef.current(m)} />
+          {info.media ? (
+            <>
+              <Player key={info.media.epoch} token={token} media={info.media} streamBase={info.streamBase}
+                send={m => sendRef.current(m)} lastState={lastState} welcomeCount={welcomeCount}
+                fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} />
+              <ReactionOverlay reactions={chat.reactions} onDrop={id => dispatchChat({ t: 'drop-reaction', id })} />
+              <ReactionsBar send={m => sendRef.current(m)} />
+            </>
+          ) : (
+            // El chat sigue montado a la derecha: la gente entra, pone su nombre
+            // y charla mientras el host elige.
+            <div className="stage-waiting">
+              <p className="eyebrow">Sin película todavía</p>
+              <h2>{isHost ? 'Elige qué vais a ver' : 'El host está eligiendo la película'}</h2>
+              <p className="hint">{isHost
+                ? 'Mientras tanto puedes copiar el enlace y repartirlo: la sala ya existe.'
+                : 'Puedes ir charlando en el chat; el vídeo aparecerá solo.'}</p>
+            </div>
+          )}
         </div>
         <ChatPanel token={token} state={chat} send={m => sendRef.current(m)}
           onFlashEnd={(pid, id) => dispatchChat({ t: 'drop-flash', pid, id })} />
