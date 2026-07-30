@@ -53,7 +53,7 @@ Tres mejoras independientes sobre la sala:
   la lista vuelve a estar limpia sola y el chip no cambia de tamaño.
 - **Caducidad por `animationend`**, sin `setTimeout`, replicando el patrón que
   ya usa el overlay.
-- **Catálogo completo (1.906 emojis) commiteado como JSON**, generado a mano
+- **Catálogo completo (1.906 emojis) commiteado como módulo `.ts`**, generado a mano
   desde emojibase-data en español. Ni dependencia de runtime, ni paso de build
   con red, ni set curado que obligue a tocar código cuando falte un emoji.
 - **Sin selector de tono de piel.** No se ha pedido y multiplicaría el
@@ -132,10 +132,13 @@ Tres mejoras independientes sobre la sala:
 
 ### 2. Accesos rápidos personalizables
 
-#### Catálogo (`web/src/chat/emojiCatalog.json`)
+#### Catálogo (`web/src/chat/emojiCatalog.ts`)
 
 - Formato compacto `[[unicode, etiqueta, tags, grupo], …]` para ahorrar bytes:
-  ~105 KB crudos, ~33 KB gzip.
+  ~105 KB crudos, ~33 KB gzip. Se genera como módulo `.ts` con el tipo puesto,
+  no como `.json`, para no tener que activar `resolveJsonModule` en
+  `web/tsconfig.json` — el proyecto verifica tipos a mano con
+  `npx tsc --noEmit`.
 - 1.906 entradas: todo emojibase-data en español **menos el grupo 2**, que son
   modificadores de tono de piel y de pelo, no emotes.
 - Etiquetas y tags ya vienen en castellano (`🍿` → «palomitas», tag «maíz»).
@@ -147,7 +150,7 @@ Tres mejoras independientes sobre la sala:
 
 - Script suelto que descarga `emojibase-data@16/es/compact.json` de jsDelivr
   (versión fijada, no `latest`), filtra el grupo 2, recorta a los cuatro campos
-  y escribe el JSON.
+  y escribe el módulo.
 - Se ejecuta **a mano** cuando Unicode saque emojis nuevos. No entra en
   `build` ni en `test`: nadie necesita red para compilar ni para pasar tests.
 - Documentado en el README junto al resto de tareas de mantenimiento.
@@ -170,8 +173,14 @@ Tres mejoras independientes sobre la sala:
   - `addQuick(list, emoji)`: no-op si ya está o si se alcanzó el tope; añade
     **al final**.
   - `removeQuick(list, emoji)`.
-  - `loadQuick()` / `saveQuick(list)` sobre `localStorage['jbg-quick-emojis']`.
+  - El módulo **no toca `localStorage`**: Vitest corre en entorno node
+    (`web/vitest.config.ts` es `test: {}`), donde no existe. Exporta la clave
+    `QUICK_KEY = 'jbg-quick-emojis'` y el componente hace
+    `parseQuick(localStorage.getItem(QUICK_KEY))` y `setItem` al guardar,
+    exactamente como `Player.tsx` ya hace con `parseStoredVolume`.
     Persistencia por navegador: no hay cuentas y las salas son efímeras.
+  - Una lista vacía guardada se respeta; solo se cae a `DEFAULT_QUICK` si la
+    clave no existe o su contenido es inservible.
 
 #### Componentes
 
@@ -225,8 +234,11 @@ Tres mejoras independientes sobre la sala:
   `max-height: calc(100vh - 190px)` de `theme.css:761`.
 - `.controls`: de barra estática a superpuestos abajo sobre un degradado.
 - `.chat-panel`: flotante abajo a la derecha, `width: min(340px, 38vw)`,
-  `max-height: min(60vh, 420px)`, fondo translúcido con `backdrop-filter` y
-  borde ámbar tenue.
+  `max-height: min(60vh, 420px)`, fondo casi opaco y borde ámbar tenue. **Sin
+  `backdrop-filter`**: un filtro convertiría al panel y a la barra en bloque
+  contenedor de sus descendientes `position: fixed`, y el modal de emojis —que
+  se renderiza dentro de la barra— quedaría atrapado y recortado. De paso, el
+  glassmorphism decorativo es una anti-referencia declarada del proyecto.
 - `.reactions-bar`: **una sola fila**, `flex-wrap: nowrap` con
   `overflow-x: auto`. No es cosmético: al no envolver, su altura es fija y
   conocida, y los tres pisos (controles → reacciones → panel) se apilan desde
