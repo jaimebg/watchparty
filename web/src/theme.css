@@ -955,8 +955,11 @@ details summary:hover { color: var(--marquee); }
 }
 
 .quick-chips button {
-  width: 20px;
-  height: 20px;
+  /* Es el control destructivo (quita el emoji): el objetivo táctil manda,
+     aunque el icono de la ✕ se quede pequeño dentro (.impeccable.md exige
+     ≥40px táctiles; media sala entra desde el móvil). */
+  width: 40px;
+  height: 40px;
   padding: 0;
   font-size: 0.7rem;
   line-height: 1;
@@ -983,7 +986,9 @@ details summary:hover { color: var(--marquee); }
 .emoji-tabs button {
   font-size: 1.05rem;
   line-height: 1;
-  padding: 0.3rem 0.45rem;
+  /* Alto táctil ≥40px (.impeccable.md): el icono de categoría se queda igual
+     de grande, solo crece el relleno vertical. */
+  padding: 0.75rem 0.45rem;
   border-color: transparent;
   border-radius: 8px;
   flex-shrink: 0;
@@ -996,7 +1001,9 @@ details summary:hover { color: var(--marquee); }
 
 .emoji-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  /* 40px de columna mínima por el objetivo táctil (.impeccable.md); caben
+     algo menos de emojis por fila que antes, y es lo esperado. */
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
   gap: 0.15rem;
   /* Alto fijo: al cambiar de categoría el modal no debe pegar saltos. */
   height: 44vh;
@@ -1007,7 +1014,8 @@ details summary:hover { color: var(--marquee); }
 .emoji-grid button {
   font-size: 1.3rem;
   line-height: 1;
-  padding: 0.3rem 0;
+  /* Alto táctil ≥40px: el emoji mantiene su tamaño, crece el relleno. */
+  padding: 0.65rem 0;
   border-color: transparent;
   border-radius: 8px;
 }
@@ -1214,8 +1222,11 @@ details summary:hover { color: var(--marquee); }
 .room-grid--fs {
   /* Alturas fijas para poder apilar los tres pisos con calc() desde abajo. */
   --fs-controls-h: 3.4rem;
-  --fs-emos-h: 2.6rem;
-  --fs-dock-w: min(340px, 38vw);
+  --fs-emos-h: 3.1rem;
+  /* Con los 10 emojis por defecto (o los 12 del tope) los botones de
+     .reactions-bar no caben en el ancho del panel de chat: 340px se pensó
+     para el chat, no para una fila de reacciones sin envolver. */
+  --fs-dock-w: min(440px, 46vw);
   display: block;
   position: relative;
   width: 100%;
@@ -1259,7 +1270,12 @@ details summary:hover { color: var(--marquee); }
   flex-wrap: nowrap;
   overflow-x: auto;
   background: linear-gradient(to top, oklch(0% 0 0 / 0.8), transparent);
+  /* El scroll sigue funcionando (rueda/trackpad/dedo); solo se esconde la
+     barra clásica, que de dejarse visible le robaría alto útil a esta fila. */
+  scrollbar-width: none;
 }
+
+.room-grid--fs .controls::-webkit-scrollbar { display: none; }
 
 .room-grid--fs .reactions-bar {
   position: absolute;
@@ -1272,15 +1288,29 @@ details summary:hover { color: var(--marquee); }
   align-items: center;
   flex-wrap: nowrap;
   overflow-x: auto;
+  /* Igual que en .controls: sin barra de scroll visible. En Windows/Linux una
+     barra clásica de ~15px dentro de una tira de 3,1rem dejaría muy poco alto
+     para los botones de 40px+ del hover. */
+  scrollbar-width: none;
   /* Fondo opaco y NADA de backdrop-filter: un filtro aquí convertiría esta
      barra en bloque contenedor de sus descendientes `position: fixed`, y el
      modal de emojis —que se renderiza dentro— quedaría atrapado y recortado
-     dentro de una tira de 2,6 rem. Además, el glassmorphism decorativo es una
+     dentro de una tira de 3,1 rem. Además, el glassmorphism decorativo es una
      anti-referencia declarada del proyecto (.impeccable.md). */
   background: oklch(15% 0.014 65 / 0.94);
   border: 1px solid color-mix(in oklab, var(--marquee) 20%, transparent);
   border-top: none;
   border-radius: 0 0 12px 12px;
+}
+
+.room-grid--fs .reactions-bar::-webkit-scrollbar { display: none; }
+
+/* Botones más compactos que en el resto de la app: con los 10 emojis por
+   defecto (o los 12 del tope) hacen falta en una sola fila dentro de un panel
+   que también tiene que dejar sitio al chat. */
+.room-grid--fs .reactions-bar button {
+  font-size: 1rem;
+  padding: 0.3rem 0.4rem;
 }
 
 /* El panel y la barra son hermanos en el DOM, pero encajados se leen como una
@@ -1328,6 +1358,16 @@ details summary:hover { color: var(--marquee); }
 .room-grid--fs.is-idle .chat-panel {
   opacity: 0;
   pointer-events: none;
+}
+
+/* `opacity` se hereda a todo el subárbol, incluidos los descendientes
+   `position: fixed` como el modal de emojis o el buscador de GIFs: sin esto,
+   leer la rejilla del modal 3s sin tocar el ratón lo desvanecería y dejaría
+   de aceptar clics con el picker todavía abierto. */
+.room-grid--fs.is-idle .reactions-bar:has(.modal-backdrop),
+.room-grid--fs.is-idle .chat-panel:has(.gif-picker) {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* ─── Movimiento reducido ─── */

@@ -23,7 +23,7 @@ function exitFullscreen(): void {
 }
 
 export function useFullscreen(ref: RefObject<HTMLElement | null>): {
-  active: boolean; cinema: boolean; toggle: () => void
+  active: boolean; cinema: boolean; toggle: () => void; exit: () => void
 } {
   const [nativeOn, setNativeOn] = useState(false)
   // «Modo cine»: el iPhone no deja poner un contenedor HTML a pantalla completa
@@ -61,10 +61,22 @@ export function useFullscreen(ref: RefObject<HTMLElement | null>): {
     return () => { document.body.style.overflow = previous }
   }, [cinema])
 
-  // Room desmonta el player entero cuando ffmpeg falla: dejar la pestaña en
-  // pantalla completa sobre la pantalla de error sería una trampa sin salida
-  // visible.
+  // Guarda para un desmontaje REAL de Room (cambiar de sala, cerrar la
+  // pestaña de React): esto NO cubre la pantalla de error de ffmpeg, porque
+  // ahí Room sigue siendo la misma instancia montada y solo cambia el JSX que
+  // devuelve, así que este efecto de limpieza nunca llega a dispararse. Ese
+  // caso lo cubre `exit()`, que Room llama explícitamente al entrar en error.
   useEffect(() => () => { if (fullscreenElement()) exitFullscreen() }, [])
+
+  // Salida forzada para cuando el propio JS decide que hay que salir (p.ej.
+  // Room al entrar en la pantalla de error), no una reacción a un evento del
+  // navegador. La nativa se autolimpia si el nodo sale del árbol, pero el
+  // modo cine es un `position: fixed` sostenido por este estado: nada lo
+  // apaga solo.
+  const exit = useCallback(() => {
+    if (fullscreenElement()) exitFullscreen()
+    setCinema(false)
+  }, [])
 
   const toggle = useCallback(() => {
     const el = ref.current
@@ -80,5 +92,5 @@ export function useFullscreen(ref: RefObject<HTMLElement | null>): {
     Promise.resolve(request()).catch(() => setCinema(true))
   }, [ref])
 
-  return { active: nativeOn || cinema, cinema, toggle }
+  return { active: nativeOn || cinema, cinema, toggle, exit }
 }

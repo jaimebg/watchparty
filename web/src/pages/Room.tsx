@@ -70,7 +70,7 @@ export function Room({ token }: { token: string }) {
   const [showMeta, setShowMeta] = useState(false)
   const sendRef = useRef<(m: ClientMsg) => void>(() => {})
   const gridRef = useRef<HTMLDivElement>(null)
-  const { active: fullscreen, cinema, toggle: toggleFullscreen } = useFullscreen(gridRef)
+  const { active: fullscreen, cinema, toggle: toggleFullscreen, exit: exitFullscreen } = useFullscreen(gridRef)
 
   // El temporizador consulta esto al vencer: con la sala en pausa o con alguien
   // escribiendo, el chrome no se va.
@@ -172,6 +172,26 @@ export function Room({ token }: { token: string }) {
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 
+  // A ffmpeg failure can happen either before the client ever connects
+  // (info.error, from the initial REST fetch) or mid-session, reported over
+  // the socket as {t:'error'}; both render the same recovery screen. Se
+  // calcula aquí arriba —antes de los "return" tempranos— porque las Reglas
+  // de los Hooks exigen que useEffect se llame siempre en el mismo orden;
+  // `info` aún puede ser `null` en este punto.
+  const errorLog = wsError ?? info?.error
+
+  // El modo cine no se autolimpia como la pantalla completa nativa (que sí
+  // sale sola en cuanto el nodo desaparece del árbol): es un `position:
+  // fixed` sostenido por estado de React, y Room no se desmonta al entrar en
+  // el estado de error, solo cambia el JSX que devuelve. Sin esto, cinema se
+  // queda en `true` y el body sigue con scroll bloqueado sobre la pantalla de
+  // error, con el botón «Reintentar» posiblemente inalcanzable y sin más
+  // salida que el Escape que el iPhone —el único sitio con modo cine— no
+  // tiene.
+  useEffect(() => {
+    if (errorLog) exitFullscreen()
+  }, [errorLog, exitFullscreen])
+
   if (notFound) {
     return (
       <main className="page page--gate">
@@ -212,10 +232,6 @@ export function Room({ token }: { token: string }) {
 
   if (!info) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
 
-  // A ffmpeg failure can happen either before the client ever connects
-  // (info.error, from the initial REST fetch) or mid-session, reported over
-  // the socket as {t:'error'}; both render the same recovery screen.
-  const errorLog = wsError ?? info.error
   if (errorLog) {
     const retry = async () => {
       setWsError(null)

@@ -62,6 +62,8 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 - [ ] La ✕ de un chip lo quita de la barra
 - [ ] Al llegar a 12 sale el aviso y la rejilla se deshabilita entera
 - [ ] Recargar la página conserva la selección; otro navegador tiene la suya
+- [ ] Con 4 o 5 personas reaccionando a la vez, la lista de participantes NO da
+      saltos entre filas
 
 ## Pantalla completa
 - [ ] El botón de los controles entra y sale de pantalla completa
@@ -71,12 +73,22 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 - [ ] Doble clic en el vídeo entra y sale SIN dejar dos mensajes de sistema
 - [ ] Tras el doble clic, la película sigue en el mismo estado de play/pausa
       que tenía justo antes (el doble clic no lo cambia)
+- [ ] En pantalla completa, un solo clic sobre el vídeo tarda ~400 ms en
+      pausar → es a propósito (para distinguirlo del doble clic), no un fallo
 - [ ] Escape sale de pantalla completa
 - [ ] El vídeo llena la pantalla sin recortes; los controles quedan superpuestos
       abajo en una sola fila
+- [ ] En pantalla completa, los diez emojis por defecto de la barra de
+      reacciones caben todos sin scroll horizontal
 - [ ] El chat flota abajo a la derecha, encajado con la barra de reacciones
 - [ ] Se puede escribir y hacer scroll en el chat flotante; el buscador de GIFs
       y el modal de emojis se abren y se ven
+- [ ] Abrir el modal de emojis en pantalla completa y no tocar el ratón
+      durante 3 s → el modal sigue totalmente visible y se puede seguir
+      pulsando (no se desvanece con el resto del chrome)
+- [ ] Revisar el dock de pantalla completa (reacciones + chat) también en
+      Windows o Linux, no solo en macOS → el layout es sensible a la barra de
+      scroll clásica de esos sistemas
 - [ ] Tras ~3 s sin tocar nada, controles/chat/reacciones se ocultan y el cursor
       desaparece; los emojis volando siguen viéndose
 - [ ] Tras ocultarse, mover el ratón hace que controles, chat y reacciones
@@ -89,3 +101,6 @@ un MKV multi-audio real y un .srt externo. Anota la URL pública del túnel.
 - [ ] Escribir algo a medias, entrar y salir de pantalla completa: el texto SIGUE ahí
 - [ ] En iPhone el botón activa el «modo cine» (ocupa la ventana, con la barra
       de Safari a la vista) y el chat flotante se ve
+- [ ] En modo cine (iPhone), el chat flotante se lee bien y se puede escribir;
+      y si ffmpeg falla estando en modo cine, el botón «Reintentar» de la
+      pantalla de error sigue siendo alcanzable (no hay tecla Escape en iPhone)
