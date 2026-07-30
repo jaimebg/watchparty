@@ -199,6 +199,24 @@ describe('RoomManager sin película', () => {
     expect(seen).toEqual([1, 2])
   })
 
+  // Si el fan-out no protege cada llamada por separado, un listener roto se
+  // lleva por delante a los que van detrás de él en el Set: el cambio de
+  // película ya ocurrió (room.media es el nuevo) pero nadie después del roto
+  // se entera.
+  it('un mediaListener que lanza no impide que setMedia resuelva ni que los demás se enteren', async () => {
+    const manager = new RoomManager({ createSession: () => fakeSession() })
+    const room = await manager.create()
+    const seenByOther: number[] = []
+    room.mediaListeners.add(() => { throw new Error('listener roto') })
+    room.mediaListeners.add(m => seenByOther.push(m.epoch))
+
+    const media = await manager.setMedia(room.token, items[0])
+
+    expect(media.epoch).toBe(1)
+    expect(room.media).toBe(media)
+    expect(seenByOther).toEqual([1])
+  })
+
   // Un fichero que ffprobe no puede leer no debe dejar la sala a medias: la
   // película anterior tiene que seguir sonando y el directorio nuevo no debe
   // quedarse tirado en la caché.
@@ -206,6 +224,11 @@ describe('RoomManager sin película', () => {
     const manager = new RoomManager({ createSession: () => fakeSession() })
     const room = await manager.create(items[0])
     const before = room.media!
+    let stopped = false
+    // Si prepareMedia se ejecutara después de parar la sesión vieja (en vez de
+    // antes), este test seguiría en verde con la sala muda: por eso se
+    // instrumenta stop() y se comprueba que NUNCA se llama.
+    before.session.stop = async () => { stopped = true }
     const brokenDir = mkdtempSync(join(tmpdir(), 'rmbroken-'))
     writeFileSync(join(brokenDir, 'roto.mkv'), 'esto no es un vídeo')
     const broken = (await scanLibrary([brokenDir]))[0]
@@ -216,6 +239,7 @@ describe('RoomManager sin película', () => {
     expect(room.media!.epoch).toBe(1)
     expect(existsSync(before.dir)).toBe(true)
     expect(existsSync(join(room.dir, 'e2'))).toBe(false)
+    expect(stopped).toBe(false)
   })
 
   it('rechaza un segundo cambio mientras hay uno en vuelo', async () => {
@@ -227,6 +251,39 @@ describe('RoomManager sin película', () => {
     await first
 
     expect(room.media!.epoch).toBe(1)
+  })
+
+  it('libera busy tras un setMedia fallido: el siguiente intento con un fichero bueno funciona', async () => {
+    const manager = new RoomManager({ createSession: () => fakeSession() })
+    const room = await manager.create(items[0])
+    const brokenDir = mkdtempSync(join(tmpdir(), 'rmbroken3-'))
+    writeFileSync(join(brokenDir, 'roto.mkv'), 'esto no es un vídeo')
+    const broken = (await scanLibrary([brokenDir]))[0]
+
+    await expect(manager.setMedia(room.token, broken)).rejects.toThrow()
+    const media = await manager.setMedia(room.token, monoItems[0])
+
+    expect(media.epoch).toBe(2)
+  })
+
+  // busy es el único cerrojo compartido entre setMedia y retry: si retry no lo
+  // levantara, esta dirección (retry en vuelo → setMedia) no se rechazaría y
+  // las dos sesiones acabarían compitiendo por el mismo directorio.
+  it('un retry en vuelo bloquea un setMedia con RoomBusyError', async () => {
+    const manager = new RoomManager({ createSession: () => fakeSession() })
+    const room = await manager.create(items[0])
+    let releaseStop: () => void = () => {}
+    // stop() se queda colgado a propósito: como room.busy se pone a true de
+    // forma síncrona antes de este await (mismo patrón que setMedia), el
+    // retry ya ha marcado la sala como ocupada en cuanto esta línea retorna,
+    // sin depender de temporizadores ni de sleep.
+    room.media!.session.stop = () => new Promise<void>(resolve => { releaseStop = resolve })
+
+    const retrying = manager.retry(room.token)
+    await expect(manager.setMedia(room.token, monoItems[0])).rejects.toBeInstanceOf(RoomBusyError)
+
+    releaseStop()
+    await retrying
   })
 
   it('retry es no-op sin película y close funciona sin ella', async () => {

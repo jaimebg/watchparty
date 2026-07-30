@@ -137,7 +137,9 @@ export class RoomManager {
     const mode = pickMode(info)
     // Solo copy corta donde diga la fuente; transcode fuerza su propia rejilla
     // de 4 s, así que ahí la lista de keyframes no solo sobra: planificar con
-    // ella describiría cortes que ffmpeg no va a producir.
+    // ella describiría cortes que ffmpeg no va a producir. De paso, esto ahorra
+    // el volcado de paquetes de extractKeyframes (hasta 256 MB) en las salas
+    // que van a transcodificar igualmente.
     const keyframes = mode === 'copy' ? await extractKeyframes(item.path) : null
     const segments = planSegments(info.durationSec, keyframes)
     const subtitles = listSubtitleOptions(info, item.srtFiles)
@@ -192,7 +194,11 @@ export class RoomManager {
         // fallar el borrado. Se queda huérfano y se lo lleva close().
         try { rmSync(previous.dir, { recursive: true, force: true }) } catch { /* se irá al cerrar */ }
       }
-      for (const cb of room.mediaListeners) cb(media)
+      for (const cb of room.mediaListeners) {
+        // Un listener roto no invalida un cambio de película que YA ocurrió, ni debe
+        // impedir que se enteren los demás.
+        try { cb(media) } catch { /* nada que hacer aquí */ }
+      }
       return media
     } finally {
       room.busy = false
@@ -207,29 +213,37 @@ export class RoomManager {
     // Sin película no hay nada que reintentar. El endpoint ya lo rechaza con
     // 409 antes de llegar aquí; esto es la segunda barrera.
     if (!media) return
-    await media.session.stop()
-    // El set entero de segmentos de la ejecución rota no debe sobrevivir al
-    // reintento: un .m4s o init_*.mp4 viejo en disco puede hacer creer a
-    // requestInit() de la sesión nueva que su propio init ya está completo
-    // (ver transcoder.ts) y, si el reintento pasó de copy a transcode, ese
-    // init viejo trae el SPS/PPS de la fuente mientras los segmentos nuevos
-    // llevan los de libx264: un desajuste de decodificador permanente. Los
-    // subtítulos extraídos (sub_*.vtt) siguen siendo válidos — un reintento no
-    // los regenera — así que esos se conservan.
-    for (const f of readdirSync(media.dir)) {
-      if (f.endsWith('.stable.mp4') || f.endsWith('.m4s') || f.startsWith('init_')) {
-        rmSync(join(media.dir, f), { force: true })
+    // Mismo cerrojo que setMedia: sin él, un setMedia podría colarse mientras
+    // el retry todavía está a mitad de montar su sesión nueva, y acabar los
+    // dos con una sesión huérfana compitiendo por el mismo directorio.
+    room.busy = true
+    try {
+      await media.session.stop()
+      // El set entero de segmentos de la ejecución rota no debe sobrevivir al
+      // reintento: un .m4s o init_*.mp4 viejo en disco puede hacer creer a
+      // requestInit() de la sesión nueva que su propio init ya está completo
+      // (ver transcoder.ts) y, si el reintento pasó de copy a transcode, ese
+      // init viejo trae el SPS/PPS de la fuente mientras los segmentos nuevos
+      // llevan los de libx264: un desajuste de decodificador permanente. Los
+      // subtítulos extraídos (sub_*.vtt) siguen siendo válidos — un reintento no
+      // los regenera — así que esos se conservan.
+      for (const f of readdirSync(media.dir)) {
+        if (f.endsWith('.stable.mp4') || f.endsWith('.m4s') || f.startsWith('init_')) {
+          rmSync(join(media.dir, f), { force: true })
+        }
       }
+      room.error = null
+      // El reintento siempre transcodifica, y transcode fuerza keyframes cada
+      // 4 s: quedarse con la rejilla de keyframes de la fuente que planificó el
+      // modo copy dejaría la playlist anunciando cortes que el ffmpeg nuevo no va
+      // a producir. El cliente recarga tras el retry, así que recoge la lista nueva.
+      media.segments = planSegments(media.info.durationSec, null)
+      media.session = this.deps.createSession(media.item, media.info, media.segments, media.dir, 'transcode')
+      media.session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
+      media.session.start()
+    } finally {
+      room.busy = false
     }
-    room.error = null
-    // El reintento siempre transcodifica, y transcode fuerza keyframes cada
-    // 4 s: quedarse con la rejilla de keyframes de la fuente que planificó el
-    // modo copy dejaría la playlist anunciando cortes que el ffmpeg nuevo no va
-    // a producir. El cliente recarga tras el retry, así que recoge la lista nueva.
-    media.segments = planSegments(media.info.durationSec, null)
-    media.session = this.deps.createSession(media.item, media.info, media.segments, media.dir, 'transcode')
-    media.session.onError(log => { room.error = log; for (const cb of room.errorListeners) cb(log) })
-    media.session.start()
   }
 
   async close(token: string): Promise<void> {
