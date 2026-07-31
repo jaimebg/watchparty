@@ -14,6 +14,21 @@ const ENCODER_FLAGS: Record<string, string[]> = {
   h264_qsv: ['-global_quality', '23'],
 }
 
+/**
+ * Las rutas de salida, con las barras que ffmpeg sabe leer.
+ *
+ * Hace falta porque ffmpeg resuelve -hls_fmp4_init_filename relativo al
+ * directorio del playlist, y ese directorio lo deduce buscando la última «/» de
+ * la ruta de salida. Las «\» que produce join() en Windows no le valen: sin
+ * barra que encontrar se queda sin directorio base y escribe el init en el CWD
+ * del proceso, donde requestInit() no lo busca —así que en Windows ninguna sala
+ * llegaba a servir vídeo—. Windows acepta las barras normales en cualquier
+ * ruta, y en macOS esto no cambia nada.
+ */
+export function toFfmpegPath(p: string): string {
+  return p.replace(/\\/g, '/')
+}
+
 export function buildTranscodeArgs(x: TranscodeArgsInput): string[] {
   const seg = x.segments[x.startSegment]
   const args = ['-hide_banner', '-loglevel', 'warning', '-nostdin', '-y']
@@ -55,16 +70,16 @@ export function buildTranscodeArgs(x: TranscodeArgsInput): string[] {
   // literalmente «init_%v.mp4» y requestInit() esperaría en vano por init_0.mp4.
   if (variantCount(x.audioCount) === 1) {
     args.push(
-      '-hls_segment_filename', join(x.outDir, 'seg_0_%05d.m4s'),
+      '-hls_segment_filename', toFfmpegPath(join(x.outDir, 'seg_0_%05d.m4s')),
       '-hls_fmp4_init_filename', 'init_0.mp4',
-      join(x.outDir, 'ffm_0.m3u8'),
+      toFfmpegPath(join(x.outDir, 'ffm_0.m3u8')),
     )
   } else {
     args.push(
-      '-hls_segment_filename', join(x.outDir, 'seg_%v_%05d.m4s'),
+      '-hls_segment_filename', toFfmpegPath(join(x.outDir, 'seg_%v_%05d.m4s')),
       '-hls_fmp4_init_filename', 'init_%v.mp4',
       '-var_stream_map', ['v:0,agroup:aud', ...Array.from({ length: x.audioCount }, (_, i) => `a:${i},agroup:aud`)].join(' '),
-      join(x.outDir, 'ffm_%v.m3u8'),
+      toFfmpegPath(join(x.outDir, 'ffm_%v.m3u8')),
     )
   }
   return args

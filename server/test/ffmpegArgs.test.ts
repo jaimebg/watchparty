@@ -1,8 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { buildTranscodeArgs } from '../src/media/ffmpegArgs.js'
+import { buildTranscodeArgs, toFfmpegPath } from '../src/media/ffmpegArgs.js'
 import { planSegments } from '../src/media/planner.js'
 
 const base = { input: '/x/in.mkv', encoder: 'libx264', segments: planSegments(20, null), audioCount: 2, outDir: '/tmp/out' }
+
+describe('toFfmpegPath', () => {
+  it('pasa las barras de Windows a las que entiende ffmpeg', () => {
+    expect(toFfmpegPath('C:\\Users\\x\\out\\ffm_0.m3u8')).toBe('C:/Users/x/out/ffm_0.m3u8')
+  })
+
+  it('deja intacta la ruta que ya viene con barras normales', () => {
+    expect(toFfmpegPath('/tmp/out/ffm_0.m3u8')).toBe('/tmp/out/ffm_0.m3u8')
+  })
+})
 
 describe('buildTranscodeArgs', () => {
   it('copy mode from segment 0: no -ss, -c:v copy, audio renditions, var_stream_map', () => {
@@ -63,6 +73,20 @@ describe('buildTranscodeArgs', () => {
     expect(a).not.toContain('-c:a')
     expect(a.join(' ')).toContain('seg_0_%05d.m4s')
   })
+  // Medido con este ffmpeg: el directorio donde deja el init lo deduce buscando
+  // la última «/» de la ruta del playlist, y las «\» que produce join() en
+  // Windows no le valen. Sin barra que encontrar se queda sin directorio y
+  // escribe init_0.mp4 en el CWD del proceso, donde requestInit() no lo busca:
+  // en Windows ninguna sala llegaba a servir vídeo. Los segmentos se salvaban
+  // porque -hls_segment_filename sí se usa tal cual.
+  it('da las rutas de salida con barras normales, que es lo que ffmpeg sabe leer', () => {
+    const a = buildTranscodeArgs({ ...base, audioCount: 1, outDir: 'C:\\Users\\x\\out', mode: 'copy', startSegment: 0 })
+    const salidas = a.filter(v => v.includes('ffm_0.m3u8') || v.includes('seg_0_'))
+    expect(salidas).toHaveLength(2)
+    for (const s of salidas) expect(s).not.toContain('\\')
+    expect(a).toContain('C:/Users/x/out/ffm_0.m3u8')
+  })
+
   it('transcode mode seeks to the boundary, not the midpoint, even when real keyframes are known', () => {
     // Transcode decodes and discards up to the requested instant, so -ss must
     // land on seg.start; feeding it seg.seekAt (the copy-mode midpoint) would
