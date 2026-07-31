@@ -10,7 +10,16 @@ export interface TranscodeArgsInput {
 const ENCODER_FLAGS: Record<string, string[]> = {
   libx264: ['-preset', 'veryfast', '-crf', '21'],
   h264_videotoolbox: ['-b:v', '6M'],
-  h264_nvenc: ['-preset', 'p4', '-cq', '23'],
+  // `-forced-idr 1` no es un ajuste de calidad: sin él NVENC se come el
+  // -force_key_frames de abajo y cae a su GOP por defecto (250 fotogramas), con
+  // lo que rompe el contrato de hlsLayout.ts —la playlist declara los cortes de
+  // antemano y ffmpeg tiene que producirlos— sin dar ningún error. Medido con
+  // este ffmpeg sobre un fuente a 24 fps: cortaba cada 10,417 s en vez de cada
+  // 4 s, y como `openSegment` reancla cada segmento al instante que la playlist
+  // ya declaró, el desfase entre lo declarado y lo servido crecía sin techo.
+  // Solo se notaba en Windows con GPU NVIDIA: es el único sitio donde
+  // parseEncoders elige este encoder. Lo vigila encoderKeyframes.test.ts.
+  h264_nvenc: ['-preset', 'p4', '-cq', '23', '-forced-idr', '1'],
   h264_qsv: ['-global_quality', '23'],
 }
 
