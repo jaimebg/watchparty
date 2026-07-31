@@ -13,6 +13,9 @@ export function Library() {
   const [busyFolders, setBusyFolders] = useState(false)
   const [roomInput, setRoomInput] = useState('')
   const [roomError, setRoomError] = useState<string | null>(null)
+  // null = nada en marcha. El objeto describe la sala que se está montando:
+  // `id`/`title` a null en la sala vacía, que no prepara ningún vídeo.
+  const [starting, setStarting] = useState<{ id: string | null; title: string | null } | null>(null)
 
   const load = async () => {
     try {
@@ -30,12 +33,21 @@ export function Library() {
   // Sin ítem: sala vacía. El enlace se copia igual, así que el host puede
   // repartirlo y elegir película con la gente ya dentro.
   const start = async (item?: LibraryItem) => {
+    // Con película, `createRoom` no vuelve hasta que el servidor ha analizado
+    // el vídeo, sacado los keyframes y extraído los subtítulos: segundos. Se
+    // bloquea la reentrada porque dos clics impacientes crearían dos salas y el
+    // enlace copiado sería el de la segunda.
+    if (starting) return
+    setStarting({ id: item?.id ?? null, title: item?.title ?? null })
     try {
       const { token } = await createRoom(item?.id)
       const { tunnelUrl } = await getStatus()
       await navigator.clipboard.writeText(roomLink(tunnelUrl ?? location.origin, token)).catch(() => {})
+      // Sin limpiar `starting`: la navegación tarda en pintar y el cartel debe
+      // seguir puesto hasta que se vaya la página.
       location.pathname = `/room/${token}`
     } catch (e) {
+      setStarting(null)
       setError(e instanceof Error ? e.message : String(e))
     }
   }
@@ -109,6 +121,30 @@ export function Library() {
   )
   if (!items) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
 
+  // Fijo sobre toda la página, así que se monta igual en las dos vistas de
+  // cartelera (con títulos y sin ellos) sin importar dónde caiga en el árbol.
+  const startingOverlay = starting && (
+    <div className="busy-overlay" role="status" aria-live="polite">
+      <span className="spinner spinner--lg" aria-hidden="true" />
+      <p className="busy-title">
+        {starting.title ? `Montando la sala de «${starting.title}»` : 'Montando la sala…'}
+      </p>
+      {starting.title && (
+        <p className="hint">Analizamos el vídeo y preparamos los subtítulos: con
+          películas largas puede tardar unos segundos.</p>
+      )}
+      <p className="hint">El enlace se copia al portapapeles en cuanto esté lista.</p>
+    </div>
+  )
+
+  const emptyRoomButton = (
+    <button type="button" className="btn-primary" disabled={starting !== null} onClick={() => void start()}>
+      {starting && starting.id === null
+        ? <><span className="spinner" aria-hidden="true" /> Montando la sala…</>
+        : '🎬 Crear sala vacía'}
+    </button>
+  )
+
   const foldersSection = (
     <section className="folders-box">
       {folders.length > 0 && (
@@ -153,13 +189,10 @@ export function Library() {
         <p>{folders.length === 0
           ? 'Aún no hay nada en cartel: falta configurar carpetas de medios.'
           : 'Las carpetas configuradas no contienen vídeos (MKV, MP4, AVI, M4V, WebM).'}</p>
-        <p>
-          <button type="button" className="btn-primary" onClick={() => void start()}>
-            🎬 Crear sala vacía
-          </button>
-        </p>
+        <p>{emptyRoomButton}</p>
         <h2>{folders.length === 0 ? 'Añade tu primera carpeta de medios' : 'Carpetas de medios'}</h2>
         {foldersSection}
+        {startingOverlay}
       </main>
     )
   }
@@ -175,9 +208,7 @@ export function Library() {
         <div className="marquee-rule" aria-hidden="true" />
       </header>
       <p className="hint">
-        <button type="button" className="btn-primary" onClick={() => void start()}>
-          🎬 Crear sala vacía
-        </button>
+        {emptyRoomButton}
         {' '}Reparte el enlace ahora y elige la película dentro de la sala.
       </p>
       {groups.map(([path, name]) => (
@@ -185,9 +216,15 @@ export function Library() {
           <h2>{name}</h2>
           <ul className="film-list">{items.filter(i => i.folderPath === path).map((i, idx) => (
             <li key={i.id} style={{ animationDelay: `${Math.min(idx, 10) * 45}ms` }}>
-              <button type="button" className="film-btn" onClick={() => void start(i)}>
+              <button type="button" className="film-btn" disabled={starting !== null} onClick={() => void start(i)}>
                 <span className="film-title">{i.title}</span>
-                <span className="film-go" aria-hidden="true">Crear sala →</span>
+                {starting?.id === i.id ? (
+                  <span className="film-go film-go--busy" aria-hidden="true">
+                    <span className="spinner" /> Montando…
+                  </span>
+                ) : (
+                  <span className="film-go" aria-hidden="true">Crear sala →</span>
+                )}
               </button>
             </li>
           ))}</ul>
@@ -197,6 +234,7 @@ export function Library() {
         <summary>⚙️ Carpetas de medios ({folders.length})</summary>
         {foldersSection}
       </details>
+      {startingOverlay}
     </main>
   )
 }

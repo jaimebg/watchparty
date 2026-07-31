@@ -36,7 +36,13 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
   const [items, setItems] = useState<LibraryItem[] | null>(null)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  // Se separan porque las dos esperas se cuentan distinto: al poner película se
+  // tapa el modal con el cartel de espera (es la operación larga: el servidor
+  // analiza el vídeo y extrae subtítulos), mientras que reescanear solo cambia
+  // la etiqueta de su botón. `busy` sigue siendo el «no toques nada» común.
+  const [applying, setApplying] = useState<LibraryItem | null>(null)
+  const [rescanning, setRescanning] = useState(false)
+  const busy = applying !== null || rescanning
   const [error, setError] = useState<string | null>(null)
   // Confirmación en dos pasos DENTRO del modal, no `window.confirm`: un diálogo
   // nativo puede sacar al host de pantalla completa, y el proyecto ya resuelve
@@ -82,7 +88,7 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
   }, [items, query, searching])
 
   const apply = async (item: LibraryItem) => {
-    setBusy(true)
+    setApplying(item)
     setError(null)
     try {
       await setRoomMedia(token, item.id, by)
@@ -96,7 +102,7 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
       setError(e instanceof Error ? e.message : String(e))
       setPending(null)
     } finally {
-      if (mountedRef.current) setBusy(false)
+      if (mountedRef.current) setApplying(null)
     }
   }
 
@@ -105,12 +111,12 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
   const pick = (item: LibraryItem) => { if (currentItemId) setPending(item); else void apply(item) }
 
   const rescan = () => {
-    setBusy(true)
+    setRescanning(true)
     setError(null)
     rescanLibrary()
       .then(l => { if (mountedRef.current) setItems(l) })
       .catch(e => { if (mountedRef.current) setError(e instanceof Error ? e.message : String(e)) })
-      .finally(() => { if (mountedRef.current) setBusy(false) })
+      .finally(() => { if (mountedRef.current) setRescanning(false) })
   }
 
   const row = (i: LibraryItem, withFolder: boolean) => (
@@ -139,58 +145,77 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
         <button className="modal-close" aria-label="Cerrar" onClick={onClose}>✕</button>
         <h2>{currentItemId ? 'Cambiar película' : 'Elegir película'}</h2>
 
-        <input className="emoji-search" value={query} onChange={e => setQuery(e.target.value)}
-          placeholder="Buscar por título…" aria-label="Buscar película" />
-
-        {error && <p className="field-error">{error}</p>}
-
-        {pending && (
-          <div className="media-confirm">
-            <p>Vas a cambiar la película <strong>para todos</strong>. La reproducción
-              empieza de cero y el chat se conserva.</p>
-            <p className="media-title">«{pending.title}»</p>
-            <button type="button" className="btn-primary" disabled={busy} onClick={() => void apply(pending)}>
-              {busy ? 'Poniendo…' : 'Ponerla'}
-            </button>
-            <button type="button" className="btn-small" disabled={busy} onClick={() => setPending(null)}>
-              Cancelar
-            </button>
+        {/* Mientras se pone la película el modal no enseña la lista: la espera
+            es de varios segundos y dejar la biblioteca a la vista con todo
+            deshabilitado no contaba que estuviera pasando nada. La ✕ sigue
+            ahí para poder irse sin esperar (lo cubre `mountedRef`). */}
+        {applying ? (
+          <div className="modal-busy" role="status" aria-live="polite">
+            <span className="spinner spinner--lg" aria-hidden="true" />
+            <p className="media-title">«{applying.title}»</p>
+            <p className="hint">Preparándola para toda la sala: analizamos el vídeo y
+              extraemos los subtítulos. Puede tardar unos segundos.</p>
           </div>
-        )}
-
-        {items === null ? (
-          <p className="gif-picker-status">Cargando la biblioteca…</p>
-        ) : items.length === 0 ? (
-          <p className="gif-picker-status">No hay vídeos en las carpetas configuradas.</p>
-        ) : searching ? (
-          results.length === 0
-            ? <p className="gif-picker-status">Ningún título coincide.</p>
-            : <ul className="media-list">{results.map(i => row(i, true))}</ul>
         ) : (
-          <div className="media-folders">
-            {folders.map(f => (
-              <section key={f.path}>
-                <button type="button" className="media-folder" aria-expanded={open === f.path}
-                  onClick={() => setOpen(open === f.path ? null : f.path)}>
-                  <span>{open === f.path ? '▾' : '▸'} {f.name}</span>
-                  <span className="hint">{f.items.length}</span>
-                </button>
-                {/* Solo la carpeta abierta se renderiza: con cientos de medios,
-                    pintarlas todas mete miles de botones en el DOM. */}
-                {open === f.path && (
-                  <>
-                    <p className="hint media-folder-path">{f.path}</p>
-                    <ul className="media-list">{f.items.map(i => row(i, false))}</ul>
-                  </>
-                )}
-              </section>
-            ))}
-          </div>
-        )}
+          <>
+            <input className="emoji-search" value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Buscar por título…" aria-label="Buscar película" />
 
-        <button type="button" className="btn-small" disabled={busy} onClick={rescan}>
-          {busy ? 'Trabajando…' : '↻ Volver a escanear'}
-        </button>
+            {error && <p className="field-error">{error}</p>}
+
+            {pending && (
+              <div className="media-confirm">
+                <p>Vas a cambiar la película <strong>para todos</strong>. La reproducción
+                  empieza de cero y el chat se conserva.</p>
+                <p className="media-title">«{pending.title}»</p>
+                {/* Sin etiqueta de «poniendo»: en cuanto se pulsa, `applying` se
+                    lleva por delante esta rama y sale el cartel de espera. */}
+                <button type="button" className="btn-primary" disabled={busy} onClick={() => void apply(pending)}>
+                  Ponerla
+                </button>
+                <button type="button" className="btn-small" disabled={busy} onClick={() => setPending(null)}>
+                  Cancelar
+                </button>
+              </div>
+            )}
+
+            {items === null ? (
+              <p className="gif-picker-status"><span className="spinner" aria-hidden="true" /> Cargando la biblioteca…</p>
+            ) : items.length === 0 ? (
+              <p className="gif-picker-status">No hay vídeos en las carpetas configuradas.</p>
+            ) : searching ? (
+              results.length === 0
+                ? <p className="gif-picker-status">Ningún título coincide.</p>
+                : <ul className="media-list">{results.map(i => row(i, true))}</ul>
+            ) : (
+              <div className="media-folders">
+                {folders.map(f => (
+                  <section key={f.path}>
+                    <button type="button" className="media-folder" aria-expanded={open === f.path}
+                      onClick={() => setOpen(open === f.path ? null : f.path)}>
+                      <span>{open === f.path ? '▾' : '▸'} {f.name}</span>
+                      <span className="hint">{f.items.length}</span>
+                    </button>
+                    {/* Solo la carpeta abierta se renderiza: con cientos de medios,
+                        pintarlas todas mete miles de botones en el DOM. */}
+                    {open === f.path && (
+                      <>
+                        <p className="hint media-folder-path">{f.path}</p>
+                        <ul className="media-list">{f.items.map(i => row(i, false))}</ul>
+                      </>
+                    )}
+                  </section>
+                ))}
+              </div>
+            )}
+
+            <button type="button" className="btn-small" disabled={busy} onClick={rescan}>
+              {rescanning
+                ? <><span className="spinner" aria-hidden="true" /> Escaneando…</>
+                : '↻ Volver a escanear'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

@@ -285,6 +285,76 @@ ul {
   animation: soft-pulse 2s ease-in-out infinite;
 }
 
+/* ─── Esperas largas (crear sala, cambiar película) ───
+   Preparar un medio hace ffprobe, saca los keyframes, extrae los subtítulos y
+   consulta TMDB: son segundos en los que la interfaz no cambiaba de aspecto y
+   el host acababa volviendo a hacer clic. */
+
+/* En `em` y con `currentColor`, como los iconos SVG del reproductor: la misma
+   anilla vale dentro de un `.btn-primary` sobre marquesina y en un `.hint`. */
+.spinner {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  border: 2px solid color-mix(in oklab, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  flex-shrink: 0;
+  vertical-align: -0.08em;
+  animation: spin 0.7s linear infinite;
+}
+
+.spinner--lg {
+  width: 2rem;
+  height: 2rem;
+  border-width: 3px;
+  color: var(--marquee);
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Tapa la cartelera entera mientras se monta la sala. Además de contar lo que
+   pasa se come los clics, y así dos clics impacientes no crean dos salas. */
+.busy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 1.5rem;
+  text-align: center;
+  background: oklch(8% 0.012 60 / 0.86);
+  animation: fade-in 0.2s ease-out;
+}
+
+.busy-title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--text);
+  margin: 0.7rem 0 0;
+}
+
+.busy-overlay .hint { max-width: 36ch; margin: 0; }
+
+/* Ocupa el hueco de la lista dentro del modal en vez de flotar encima: el
+   modal ya tiene scroll propio y una capa absoluta se despegaría al bajar. */
+.modal-busy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 9rem;
+  padding: 1.5rem 0.5rem;
+  text-align: center;
+}
+
+.modal-busy p { margin: 0; }
+.modal-busy .hint { max-width: 38ch; }
+
 details summary {
   cursor: pointer;
   color: var(--text-faint);
@@ -387,6 +457,10 @@ details summary:hover { color: var(--marquee); }
 @media (hover: none) {
   .film-go { opacity: 1; transform: none; }
 }
+
+/* El «Crear sala →» solo asoma al pasar por encima, pero el aviso de que esa
+   fila es la que se está montando tiene que verse aunque el ratón ya no esté. */
+.film-go--busy { opacity: 1; transform: none; }
 
 /* Gestión de carpetas de medios (admin) */
 
@@ -1341,6 +1415,11 @@ details summary:hover { color: var(--marquee); }
   .banner-dot,
   .buffering-note::before,
   .loading { animation: none; }
+
+  /* La anilla no gira, pero sigue latiendo: quitarle la animación del todo
+     dejaría un adorno estático justo donde hace falta señalar «esto sigue». */
+  .spinner { animation: soft-pulse 1.2s ease-in-out infinite; }
+  .busy-overlay { animation: none; }
 
   /* Las reacciones conservan su duración (la lógica de retirada depende de
      animationend) pero se desvanecen en el sitio en vez de volar. */
