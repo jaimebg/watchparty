@@ -17,6 +17,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
+import { networkInterfaces } from 'node:os'
 import { join } from 'node:path'
 import { dataDir } from '../config.js'
 import type { TunnelState } from './checks.js'
@@ -60,9 +61,20 @@ export function interfaceHasAddress(ifconfigOutput: string, ip: string): boolean
   return new RegExp(`inet\\s+${ip.replace(/\./g, '\\.')}(?![0-9.])`).test(ifconfigOutput)
 }
 
-/** `sc query` funciona sin privilegios, a diferencia de `wg show` en Windows. */
-export function windowsServiceRunning(scOutput: string): boolean {
-  return /STATE\s*:\s*\d+\s+RUNNING/i.test(scOutput)
+/** Lo único que hace falta de `os.networkInterfaces()`. */
+export type InterfaceAddresses = Record<string, readonly { address: string }[] | undefined>
+
+/**
+ * La versión Windows de interfaceHasAddress, preguntándole al sistema en vez de
+ * a un comando: `sc query` diría lo mismo, pero traduce sus etiquetas —en un
+ * Windows en español imprime `ESTADO : 4  RUNNING`— y buscar «STATE» daba por
+ * bajado un túnel que estaba vivo. Aquí no hay texto que interpretar, y de paso
+ * se comprueba lo que de verdad importa (que la dirección esté puesta) y no que
+ * el servicio exista.
+ */
+export function addressIsAssigned(ifaces: InterfaceAddresses, ip: string): boolean {
+  if (!ip) return false
+  return Object.values(ifaces).some(addrs => addrs?.some(a => a.address === ip))
 }
 
 // ---------------------------------------------------------------------------
@@ -106,8 +118,9 @@ export function tunnelState(): TunnelState {
 
   if (process.platform === 'win32') {
     if (!existsSync(WINDOWS_WIREGUARD)) return 'missing-wireguard'
-    // El servicio que instala `wireguard.exe /installtunnelservice`.
-    return windowsServiceRunning(quiet('sc', ['query', `WireGuardTunnel$${IFACE}`])) ? 'up' : 'down'
+    const { local } = addresses()
+    if (!local) return 'down'
+    return addressIsAssigned(networkInterfaces(), local) ? 'up' : 'down'
   }
 
   if (!brewPrefix()) return 'missing-wireguard'
@@ -198,7 +211,8 @@ export function bringUp(): TunnelResult {
   } catch {
     return { ok: false, message: 'No se pudo levantar el túnel (¿se canceló la autenticación?).' }
   }
-  if (tunnelState() !== 'up') return { ok: false, message: 'wg-quick terminó pero la interfaz no aparece.' }
+  // En Windows no hay wg-quick, así que el mensaje no nombra la herramienta.
+  if (tunnelState() !== 'up') return { ok: false, message: 'WireGuard terminó pero la interfaz no aparece.' }
   return peerReachable()
     ? { ok: true, message: 'Túnel del relevo activo.' }
     : { ok: false, message: 'Túnel levantado, pero el otro extremo no responde. ¿Está vivo el VPS?' }

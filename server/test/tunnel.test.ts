@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { interfaceHasAddress, parseConfAddresses, parseConfPrivateKey, windowsServiceRunning } from '../src/setup/tunnel.js'
+import { addressIsAssigned, interfaceHasAddress, parseConfAddresses, parseConfPrivateKey } from '../src/setup/tunnel.js'
 
 const CONF = `# comentario
 [Interface]
@@ -85,14 +85,35 @@ utun6: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1420
   })
 })
 
-describe('windowsServiceRunning', () => {
-  it('reconoce el servicio del túnel en marcha', () => {
-    expect(windowsServiceRunning('        STATE              : 4  RUNNING')).toBe(true)
+// El estado en Windows sale de las direcciones que reporta el propio sistema y
+// no de `sc query`, porque sc.exe traduce sus etiquetas: en un Windows en
+// español la línea es `ESTADO : 4  RUNNING`, así que buscar «STATE» daba por
+// bajado un túnel vivo, y `npm start` intentaba reinstalarlo en cada arranque.
+describe('addressIsAssigned', () => {
+  const IFACES = {
+    wg0: [{ address: 'fe80::1e4b:2a0f:1' }, { address: '10.77.0.2' }],
+    Ethernet: [{ address: '192.168.1.175' }],
+  }
+
+  it('encuentra la dirección del túnel sea cual sea el nombre del adaptador', () => {
+    expect(addressIsAssigned(IFACES, '10.77.0.2')).toBe(true)
   })
 
-  it('parado o inexistente cuenta como bajado', () => {
-    expect(windowsServiceRunning('        STATE              : 1  STOPPED')).toBe(false)
-    expect(windowsServiceRunning('El servicio especificado no existe.')).toBe(false)
-    expect(windowsServiceRunning('')).toBe(false)
+  it('no la encuentra cuando el túnel está bajado', () => {
+    expect(addressIsAssigned({ Ethernet: IFACES.Ethernet }, '10.77.0.2')).toBe(false)
+  })
+
+  // Mismo motivo que en interfaceHasAddress: .2 no puede casar con .20.
+  it('no confunde un prefijo con la dirección entera', () => {
+    expect(addressIsAssigned({ wg0: [{ address: '10.77.0.20' }] }, '10.77.0.2')).toBe(false)
+  })
+
+  it('sin dirección que buscar responde que no', () => {
+    expect(addressIsAssigned(IFACES, '')).toBe(false)
+  })
+
+  // os.networkInterfaces() declara opcional el valor de cada entrada.
+  it('tolera una interfaz sin direcciones', () => {
+    expect(addressIsAssigned({ wg0: undefined }, '10.77.0.2')).toBe(false)
   })
 })
