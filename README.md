@@ -1,463 +1,460 @@
-# jbg-watchparty
+# Watchparty
 
-Servidor local multiplataforma para ver películas y series en grupo de forma sincronizada. El host ejecuta el servidor en su máquina; los invitados entran por navegador desde internet mediante un túnel integrado. Incluye chat en tiempo real con reacciones y GIFs.
+A self-hosted, cross-platform server for watching movies and shows together in sync. The host runs the server on their own machine; guests join from their browsers over the internet through an integrated tunnel. Includes real-time chat with floating reactions and GIF search.
 
-**Características:**
-- 🎬 Sincronización de reproducción en tiempo real (pausa, play, seek)
-- ⏳ La sala espera al espectador que se queda cargando (con tope de 20 s, para que una conexión mala no pare la sesión)
-- 🎙️ Selección independiente de pista de audio y subtítulos por espectador
-- 💬 Chat en vivo con reacciones flotantes y búsqueda de GIFs
-- 🔗 Acceso remoto automático via túnel HTTPS seguro (cloudflared)
-- 🖥️ Soporte multiplataforma (Windows y macOS)
-- 🎯 Grupos pequeños (3–6 personas)
+**Features:**
+- 🎬 Real-time playback synchronization (pause, play, seek)
+- ⏳ The room waits for the viewer who is still buffering (capped at 20 s, so a bad connection doesn't stall the session)
+- 🎙️ Independent audio and subtitle track selection per viewer
+- 💬 Live chat with floating reactions and GIF search
+- 🔗 Automatic remote access via a secure HTTPS tunnel (cloudflared)
+- 🖥️ Cross-platform support (Windows and macOS)
+- 🎯 Small groups (3–6 people)
 
-## Requisitos
+## Requirements
 
 - **Node.js** ≥ 20
-- **npm** o equivalente
-- Windows o macOS (archivos compilados de ffmpeg y cloudflared incluidos)
+- **npm** or equivalent
+- Windows or macOS (prebuilt ffmpeg and cloudflared binaries are included)
 
-## Instalación
+## Installation
 
-### Paso 1: Descargar e instalar dependencias
+### Step 1: Clone and install dependencies
 
 ```bash
 npm install
 ```
 
-### Paso 2: Configurar carpetas de medios
+### Step 2: Configure media folders
 
-La primera vez, la biblioteca te ofrece un botón **«📁 Elegir carpeta…»** que abre el
-diálogo nativo de tu sistema (Finder/Explorador) para elegir la carpeta de tus vídeos —
-no hace falta tocar ningún archivo. Si lo prefieres, también puedes escribir la ruta a
-mano en el mismo asistente, o editar la configuración directamente.
+The first time you open the library, a **«📁 Choose folder…»** button opens your
+system's native dialog (Finder/File Explorer) to pick your videos folder — no
+file editing required. If you prefer, you can also type the path by hand in the
+same setup wizard, or edit the configuration directly.
 
-La configuración se lee en dos capas, de menos a más prioridad:
+Configuration is read in two layers, from lowest to highest priority:
 
-1. **`config.defaults.json`** (en la raíz del repo, versionado). Lleva las API keys y el
-   túnel, así que al clonar el repo en otra máquina ya funciona todo sin reconfigurar
-   nada. Como contiene secretos, **el repo debe seguir siendo privado**.
-2. **`config.json`** (local, fuera del repo). Solo lo propio de cada máquina —
-   principalmente `mediaFolders`. Vive en el directorio de datos de tu plataforma:
+1. **`config.defaults.json`** (repo root, versioned). A template with generic
+   defaults only — it ships with every optional field set to `null`.
+2. **`config.json`** (local, outside the repo). Everything specific to your
+   machine — media folders and any API keys or tunnel settings. It lives in the
+   data directory of your platform:
    - **macOS:** `~/Library/Application Support/jbg-watchparty/config.json`
    - **Windows:** `%APPDATA%\jbg-watchparty\config.json`
+   - **Linux:** `~/.local/share/jbg-watchparty/config.json`
 
-Un valor del `config.json` local pisa al del repo, salvo si es `null`: `null` significa
-«sin configurar» y deja pasar el valor compartido. Y al guardar desde la UI solo se
-persiste localmente lo que difiere del repo, de modo que si rotas una key en
-`config.defaults.json` todas las máquinas la recogen sin tocar nada.
+A value in the local `config.json` overrides the shared file, unless it is
+`null`: `null` means "not configured". On first run, the app creates the local
+config for you; you can also create it by hand.
 
-Ejemplo completo (mismos campos en ambos archivos):
+Example (all fields are optional except where noted):
 
 ```json
 {
   "mediaFolders": [
-    "/Users/tuusuario/Videos/Películas",
-    "/Users/tuusuario/Videos/Series"
+    "/Users/youruser/Videos/Movies",
+    "/Users/youruser/Videos/Series"
   ],
-  "klipyApiKey": "tu-api-key-aqui-opcional",
-  "tmdbApiKey": "tu-api-key-de-tmdb-opcional",
+  "klipyApiKey": "your-optional-klipy-api-key",
+  "tmdbApiKey": "your-optional-tmdb-api-key",
   "port": 8400,
   "cacheLimitGB": 10
 }
 ```
 
-**Campos de configuración:**
-- **`mediaFolders`** (array de strings): Rutas absolutas a carpetas que contengan vídeos (MKV, MP4, AVI, etc.). Obligatorio; también se puede añadir la primera carpeta desde el panel del host si arrancas con la biblioteca vacía. Es específico de cada máquina: va en el `config.json` local, no en `config.defaults.json`.
-- **`klipyApiKey`** (string, opcional): API key de Klipy para buscar y enviar GIFs en el chat. Si no está presente, el botón de GIFs se oculta.
-- **`tunnelToken`** (string, opcional): Token de un named tunnel de Cloudflare. Con él (junto a `tunnelUrl`), el servidor usa tu túnel con URL fija en vez del Quick Tunnel aleatorio. Ver [URL fija con tu dominio](#url-fija-con-tu-dominio-named-tunnel).
-- **`tunnelUrl`** (string, opcional): URL pública fija del túnel, p. ej. `https://watchparty.tudominio.com`. Obligatorio si usas `tunnelToken` (deben configurarse juntos).
-- **`streamBaseUrl`** (string, opcional): Origen desde el que los clientes piden el vídeo, p. ej. `https://stream.tudominio.com`. Sin él (por defecto), el vídeo sale por el mismo sitio que la app. Ver [Sacar el vídeo del CDN](#sacar-el-vídeo-del-cdn-plano-de-datos-aparte).
-- **`relayPeerPublicKey`**, **`relayEndpoint`**, **`relayPeerIp`**, **`relayLocalIp`** (strings, opcionales): Datos del VPS del relevo, para que `npm run setup` pueda montar el túnel en una máquina nueva sin que nadie recuerde nada. Van en `config.defaults.json` porque describen el VPS y no la máquina, y ninguno es secreto (una clave pública y un endpoint). `relayLocalIp` es fija a propósito: el `reverse_proxy` del VPS apunta a una sola dirección, así que solo sirve un host a la vez.
-- **`tmdbApiKey`** (string, opcional): API key de TMDB (themoviedb.org → Ajustes → API). Con ella, al crear una sala se buscan metadatos por el nombre del archivo: el título de la sala pasa a ser «Título (año)» y aparece un botón **ℹ️ Info** con carátula, nota y sinopsis en español. Los episodios (`S01E02` en el nombre) se buscan como series. Sin key, todo funciona igual pero con el nombre del archivo pelado.
-- **`port`** (número): Puerto HTTP del servidor (por defecto: 8400).
-- **`cacheLimitGB`** (número): Límite de caché HLS en GB (por defecto: 10). Se limpia automáticamente al cerrar salas.
+**Configuration fields:**
+- **`mediaFolders`** (array of strings): Absolute paths to folders containing videos (MKV, MP4, AVI, etc.). Required; you can also add the first folder from the host panel if you start with an empty library. Machine-specific: put it in the local `config.json`, never in `config.defaults.json`.
+- **`klipyApiKey`** (string, optional): Klipy API key to search and send GIFs in chat. If absent, the GIF button is hidden.
+- **`tunnelToken`** (string, optional): Token of a Cloudflare named tunnel. With it (along with `tunnelUrl`), the server uses your tunnel with a fixed URL instead of the random Quick Tunnel. See [Fixed URL with your own domain](#fixed-url-with-your-own-domain-named-tunnel).
+- **`tunnelUrl`** (string, optional): Fixed public URL of the tunnel, e.g. `https://watchparty.yourdomain.com`. Required if you use `tunnelToken` (they must be configured together).
+- **`streamBaseUrl`** (string, optional): Origin from which clients fetch video, e.g. `https://stream.yourdomain.com`. Without it (the default), video is served from the same origin as the app. See [Serving video off the CDN](#serving-video-off-the-cdn-separate-data-plane).
+- **`relayPeerPublicKey`**, **`relayEndpoint`**, **`relayPeerIp`**, **`relayLocalIp`** (strings, optional): Details of your relay VPS, so `npm run setup` can bring up the WireGuard tunnel on a new machine without anyone having to remember anything. They describe the VPS rather than the machine, and none is secret (a public key and an endpoint), so multi-machine owners may keep them in `config.defaults.json`; everyone else should keep them in the local `config.json`. `relayLocalIp` is fixed on purpose: the reverse_proxy on the VPS points at a single address, so only one host can use it at a time.
+- **`tmdbApiKey`** (string, optional): TMDB API key (themoviedb.org → Settings → API). With it, creating a room looks up metadata from the file name: the room title becomes "Title (year)" and an **ℹ️ Info** button appears with poster, rating and synopsis. Episodes (`S01E02` in the name) are looked up as series. Without a key, everything works the same but with the bare file name.
+- **`port`** (number): HTTP port of the server (default: 8400).
+- **`cacheLimitGB`** (number): HLS cache limit in GB (default: 10). Cleaned up automatically when rooms close.
 
-### Paso 3: Ejecutar el servidor
+### Step 3: Run the server
 
 ```bash
 npm start
 ```
 
-`npm start` empieza por una **comprobación del entorno** que corre en macOS y en Windows:
-arregla solo lo que puede arreglarse solo (levantar el túnel del relevo si está
-configurado) y avisa del resto con la acción concreta al lado. Solo aborta si arrancar no
-tendría sentido: Node por debajo de 20, sin ffmpeg, o el puerto ya ocupado por otra
-instancia. Los avisos (biblioteca vacía, carpeta que ya no existe, túnel caído) no frenan
-nada, porque el panel y la red local siguen funcionando.
+`npm start` begins with an **environment check** that runs on both macOS and Windows:
+it fixes on its own whatever can be fixed automatically (bringing up the relay tunnel if
+configured) and warns about the rest with the concrete action next to it. It aborts only
+when starting would make no sense: Node below 20, no ffmpeg, or the port already taken by
+another instance. Warnings (empty library, folder that no longer exists, tunnel down) do
+not block anything, because the panel and the local network keep working.
 
 ```
-🎬 jbg-watchparty — comprobación del entorno
+🎬 Watchparty — environment check
 
 ✅ Node 22
-✅ ffmpeg y ffprobe empaquetados
-✅ Interfaz web compilada
-✅ 1 carpeta(s) de medios
-✅ Puerto 8400 libre
-✅ Relevo activo hacia https://stream.example.com
+✅ ffmpeg and ffprobe bundled
+✅ Web UI built
+✅ 1 media folder(s)
+✅ Port 8400 free
+✅ Relay active toward https://stream.example.com
 
-▶️  Todo listo.
+▶️  All set.
 ```
 
-Puedes lanzarla suelta con `npm run preflight`. Después, el servidor:
-1. Escanea las carpetas de medios configuradas
-2. Lanza automáticamente un túnel HTTPS seguro (cloudflared Quick Tunnel)
-3. Abre tu navegador en `http://localhost:8400/?key=<token-admin>` — el `key` es un token generado al arrancar que autentica el panel del host (se guarda en una cookie tras la primera visita)
-4. Muestra la URL pública segura para compartir con los invitados
+You can run just the check with `npm run preflight`. Afterwards, the server:
+1. Scans the configured media folders
+2. Automatically brings up a secure HTTPS tunnel (cloudflared Quick Tunnel)
+3. Opens your browser at `http://localhost:8400/?key=<admin-token>` — `key` is a token generated at startup that authenticates the host panel (stored in a cookie after the first visit)
+4. Shows the secure public URL to share with guests
 
-**Todos los comandos:**
+**All commands:**
 
-| Comando | Para qué |
+| Command | Purpose |
 |---|---|
-| `npm start` | Comprueba el entorno, compila la web y arranca el servidor |
-| `npm run setup` | Puesta a punto de una máquina nueva (genera el túnel del relevo) |
-| `npm run preflight` | Solo la comprobación del entorno, sin arrancar nada |
-| `npm run tunnel:up` / `tunnel:down` | Control manual del túnel del relevo |
-| `npm test` | Toda la batería de tests |
+| `npm start` | Checks the environment, builds the web client and starts the server |
+| `npm run setup` | Set up a brand-new machine (generates the relay tunnel) |
+| `npm run preflight` | Only the environment check, without starting anything |
+| `npm run tunnel:up` / `tunnel:down` | Manual control of the relay tunnel |
+| `npm test` | The whole test suite |
 
-### Paso 4: Compartir el enlace
+### Step 4: Share the link
 
-Copia la URL pública que aparece en la consola o en la interfaz web. Los invitados entran así:
-1. Hacen clic en el enlace HTTPS
-2. Entran con su nombre
-3. Ven la sala en vivo (sin crear una nueva)
+Copy the public URL shown in the console or in the web interface. Guests join like this:
+1. Click the HTTPS link
+2. Enter their name
+3. See the live room (without creating a new one)
 
-## Salas y películas
+## Rooms and movies
 
-Una sala y una película son cosas distintas:
+A room and a movie are different things:
 
-- **Crear sala vacía** da un enlace compartible al instante, sin haber elegido
-  nada. Los invitados entran, ponen su nombre y pueden **chatear** mientras el
-  host decide; en el hueco del vídeo ven un cartel de espera.
-- **Solo el host** —quien tiene la cookie de admin, es decir, quien abrió el
-  panel en `localhost`— puede poner o cambiar la película, con el botón
-  «🎬 Elegir/Cambiar película» de la cabecera de la sala. El play, la pausa y la
-  barra de posición siguen siendo de todo el mundo.
-- **Cambiar de película** no cierra la sala ni cambia el enlace. Vuelve a probar
-  el fichero nuevo, así que **recalcula** duración, pistas de audio, subtítulos
-  disponibles y metadatos de TMDB; la reproducción arranca en 0:00 en pausa y el
-  **chat se conserva**. Nadie tiene que recargar.
+- **Creating an empty room** gives you a shareable link instantly, before choosing
+  anything. Guests join, type their name and can **chat** while the host decides;
+  they see a waiting card where the video would be.
+- **Only the host** — whoever holds the admin cookie, i.e. whoever opened the
+  panel on `localhost`— can set or change the movie, with the
+  «🎬 Choose/Change movie» button in the room header. Play, pause and the seek bar
+  belong to everyone.
+- **Changing movies** neither closes the room nor changes the link. The new file is
+  probed again, so duration, audio tracks, available subtitles and TMDB metadata are
+  **recomputed**; playback starts paused at 0:00 and the **chat is preserved**.
+  Nobody needs to reload.
 
-Cada película de una sala es una «generación» numerada, y ese número va en la URL
-del vídeo: `/stream/<token>/e2/master.m3u8`. No es decorativo. Los segmentos y el
-init se llaman igual en cualquier película (`init_0.mp4`, `seg_0_00000.m4s`), así
-que sin versionar la URL la caché del navegador —o la del relevo, si usas
-`streamBaseUrl`— serviría los bytes de la película anterior. Va en la ruta y no
-en una query para que el versionado no dependa de cómo trate la query el proxy
-del relevo, y para que las URIs relativas de las playlists caigan dentro de la
-generación correcta por sí solas.
+Each movie in a room is a numbered "generation", and that number goes into the video
+URL: `/stream/<token>/e2/master.m3u8`. It isn't decorative. Segments and init are named
+identically across movies (`init_0.mp4`, `seg_0_00000.m4s`), so without versioning the
+URL the browser cache —or the relay cache, if you use `streamBaseUrl`— would serve the
+previous movie's bytes. It goes in the path rather than a query string so versioning
+doesn't depend on how the relay proxy treats queries, and so the relative URIs inside
+playlists land within the right generation by themselves.
 
-## URL fija con tu dominio (named tunnel)
+## Fixed URL with your own domain (named tunnel)
 
-Por defecto el servidor usa un Quick Tunnel de cloudflared: la URL (`*.trycloudflare.com`)
-cambia en cada arranque. Si tienes un dominio gestionado en Cloudflare, puedes tener una
-URL fija (p. ej. `https://watchparty.tudominio.com`) con un setup único:
+By default the server uses a cloudflared Quick Tunnel: the URL (`*.trycloudflare.com`)
+changes on every start. If you have a domain managed in Cloudflare, you can get a fixed
+URL (e.g. `https://watchparty.yourdomain.com`) with a one-time setup:
 
-1. Entra en [one.dash.cloudflare.com](https://one.dash.cloudflare.com) → **Networks → Tunnels → Create a tunnel** (tipo Cloudflared) y dale un nombre (p. ej. `watchparty`).
-2. En el paso del conector, **no instales nada**: solo copia el token que aparece en el comando (`cloudflared service install <TOKEN>` — el token es la cadena larga).
-3. En **Public Hostnames**, añade `watchparty.tudominio.com` → servicio `http://localhost:8400` (el puerto de tu `config.json`). Cloudflare crea la ruta DNS automáticamente.
-4. En `config.json`, añade:
+1. Sign in at [one.dash.cloudflare.com](https://one.dash.cloudflare.com) → **Networks → Tunnels → Create a tunnel** (Cloudflared type) and give it a name (e.g. `watchparty`).
+2. At the connector step, **don't install anything**: just copy the token shown in the command (`cloudflared service install <TOKEN>` — the token is the long string).
+3. Under **Public Hostnames**, add `watchparty.yourdomain.com` → service `http://localhost:8400` (the port from your `config.json`). Cloudflare creates the DNS route automatically.
+4. In your local `config.json`, add:
 
 ```json
 {
-  "tunnelToken": "eyJh...tu-token...",
-  "tunnelUrl": "https://watchparty.tudominio.com"
+  "tunnelToken": "eyJh...your-token...",
+  "tunnelUrl": "https://watchparty.yourdomain.com"
 }
 ```
 
-Al arrancar, el servidor lanza tu túnel con esa URL fija (la misma en cada reinicio). Si
-falta alguno de los dos campos, avisa por consola y vuelve al Quick Tunnel. La app usa su
-propio binario de cloudflared; no hace falta instalarlo ni correr ningún servicio del sistema.
+On startup, the server brings up your tunnel with that fixed URL (the same one on every
+restart). If either field is missing, it warns on the console and falls back to the Quick
+Tunnel. The app uses its own cloudflared binary; there's nothing to install system-wide.
 
-## Sacar el vídeo del CDN (plano de datos aparte)
+## Serving video off the CDN (separate data plane)
 
-Los términos del CDN de Cloudflare para planes Free/Pro/Business se reservan el derecho de
-limitar el servicio a quien lo use «to serve video or a disproportionate percentage of
-pictures, audio files, or other large files», con exención solo si el contenido está alojado
-en un servicio de Cloudflare (Stream, Images, R2). El hostname público de un túnel es un
-CNAME a `<uuid>.cfargotunnel.com`, que **solo resuelve a través del proxy** — no se puede
-dejar en gris —, así que todo el vídeo pasa por el CDN por construcción. Una sesión de 6
-personas y 2 horas son unos 30 GB.
+The Cloudflare CDN terms for Free/Pro/Business plans reserve the right to limit service
+for anyone using it "to serve video or a disproportionate percentage of pictures, audio
+files, or other large files", with an exemption only if the content is hosted on a
+Cloudflare service (Stream, Images, R2). The public hostname of a tunnel is a CNAME to
+`<uuid>.cfargotunnel.com`, which **only resolves through the proxy** — you can't grey-route
+it — so all video goes through the CDN by construction. A 6-person, 2-hour session moves
+roughly 30 GB.
 
-`streamBaseUrl` separa los dos planos:
+`streamBaseUrl` separates the two planes:
 
-| Plano | Qué lleva | Por dónde sale |
+| Plane | What it carries | How it travels |
 |---|---|---|
-| Control | HTML, API, WebSocket (chat, sync, presencia) | Túnel de Cloudflare — uso previsto, tráfico despreciable |
-| Datos | `master.m3u8`, `init_*.mp4`, `seg_*.m4s`, `sub_*.vtt` | Tu relevo, sin pasar por el CDN |
+| Control | HTML, API, WebSocket (chat, sync, presence) | Cloudflare tunnel — intended use, negligible traffic |
+| Data | `master.m3u8`, `init_*.mp4`, `seg_*.m4s`, `sub_*.vtt` | Your relay, bypassing the CDN |
 
-Basta con apuntar el `master.m3u8` al relevo: HLS resuelve los nombres relativos de la
-playlist contra la URL de esta, así que init y segmentos van detrás solos.
+Pointing the `master.m3u8` at the relay is enough: HLS resolves the playlist's relative
+names against the playlist URL, so init and segments follow along by themselves.
 
-### Montar el relevo en un VPS (ejemplo con Oracle Cloud)
+### Setting up the relay on a VPS (Oracle Cloud example)
 
-Oracle es buen encaje: 10 TB/mes de salida en Always Free, y su política de uso aceptable no
-tiene cláusula de tipo de contenido equivalente a la del CDN de Cloudflare.
+Oracle is a good fit: 10 TB/month of egress on Always Free, and its acceptable use policy
+has no content-type clause equivalent to Cloudflare's CDN one.
 
-1. **Instancia y red.** Crea la VM y abre el 443 en la *Security List* del VCN (ingress
-   0.0.0.0/0 → TCP 443). **Ojo con el paso que todo el mundo se salta:** las imágenes de
-   Oracle traen `iptables` restrictivo persistido, así que abrir el VCN no basta:
+1. **Instance and network.** Create the VM and open 443 in the VCN *Security List* (ingress
+   0.0.0.0/0 → TCP 443). **Watch out for the step everyone skips:** Oracle images ship
+   persistent restrictive `iptables`, so opening the VCN isn't enough:
    ```bash
    sudo iptables -I INPUT 5 -p tcp --dport 443 -j ACCEPT
-   sudo netfilter-persistent save     # Ubuntu; en Oracle Linux: firewall-cmd --add-port=443/tcp --permanent
+   sudo netfilter-persistent save     # Ubuntu; on Oracle Linux: firewall-cmd --add-port=443/tcp --permanent
    ```
-2. **DNS.** Registro `A` de `stream.tudominio.com` a la IP pública del VPS, **en gris
-   (DNS-only)**. Es lo que mantiene el tráfico fuera del CDN; el DNS autoritativo gratuito no
-   tiene restricción de contenido porque no transporta bytes.
-3. **Túnel casa → VPS.** WireGuard entre las dos máquinas (el VPS como *endpoint* fijo). El
-   host de casa no necesita ni IP pública ni port forwarding, y funciona detrás de CGNAT.
-4. **TLS y proxy en el VPS.** Con Caddy, el `Caddyfile` entero es:
+2. **DNS.** `A` record from `stream.yourdomain.com` to the VPS public IP, **grey-routed
+   (DNS-only)**. That's what keeps traffic out of the CDN; the free authoritative DNS has
+   no content restriction because it carries no bytes.
+3. **Home → VPS tunnel.** WireGuard between the two machines (the VPS as the fixed
+   *endpoint*). The home host needs neither a public IP nor port forwarding, and works
+   behind CGNAT.
+4. **TLS and proxy on the VPS.** With Caddy, the entire `Caddyfile` is:
    ```
-   stream.tudominio.com {
-       reverse_proxy 10.0.0.2:8400   # la IP WireGuard del host de casa
+   stream.yourdomain.com {
+       reverse_proxy 10.0.0.2:8400   # the WireGuard IP of the home host
    }
    ```
-   Caddy saca y renueva el certificado de Let's Encrypt solo.
-5. **Config del host.** En `config.json`:
+   Caddy obtains and renews the Let's Encrypt certificate by itself.
+5. **Host config.** In the local `config.json`:
    ```json
-   { "streamBaseUrl": "https://stream.tudominio.com" }
+   { "streamBaseUrl": "https://stream.yourdomain.com" }
    ```
 
-**Reclamación por inactividad:** Oracle puede reclamar instancias Always Free que durante 7
-días queden por debajo del percentil 95 del 20% de CPU **y** 20% de red (y 20% de memoria en
-shapes A1). Un relevo que se usa dos horas a la semana entra de lleno en ese perfil. Opciones:
-pasar la instancia a pago (céntimos al mes), mantenerla ocupada, o dar por hecho que tocará
-recrearla y dejar los pasos de arriba en un script. No afecta a instancias de pago.
+**Idle reclaim:** Oracle may reclaim Always Free instances that stay below the 95th
+percentile of 20% CPU **and** 20% network (and 20% memory on A1 shapes) for 7 days. A
+relay used two hours a week fits that profile exactly. Options: move the instance to paid
+(cents per month), keep it busy, or accept recreating it occasionally and script the steps
+above. Paid instances are unaffected.
 
-Sin `streamBaseUrl` todo sigue exactamente igual que antes (mismo origen), que es lo correcto
-en LAN.
+Without `streamBaseUrl` everything stays exactly as before (same origin), which is the
+right behavior on a LAN.
 
-### Montar el extremo de casa en otra máquina (macOS o Windows)
+### Setting up the home end on another machine (macOS or Windows)
 
-Con los campos `relay*` ya en `config.defaults.json`, una máquina nueva se pone a punto con
-un comando. Instala WireGuard primero — `brew install wireguard-tools` en macOS,
-[el instalador oficial](https://www.wireguard.com/install/) en Windows — y luego:
+With the `relay*` fields in place, a new machine gets ready with a single command.
+Install WireGuard first — `brew install wireguard-tools` on macOS,
+[the official installer](https://www.wireguard.com/install/) on Windows — then:
 
 ```bash
 npm run setup
 ```
 
-Genera el par de claves de esa máquina, escribe su `wg0.conf` donde toque según la
-plataforma, y te imprime el único comando que queda por lanzar en el VPS, con la clave
-pública ya sustituida. Es idempotente: si el túnel ya está configurado no regenera nada,
-porque hacerlo invalidaría la clave que el VPS tiene autorizada.
+It generates that machine's key pair, writes its `wg0.conf` where the platform expects
+it, and prints the only remaining command to run on the VPS, with the public key already
+substituted. It's idempotent: if the tunnel is already configured it regenerates nothing,
+because doing so would invalidate the key the VPS has authorized.
 
-A partir de ahí, `npm start` levanta el túnel solo. Detalles de cómo lo hace:
+From then on, `npm start` brings the tunnel up by itself. Details of how:
 
-- **Solo pide elevación si el túnel no está ya arriba** (contraseña de administrador en
-  macOS, UAC en Windows). Arrancar el servidor dos veces la misma tarde no vuelve a
-  preguntar.
-- **No lo baja al terminar.** Un túnel inactivo cuesta un paquete cada 25 s, y bajarlo
-  obligaría a una segunda autenticación por sesión. Para bajarlo: `npm run tunnel:down`.
-- **Comprueba que el otro extremo responde**, no solo que la interfaz existe: un VPS caído
-  deja una interfaz levantada que parece sana pero no sirve vídeo.
+- **It only asks for elevation if the tunnel isn't already up** (administrator password on
+  macOS, UAC on Windows). Starting the server twice the same afternoon doesn't ask again.
+- **It doesn't tear it down when done.** An idle tunnel costs a packet every 25 s, and
+  tearing it down would force a second authentication per session. To take it down:
+  `npm run tunnel:down`.
+- **It checks that the far end actually responds**, not just that the interface exists: a
+  down VPS leaves an interface up that looks healthy but serves no video.
 
-La elevación se pide por el diálogo del sistema y **no** por una regla `NOPASSWD` en
-sudoers a propósito: en macOS el prefijo de Homebrew es escribible por el usuario, así que
-dar sudo sin contraseña a un binario que ese mismo usuario puede reemplazar sería una
-escalada a root para cualquier proceso que corra como él.
+Elevation is requested through the OS dialog and **not** through a `NOPASSWD` sudoers rule
+on purpose: on macOS the Homebrew prefix is user-writable, so giving passwordless sudo to
+a binary that same user could replace would be a root escalation for any process running
+as them.
 
-## Obtener API Key de Klipy (opcional)
+## Getting a Klipy API key (optional)
 
-Para usar búsqueda de GIFs en el chat:
+For GIF search in chat:
 
-1. Ve a [https://klipy.com/developers](https://klipy.com/developers)
-2. Crea una cuenta e inicia sesión
-3. Genera una nueva API key
-4. Copia la key y pégala en el campo `klipyApiKey` de `config.json`
+1. Go to [https://klipy.com/developers](https://klipy.com/developers)
+2. Create an account and sign in
+3. Generate a new API key
+4. Copy the key into the `klipyApiKey` field of your local `config.json`
 
-Sin API key, el chat funciona perfectamente; solo no está disponible el botón de GIFs.
+Without an API key, chat works perfectly fine; only the GIF button is unavailable.
 
-## Formatos soportados
+## Supported formats
 
-**Vídeos:**
-- MKV (Matroska) — múltiples pistas de audio y subtítulos
+**Video:**
+- MKV (Matroska) — multiple audio and subtitle tracks
 - MP4 (H.264)
 - AVI
 - WebM
 
-**Códecs de vídeo:**
-- Todo se transcodifica a H.264 con keyframes forzados cada 4 s (aceleración por
-  hardware cuando la hay: VideoToolbox en macOS, NVENC/QSV en Windows).
+**Video codecs:**
+- Everything is transcoded to H.264 with keyframes forced every 4 s (hardware
+  acceleration when available: VideoToolbox on macOS, NVENC/QSV on Windows).
 
-  Copiar el vídeo tal cual sería más barato, pero la playlist es VOD —el
-  servidor tiene que declarar *de antemano* dónde va a cortar cada segmento— y
-  en modo copia los cortes los elige el muxer HLS de ffmpeg contra una rejilla
-  propia que el servidor no puede predecir. Cuando las dos listas no coinciden,
-  la playlist se queda corta y la sala se congela a mitad de película.
-  El razonamiento completo, con las medidas, está en
+  Stream-copying the video would be cheaper, but the playlist is VOD — the server must
+  declare *in advance* where each segment will be cut — and in copy mode the cuts are
+  chosen by ffmpeg's HLS muxer against its own grid, which the server cannot predict.
+  When the two lists disagree, the playlist ends up short and the room freezes mid-movie.
+  The full reasoning, with measurements, lives in
   `server/src/media/hlsLayout.ts`.
 
-  Además, el servidor fija la línea de tiempo del medio en vez de heredarla de
-  ffmpeg: sirve un init canónico (sin las entradas del *edit list* que dependen
-  del proceso concreto que arrancó ffmpeg; el resto, como el trim del retardo del
-  códec, se conserva) y ancla la cabecera de cada segmento al instante que la
-  playlist ya declara. Sin eso, un salto de posición solo aterrizaba bien
-  mientras la sala siguiera corriendo sobre el ffmpeg que produjo el primer init.
-  La edición de cajas MP4 vive en `server/src/media/fmp4.ts`.
+  Additionally, the server pins the media timeline instead of inheriting it from ffmpeg:
+  it serves a canonical init (stripped of the edit-list entries that depend on the
+  particular process ffmpeg happened to start from; the rest, such as codec delay trim,
+  is preserved) and anchors each segment header to the instant the playlist already
+  declares. Without this, a seek only landed correctly while the room kept running on the
+  same ffmpeg that produced the first init. The MP4 box editing lives in
+  `server/src/media/fmp4.ts`.
 
-**Pistas de audio:**
-- Con una sola pista, el audio viaja dentro del propio segmento de vídeo.
-- Con varias, cada una se expone como rendition AAC seleccionable
-  independientemente por cada espectador.
+**Audio tracks:**
+- With a single track, audio travels inside the video segment itself.
+- With several, each one is exposed as an independently selectable AAC rendition per
+  viewer.
 
-**Subtítulos:**
-- Pistas de texto incrustadas (SRT, ASS/SSA)
-- Archivos `.srt` externos junto al vídeo (se detectan automáticamente)
-- Conversión a WebVTT para reproducción en navegador
-- Pistas de imagen (PGS/VobSub) se omiten en silencio: no aparecen en el selector de subtítulos de la sala
+**Subtitles:**
+- Embedded text tracks (SRT, ASS/SSA)
+- External `.srt` files next to the video (detected automatically)
+- Converted to WebVTT for browser playback
+- Image-based tracks (PGS/VobSub) are silently skipped: they don't appear in the room's subtitle selector
 
-## Características del chat
+## Chat features
 
-### Mensajes de texto
-- Cada usuario tiene un color asignado al entrar
-- Mensajes bidireccionales en tiempo real
+### Text messages
+- Each user gets a color assigned on join
+- Real-time bidirectional messages
 
-### Reacciones
-- Barra de emojis rápidos, personalizable por espectador
-- El botón «+» abre un selector con el catálogo completo en español y buscador
-- La selección se guarda en el navegador (hasta 12 emojis)
-- Los emojis flotan subiendo sobre el vídeo en ambas pantallas (estilo Instagram Live)
-- El emoji aparece además, pequeño y durante unos segundos, junto al nombre de
-  quien lo mandó en la lista de participantes
-- No aparecen en el historial del chat
+### Reactions
+- Quick emoji bar, customizable per viewer
+- The «+» button opens a picker with the full catalog and a search field
+- Your selection persists in the browser (up to 12 emojis)
+- Emojis float upward over the video on both screens (Instagram Live style)
+- The emoji also appears, small and for a few seconds, next to the sender's name in the participant list
+- They don't appear in the chat history
 
 ### GIFs
-- Búsqueda integrada contra la API de Klipy (si está configurada)
-- El resultado elegido se embebe como mensaje en el chat
-- Solo visible si la API key está en `config.json`
+- Search integrated against the Klipy API (if configured)
+- The chosen result is embedded as a chat message
+- Only visible if the API key is present in `config.json`
 
-### Mensajes de sistema
-- Notificaciones cuando alguien se une, sale, pausa, reanuda o cambia de vídeo
+### System messages
+- Notifications when someone joins, leaves, pauses, resumes or changes the video
 
-## Pantalla completa
-- Botón en los controles, doble clic sobre el vídeo o tecla `F`
-- El chat y las reacciones flotan abajo a la derecha sobre el vídeo
-- Todo se oculta tras unos segundos sin actividad y vuelve al mover el ratón,
-  pulsar una tecla o llegar un mensaje nuevo; con el chat enfocado o la sala
-  en pausa, no llega a ocultarse
-- En iPhone, donde el navegador no permite pantalla completa con overlays, se
-  usa un «modo cine» que ocupa la ventana
+## Fullscreen
+- Button in the controls, double-click on the video or the `F` key
+- Chat and reactions float at the bottom right over the video
+- Everything hides after a few seconds without activity and comes back on mouse move,
+  keypress or a new message; with the chat focused or the room paused, it never hides
+- On iPhone, where the browser disallows fullscreen with overlays, a "cinema mode" that
+  fills the window is used instead
 
-## Desarrollo
+## Development
 
-### Ejecutar en modo desarrollo
+### Running in development mode
 
-Abre dos terminales:
+Open two terminals:
 
-**Terminal 1 — Servidor (sin auto-reload):**
+**Terminal 1 — Server (no auto-reload):**
 ```bash
 npm start -w server
 ```
-`tsx` corre el servidor directamente desde TypeScript, pero sin `--watch`: tras cada cambio en `server/src`, para el proceso (`Ctrl+C`) y vuelve a lanzar `npm start -w server`.
+`tsx` runs the server straight from TypeScript, but without `--watch`: after every change
+in `server/src`, stop the process (`Ctrl+C`) and launch `npm start -w server` again.
 
-**Terminal 2 — Cliente (con Vite dev server):**
+**Terminal 2 — Client (with Vite dev server):**
 ```bash
 npm run dev -w web
 ```
 
-Accede a `http://localhost:5173/` para el cliente en desarrollo.
+Open `http://localhost:5173/` for the development client.
 
-### Ejecutar tests
+### Running tests
 
 ```bash
 npm test
 ```
 
-Corre unit tests y tests de integración para ambos paquetes (server y web).
+Runs unit and integration tests for both packages (server and web).
 
-### Verificación de tipos
+### Type checking
 
 ```bash
 npx tsc --noEmit
 ```
 
-En server/: verifica tipos TypeScript del servidor.
+In server/: verifies the server's TypeScript types.
 
 ```bash
 cd web && npx tsc --noEmit
 ```
 
-En web/: verifica tipos TypeScript del cliente.
+In web/: verifies the client's TypeScript types.
 
-### Regenerar el catálogo de emojis
+### Regenerating the emoji catalog
 
 ```bash
 node web/scripts/gen-emoji-catalog.mjs
 ```
 
-Reescribe `web/src/chat/emojiCatalog.ts` desde emojibase-data en español.
-Solo hace falta cuando Unicode saca emojis nuevos. Necesita red, y por eso
-queda fuera del build y de los tests.
+Rewrites `web/src/chat/emojiCatalog.ts` from emojibase-data. Only needed when Unicode
+ships new emojis. Requires network access, which is why it stays out of the build and the
+tests.
 
-### Build de producción
+### Production build
 
 ```bash
 npm run build -w web
 ```
 
-Compila el cliente React para producción en `web/dist/`.
+Builds the React client for production into `web/dist/`.
 
-## Limitaciones en v1
+## Limitations in v1
 
-- **Subtítulos de imagen** (PGS/VobSub) — no soportados; se omiten en silencio (no aparecen como opción en el selector)
-- **Persistencia** — el chat e historial de salas se pierden al cerrar la sala
-- **Metadatos externos** — sin carátulas ni información de TMDB
-- **Cuentas de usuario** — sin autenticación; solo roles host/invitado básicos
-- **Empaquetado nativo** — v1 requiere Node.js y `npm start`; Electron/instalador quedan para futuras versiones
+- **Image-based subtitles** (PGS/VobSub) — unsupported; silently skipped (they don't appear as options in the selector)
+- **Persistence** — chat and room history are lost when the room closes
+- **User accounts** — no authentication; only basic host/guest roles
+- **Native packaging** — v1 requires Node.js and `npm start`; Electron/installer left for future versions
 
-## Estructura del proyecto
+## Project structure
 
 ```
 .
 ├── server/                   # Fastify + Node.js
 │   ├── src/
-│   │   ├── index.ts          # Punto de entrada
-│   │   ├── app.ts            # Construcción de la app Fastify (rutas + estáticos)
-│   │   ├── config.ts         # Carga/guardado de config.json
-│   │   ├── http/              # Rutas REST (biblioteca, salas, stream, klipy, admin)
-│   │   ├── library/           # Escaneo de carpetas de medios
-│   │   ├── media/             # Probe, planificación de segmentos, ffmpeg, cajas MP4, subtítulos, caché
-│   │   ├── rooms/             # Estado de sala y sincronización de reproducción
-│   │   ├── ws/                # WebSocket (sync, chat, reacciones, presencia)
-│   │   └── tunnel/            # Integración cloudflared
+│   │   ├── index.ts          # Entry point
+│   │   ├── app.ts            # Fastify app construction (routes + static files)
+│   │   ├── config.ts         # config.json loading/saving
+│   │   ├── http/             # REST routes (library, rooms, stream, klipy, admin)
+│   │   ├── library/          # Media folder scanning
+│   │   ├── media/            # Probe, segment planning, ffmpeg, MP4 boxes, subtitles, cache
+│   │   ├── rooms/            # Room state and playback synchronization
+│   │   ├── ws/               # WebSocket (sync, chat, reactions, presence)
+│   │   └── tunnel/           # cloudflared integration
 │   └── package.json
 ├── web/                      # React + Vite + hls.js
 │   ├── src/
-│   │   ├── App.tsx           # Componente raíz (routing simple por pathname)
+│   │   ├── App.tsx           # Root component (simple pathname routing)
 │   │   ├── api.ts, ws.ts, types.ts
-│   │   ├── pages/             # Biblioteca, sala
-│   │   ├── player/            # Reproductor HLS y sincronización de deriva
-│   │   ├── chat/               # Chat, reacciones, GIFs
-│   │   └── sync/               # Cálculo de corrección de deriva
+│   │   ├── pages/            # Library, room
+│   │   ├── player/           # HLS player and drift correction
+│   │   ├── chat/             # Chat, reactions, GIFs
+│   │   └── sync/             # Drift correction math
 │   └── package.json
 ├── package.json              # Root workspace
-└── README.md                 # Este archivo
+└── README.md                 # This file
 ```
 
 ## Troubleshooting
 
-### El servidor no arranca
-- Verifica que Node.js ≥ 20 esté instalado: `node --version`
-- Comprueba que `config.json` existe y tiene al menos un `mediaFolder` válido
-- Revisa que no hay otro proceso en el puerto configurado (por defecto 8400)
+### The server won't start
+- Verify Node.js ≥ 20 is installed: `node --version`
+- Check that `config.json` exists and has at least one valid `mediaFolder`
+- Check nothing else is listening on the configured port (default 8400)
 
-### Los invitados no pueden conectar
-- La URL pública requiere conexión a internet; usa datos móviles para verificar desde otro dispositivo
-- Si el túnel cae, el servidor lo relanza automáticamente; con Quick Tunnel la URL cambia y hay que recompartir el enlace (con named tunnel la URL fija se mantiene)
-- Comprueba que el navegador está actualizado (Chrome, Safari, Firefox recientes)
+### Guests can't connect
+- The public URL requires internet; use mobile data to verify from another device
+- If the tunnel drops, the server relaunches it automatically; with a Quick Tunnel the URL changes and the link must be re-shared (a named tunnel keeps its fixed URL)
+- Check the browser is up to date (recent Chrome, Safari, Firefox)
 
-### El vídeo no reproduce
-- Verifica que el archivo está en una carpeta configurada en `mediaFolders`
-- Si es HEVC/x265, ffmpeg está transcodificando; puede tomar varios minutos en hardware antiguo
-- Si hay error, la sala muestra el log de ffmpeg con un botón «Reintentar»
-- Si tras un salto la posición se queda quieta y aparece «X está cargando…», es el comportamiento esperado: la sala espera al rezagado hasta 20 s
-- Antes, saltar a mitad de un MKV siempre dejaba solo los subtítulos sobre una imagen en negro; era un bug de sincronización ya corregido. Si lo vuelves a ver, repórtalo — no es una limitación conocida
+### Video won't play
+- Verify the file is inside a folder listed in `mediaFolders`
+- If it's HEVC/x265, ffmpeg is transcoding; this can take minutes on old hardware
+- On error, the room shows the ffmpeg log with a «Retry» button
+- If after a seek the position stalls and «X is loading…» appears, that's expected: the room waits up to 20 s for the straggler
+- Seeking mid-MKV used to leave subtitles over a black frame; that sync bug was fixed. If you ever see it again, please report it — it's not a known limitation
 
-### El audio no cambia en algunos espectadores
-- Es comportamiento esperado: cada usuario elige su pista de forma independiente
-- Solo la posición de reproducción se sincroniza globalmente
+### Audio doesn't change for some viewers
+- That's expected: each user picks their track independently
+- Only playback position is synchronized globally
 
-## Licencia
+## License
 
-Privado — ver `LICENSE` para detalles.
+[MIT](LICENSE)

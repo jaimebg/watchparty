@@ -1,5 +1,5 @@
 {
-  "name": "@jbg/server",
+  "name": "watchparty-server",
   "private": true,
   "type": "module",
   "scripts": {

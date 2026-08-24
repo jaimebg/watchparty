@@ -1,5 +1,5 @@
 {
-  "name": "@jbg/web",
+  "name": "watchparty-web",
   "private": true,
   "type": "module",
   "scripts": {

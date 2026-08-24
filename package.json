@@ -1,5 +1,5 @@
 {
-  "name": "jbg-watchparty",
+  "name": "watchparty",
   "private": true,
   "type": "module",
   "workspaces": ["server", "web"],
