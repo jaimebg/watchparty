@@ -23,10 +23,10 @@ describe('syncState', () => {
     s = apply(s, { type: 'stall', at: 10_000 })
     expect(s.stalled).toBe(true)
     expect(s.paused).toBe(false)
-    expect(positionAt(s, 60_000)).toBeCloseTo(10) // congelado aunque pase el tiempo
+    expect(positionAt(s, 60_000)).toBeCloseTo(10) // frozen however much time passes
     s = apply(s, { type: 'resume', at: 60_000 })
     expect(s.stalled).toBe(false)
-    expect(positionAt(s, 62_000)).toBeCloseTo(12) // sigue desde donde se congeló
+    expect(positionAt(s, 62_000)).toBeCloseTo(12) // it carries on from where it froze
   })
 
   it('play, pause and seek preserve the stalled flag', () => {
@@ -39,7 +39,7 @@ describe('syncState', () => {
   it('pausing while stalled keeps the frozen position, not the elapsed one', () => {
     let s = apply(apply(initialState(0), { type: 'play', at: 0 }), { type: 'stall', at: 5_000 })
     s = apply(s, { type: 'pause', at: 30_000 })
-    expect(s.positionBase).toBeCloseTo(5) // no 30: el reloj estaba congelado
+    expect(s.positionBase).toBeCloseTo(5) // not 30: the clock was frozen
   })
 
   it('a resume that arrives without a stall does not rewind the clock', () => {

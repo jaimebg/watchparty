@@ -14,8 +14,8 @@ export function EmojiPicker({
   const [group, setGroup] = useState(EMOJI_GROUPS[0].group)
   const [query, setQuery] = useState('')
 
-  // El catálogo son ~105 KB: se carga la primera vez que se abre el modal, no
-  // al entrar en la sala. Vite lo separa en su propio chunk.
+  // The catalog is ~105 KB: it loads the first time the modal opens, not on
+  // entering the room. Vite splits it into its own chunk.
   useEffect(() => {
     let cancelled = false
     import('./emojiCatalog')
@@ -32,9 +32,9 @@ export function EmojiPicker({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      {/* Sin cierre con Escape: en pantalla completa el navegador se queda esa
-          tecla para salir del modo y no se puede evitar, así que sería un atajo
-          que funciona a medias. Se cierra con el fondo y con la ✕. */}
+      {/* No Escape-to-close: in fullscreen the browser keeps that key to leave
+          the mode and there is no preventing it, so it would be a shortcut that
+          half works. It closes with the backdrop and with the ✕. */}
       <div className="modal emoji-modal" onClick={e => e.stopPropagation()}>
         <button className="modal-close" aria-label="Cerrar" onClick={onClose}>✕</button>
 

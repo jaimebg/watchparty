@@ -2,9 +2,9 @@ export interface PlaybackState {
   paused: boolean
   positionBase: number
   updatedAt: number
-  // Distinto de `paused`: `paused` es la intención del usuario (y lo que pinta
-  // el botón de play), `stalled` es «el grupo espera al que está cargando».
-  // Ambos congelan la posición, pero solo uno de los dos es del usuario.
+  // Distinct from `paused`: `paused` is the user's intent (and what the play
+  // button renders), `stalled` means "the group is waiting for whoever is
+  // loading". Both freeze the position, but only one of them is the user's.
   stalled: boolean
 }
 
@@ -35,9 +35,9 @@ export function apply(s: PlaybackState, a: SyncAction): PlaybackState {
       return { ...s, positionBase: a.position, updatedAt: a.at }
     case 'stall':
       return { ...s, positionBase: positionAt(s, a.at), stalled: true, updatedAt: a.at }
-    // Recomputar positionBase es un no-op mientras stalled siga true (positionAt
-    // lo devuelve congelado), pero deja el resume auto-corregido frente a un
-    // despacho redundante o fuera de orden, igual que play/pause.
+    // Recomputing positionBase is a no-op while stalled stays true (positionAt
+    // returns it frozen), but it leaves the resume self-correcting against a
+    // redundant or out-of-order dispatch, just like play/pause.
     case 'resume':
       return { ...s, positionBase: positionAt(s, a.at), stalled: false, updatedAt: a.at }
   }

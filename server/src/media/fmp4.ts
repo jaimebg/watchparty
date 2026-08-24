@@ -1,13 +1,13 @@
-// Edición de cajas MP4 en memoria. Sin I/O y sin estado: es el único sitio del
-// servidor que sabe de offsets dentro de un fMP4, para que transcoder.ts pueda
-// hablar de «init canónico» y «tiempo absoluto» sin contar bytes.
+// In-memory MP4 box editing. No I/O and no state: the one place in the server
+// that knows about offsets inside an fMP4, so transcoder.ts can talk about a
+// "canonical init" and "absolute time" without counting bytes.
 
 export interface Box { type: string; start: number; hdr: number; size: number }
 
 /**
- * Cajas de un rango del buffer, sin descender a los hijos. Ante una caja
- * incoherente (tamaño menor que su cabecera, o que se sale del rango) para en
- * seco: preferimos una lista corta a leer basura como si fuera estructura.
+ * The boxes in a range of the buffer, without descending into children. On an
+ * incoherent box (size smaller than its header, or running past the range) it
+ * stops dead: a short list beats reading garbage as if it were structure.
  */
 export function parseBoxes(buf: Buffer, start = 0, end = buf.length): Box[] {
   const out: Box[] = []
@@ -32,11 +32,11 @@ export function parseBoxes(buf: Buffer, start = 0, end = buf.length): Box[] {
 }
 
 /**
- * Offset donde empieza el `mdat` de un segmento, o -1 si no aparece.
+ * Offset where a segment's `mdat` starts, or -1 if it does not show up.
  *
- * Pensado para un buffer PARCIAL: el `mdat` de un segmento de 4 s son megas, así
- * que su tamaño declarado casi nunca cabe en la cabecera que leemos. Por eso
- * comprueba el tipo ANTES de validar que la caja quepa entera, al revés que
+ * Built for a PARTIAL buffer: the `mdat` of a 4 s segment is megabytes, so its
+ * declared size almost never fits in the header we read. That is why it checks
+ * the type BEFORE validating that the whole box fits, the opposite of
  * parseBoxes.
  */
 export function headerLength(buf: Buffer): number {
@@ -61,55 +61,54 @@ export function headerLength(buf: Buffer): number {
 
 export interface CanonicalInit { init: Buffer; timescales: Map<number, number> }
 
-// Contenedores que hay que reconstruir para poder editar el `elst` de dentro:
-// quitar una entrada cambia el tamaño de su `elst` y, en cascada, el de su
-// `edts`, su `trak` y su `moov`.
+// Containers that must be rebuilt in order to edit the `elst` inside them:
+// removing an entry changes the size of its `elst` and, in cascade, of its
+// `edts`, its `trak` and its `moov`.
 const REBUILD_PARENTS = new Set(['moov', 'trak', 'edts'])
 
-// Tamaño de una entrada de elst: version(1)+flags(3) es el prólogo del elst,
-// no de la entrada. v1 usa 64 bits para segment_duration y media_time; v0, 32.
+// Size of one elst entry: version(1)+flags(3) is the elst's prologue, not the
+// entry's. v1 uses 64 bits for segment_duration and media_time; v0 uses 32.
 function elstEntrySize(version: number): number {
   return version === 1 ? 20 : 12
 }
 
-// media_time de la entrada que empieza en `at`, sea v0 (32 bits) o v1 (64).
+// media_time of the entry starting at `at`, whether v0 (32 bits) or v1 (64).
 function elstMediaTime(buf: Buffer, at: number, version: number): number {
   return version === 1 ? Number(buf.readBigInt64BE(at + 8)) : buf.readInt32BE(at + 4)
 }
 
 /**
- * El `elst` sin sus «empty edits» (media_time == -1), o `null` si no queda
- * ninguna entrada.
+ * The `elst` with its "empty edits" (media_time == -1) removed, or `null` if no
+ * entry survives.
  *
- * Un `elst` de ffmpeg trae normalmente DOS entradas y solo la primera depende
- * del run: el empty edit con `media_time = -1` guarda dónde arrancó ESE
- * proceso (medido: al reiniciar con `-ss 16`, esa entrada trae
- * `segment_duration = 16000` ms). La segunda entrada, con `media_time` >= 0,
- * es el trim del retardo propio del códec (medido con libx264: 1024 en el
- * timescale de la pista de vídeo, ~0,083 s; con audio o con
- * h264_videotoolbox, 0) — compensa que el primer sample del `trun` traiga un
- * `composition_time_offset` distinto de cero, y es IDÉNTICA en cualquier run
- * porque no depende de dónde arrancó ffmpeg. Tirar el `elst` entero (como
- * hacía la versión anterior) quitaba también esa compensación y dejaba el
- * vídeo reanclado con `retimeHeader` sistemáticamente tarde en esos mismos
- * ~0,083 s. Conservarla verbatim es lo que hace que la aritmética de
- * `retimeHeader` (tfdt = start × timescale) salga exacta.
+ * An ffmpeg `elst` normally carries TWO entries and only the first depends on
+ * the run: the empty edit with `media_time = -1` records where THAT process
+ * started (measured: restarting with `-ss 16` gives that entry a
+ * `segment_duration = 16000` ms). The second entry, with `media_time` >= 0, is
+ * the codec's own delay trim (measured with libx264: 1024 in the video track's
+ * timescale, ~0.083 s; with audio or with h264_videotoolbox, 0). It compensates
+ * for the first `trun` sample carrying a non-zero `composition_time_offset`, and
+ * it is IDENTICAL across runs because it does not depend on where ffmpeg
+ * started. Dropping the whole `elst` (as the previous version did) also dropped
+ * that compensation and left video re-anchored by `retimeHeader` systematically
+ * late by exactly those ~0.083 s. Keeping it verbatim is what makes
+ * `retimeHeader`'s arithmetic (tfdt = start × timescale) come out exact.
  */
 function rebuildElst(buf: Buffer, b: Box): Buffer | null {
-  // Sin hueco ni para su propio prólogo (version+flags+entry_count) no hay
-  // nada fiable que leer de esta caja: se trata como vacía en vez de
-  // asomarse a bytes que, aunque estén dentro de `buf`, pertenecen a lo que
-  // venga después (el `mdia` del mismo trak).
+  // Without room for even its own prologue (version+flags+entry_count) there is
+  // nothing trustworthy to read out of this box: treat it as empty rather than
+  // peek at bytes that, while inside `buf`, belong to whatever comes next (the
+  // same trak's `mdia`).
   if (b.size < b.hdr + 8) return null
   const version = buf[b.start + b.hdr]
   const entrySize = elstEntrySize(version)
-  // Acotar entry_count a lo que de verdad cabe en el tamaño DECLARADO de la
-  // caja: sin esto, un entry_count inflado (o una caja truncada) hace que el
-  // bucle lea entradas fantasma de los bytes del `mdia` siguiente y las
-  // conserve —su media_time no sería -1—, dejando un init corrompido en
-  // silencio: los tamaños quedan igual de autoconsistentes, así que nada
-  // lanza y ningún test de estructura falla. Mismo espíritu defensivo que
-  // parseBoxes (para en seco) y headerLength (nunca se pasa del buffer).
+  // Clamp entry_count to what actually fits in the box's DECLARED size: without
+  // this, an inflated entry_count (or a truncated box) makes the loop read
+  // phantom entries out of the following `mdia`'s bytes and keep them — their
+  // media_time would not be -1 — leaving a corrupted init behind in silence: the
+  // sizes stay just as self-consistent, so nothing throws and no structural test
+  // fails. Same defensive spirit as parseBoxes (stops dead) and headerLength
+  // (never runs past the buffer).
   const maxEntries = Math.floor((b.size - b.hdr - 8) / entrySize)
   const count = Math.min(buf.readUInt32BE(b.start + b.hdr + 4), maxEntries)
   const kept: Buffer[] = []
@@ -142,8 +141,8 @@ function rebuildEdits(buf: Buffer, start: number, end: number): Buffer {
       continue
     }
     const kids = rebuildEdits(buf, b.start + b.hdr, b.start + b.size)
-    // Un `edts` cuyo `elst` se quedó sin entradas (solo tenía empty edits) no
-    // aporta nada: se tira entero, igual que antes se tiraba siempre.
+    // An `edts` whose `elst` ran out of entries (it held only empty edits) adds
+    // nothing: drop it whole, the way it used to be dropped unconditionally.
     if (b.type === 'edts' && kids.length === 0) continue
     const head = Buffer.from(buf.subarray(b.start, b.start + b.hdr))
     const total = b.hdr + kids.length
@@ -154,10 +153,10 @@ function rebuildEdits(buf: Buffer, start: number, end: number): Buffer {
   return Buffer.concat(parts)
 }
 
-// mvhd/tkhd/mdhd comparten prólogo (creation, modification) pero tkhd mete
-// track_id y un reservado antes de la duración; y la v1 usa 64 bits para las
-// fechas y la duración. Offsets contados desde el INICIO del payload (incluye
-// version+flags: mvhd v0 → 16 = 4+4+4+4), no desde su final.
+// mvhd/tkhd/mdhd share a prologue (creation, modification) but tkhd slips
+// track_id and a reserved field in before the duration; and v1 uses 64 bits for
+// the dates and the duration. Offsets are counted from the START of the payload
+// (version+flags included: mvhd v0 → 16 = 4+4+4+4), not from its end.
 function durationOffset(type: string, version: number): number {
   if (type === 'tkhd') return version === 1 ? 28 : 20
   return version === 1 ? 24 : 16
@@ -170,43 +169,43 @@ function zeroDuration(buf: Buffer, b: Box): void {
   else buf.writeUInt32BE(0, at)
 }
 
-// `track_id` en tkhd y `timescale` en mdhd caen en el mismo offset: tras el
-// prólogo de fechas, que es lo único que cambia entre v0 y v1.
+// `track_id` in tkhd and `timescale` in mdhd land at the same offset: right
+// after the date prologue, which is the only thing that differs between v0 and v1.
 function readAfterDates(buf: Buffer, b: Box): number {
   const version = buf[b.start + b.hdr]
   return buf.readUInt32BE(b.start + b.hdr + (version === 1 ? 20 : 12))
 }
 
 /**
- * Init reproducible: sin las entradas del `elst` que dependen del run que lo
- * produjo, y con las duraciones a cero.
+ * A reproducible init: without the `elst` entries that depend on the run that
+ * produced it, and with the durations zeroed.
  *
- * ffmpeg guarda en el `edts` de cada pista la posición absoluta donde arrancó
- * ese proceso, como un «empty edit» (medido: `segment_duration = 16000` ms al
- * reiniciar con `-ss 16`). Como el servidor fija UN snapshot del init para
- * toda la sala, ese offset acabaría aplicándose a segmentos de cualquier otro
- * reinicio. Pero el `elst` no es solo eso: también trae, en una segunda
- * entrada, el trim del retardo propio del códec (compensa que el primer
- * sample del `trun` traiga un `composition_time_offset` != 0), que es igual
- * en todos los runs y que `retimeHeader` necesita para clavar el `tfdt` sin
- * dejar el vídeo sistemáticamente tarde. Por eso la cirugía es quirúrgica:
- * quitar solo las entradas con `media_time == -1` (rebuildElst), no el `edts`
- * entero. Las duraciones se ponen a cero por la misma razón que el empty
- * edit: un run reiniciado codifica menos metraje y las escribiría distintas.
+ * ffmpeg records in each track's `edts` the absolute position where that process
+ * started, as an "empty edit" (measured: `segment_duration = 16000` ms when
+ * restarting with `-ss 16`). Since the server pins ONE init snapshot for the
+ * whole room, that offset would end up applied to segments from any other
+ * restart. But the `elst` is not only that: it also carries, in a second entry,
+ * the codec's own delay trim (compensating for a first `trun` sample with a
+ * `composition_time_offset` != 0), which is the same across runs and which
+ * `retimeHeader` needs in order to nail the `tfdt` without leaving video
+ * systematically late. Hence the surgery is surgical: remove only the entries
+ * with `media_time == -1` (rebuildElst), not the whole `edts`. The durations are
+ * zeroed for the same reason as the empty edit: a restarted run encodes less
+ * footage and would write them differently.
  */
 export function canonicalizeInit(raw: Buffer): CanonicalInit {
-  // Buffer.concat copia, así que `init` es propio y se puede mutar sin tocar `raw`.
+  // Buffer.concat copies, so `init` is ours and can be mutated without touching `raw`.
   const init = rebuildEdits(raw, 0, raw.length)
   const timescales = new Map<number, number>()
   const moov = parseBoxes(init).find(b => b.type === 'moov')
-  if (!moov) throw new Error('init de fMP4 sin moov')
+  if (!moov) throw new Error('fMP4 init without a moov')
   for (const b of parseBoxes(init, moov.start + moov.hdr, moov.start + moov.size)) {
     if (b.type === 'mvhd') zeroDuration(init, b)
     if (b.type !== 'trak') continue
     let trackId = 0
     for (const t of parseBoxes(init, b.start + b.hdr, b.start + b.size)) {
-      // tkhd va antes que mdia dentro de trak, así que para cuando se lee el
-      // timescale el trackId ya está puesto.
+      // tkhd comes before mdia inside trak, so by the time the timescale is
+      // read the trackId is already set.
       if (t.type === 'tkhd') { trackId = readAfterDates(init, t); zeroDuration(init, t) }
       if (t.type !== 'mdia') continue
       for (const m of parseBoxes(init, t.start + t.hdr, t.start + t.size)) {
@@ -223,9 +222,9 @@ function readTime(buf: Buffer, at: number, version: number): number {
   return version === 1 ? Number(buf.readBigUInt64BE(at)) : buf.readUInt32BE(at)
 }
 
-// Se conserva la versión de la caja: promocionar una v0 a v1 cambiaría el
-// tamaño, y con él el de todos sus padres. Desbordar los 32 bits de una v0
-// exigiría ~13 h de película a timescale 90000, fuera del caso real.
+// The box's version is preserved: promoting a v0 to v1 would change its size,
+// and with it every parent's. Overflowing a v0's 32 bits would take a ~13 h
+// movie at timescale 90000, outside the real case.
 function writeTime(buf: Buffer, at: number, version: number, value: number): void {
   const safe = Math.max(0, value)
   if (version === 1) buf.writeBigUInt64BE(BigInt(safe), at)
@@ -233,15 +232,15 @@ function writeTime(buf: Buffer, at: number, version: number, value: number): voi
 }
 
 /**
- * Cabecera de segmento reanclada al instante absoluto que declara la playlist.
+ * A segment header re-anchored to the absolute instant the playlist declares.
  *
- * ffmpeg numera cada reinicio desde su propio origen (medido: el `tfdt` del
- * segmento 5 vale 0 en un run que arrancó con `-ss 20`), así que el tiempo del
- * medio depende de qué proceso lo escribió. Aquí se fija por construcción.
+ * ffmpeg numbers every restart from its own origin (measured: segment 5's `tfdt`
+ * is 0 in a run that started with `-ss 20`), so media time depends on which
+ * process wrote it. Here it is pinned by construction.
  *
- * Desplaza en vez de fijar: el offset lo decide el PRIMER `moof` de cada pista y
- * los siguientes se mueven lo mismo, de modo que si algún día cae más de un
- * fragmento por segmento, su separación interna se conserva.
+ * It shifts rather than sets: the offset is decided by each track's FIRST `moof`
+ * and the rest move by the same amount, so if more than one fragment per segment
+ * ever shows up, their internal spacing is preserved.
  */
 export function retimeHeader(head: Buffer, timescales: Map<number, number>, startSec: number): Buffer {
   const out = Buffer.from(head)
@@ -252,7 +251,7 @@ export function retimeHeader(head: Buffer, timescales: Map<number, number>, star
       if (traf.type !== 'traf') continue
       let trackId = 0
       for (const b of parseBoxes(out, traf.start + traf.hdr, traf.start + traf.size)) {
-        // tfhd va antes que tfdt dentro de traf, así que el trackId ya está puesto.
+        // tfhd comes before tfdt inside traf, so the trackId is already set.
         if (b.type === 'tfhd') { trackId = out.readUInt32BE(b.start + b.hdr + 4); continue }
         if (b.type !== 'tfdt') continue
         const timescale = timescales.get(trackId)
@@ -265,8 +264,8 @@ export function retimeHeader(head: Buffer, timescales: Map<number, number>, star
       }
     }
   }
-  // Segunda pasada: el sidx va ANTES del moof en el archivo, pero su
-  // desplazamiento sale del moof, así que no se puede resolver en la primera.
+  // Second pass: the sidx comes BEFORE the moof in the file, but its shift is
+  // derived from the moof, so it cannot be resolved in the first pass.
   for (const b of parseBoxes(out)) {
     if (b.type !== 'sidx') continue
     const delta = deltas.get(out.readUInt32BE(b.start + b.hdr + 4))

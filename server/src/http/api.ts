@@ -12,15 +12,15 @@ import { isPathInside, makeRequireAdmin } from './security.js'
 
 const M3U8 = 'application/vnd.apple.mpegurl'
 const RETRY_COOLDOWN_MS = 10_000
-// El epoch va en el path y no en una query porque el plano de datos puede salir
-// por un relevo ajeno (ver streamBaseUrl en config.ts): así el versionado no
-// depende de que ese proxy reenvíe la query ni de cómo calcule su clave de
-// caché. Y de paso planner.ts no necesita saber que el epoch existe: sus URIs
-// son relativas y el navegador las resuelve dentro de e<n>/.
-// Sin ceros a la izquierda: `Number('007') === 7`, así que e7, e007 y e0000007
-// servirían los mismos bytes bajo infinitas URLs distintas, y cada una es una
-// clave de caché propia en el relevo de vídeo. Quien tenga el enlace de la sala
-// podría llenarle el disco al VPS con copias del mismo segmento.
+// The epoch goes in the path rather than a query string because the data plane
+// may leave through someone else's relay (see streamBaseUrl in config.ts): that
+// way versioning does not depend on the proxy forwarding the query, nor on how it
+// computes its cache key. As a bonus, planner.ts never needs to know the epoch
+// exists: its URIs are relative and the browser resolves them inside e<n>/.
+// No leading zeros: `Number('007') === 7`, so e7, e007 and e0000007 would serve
+// the same bytes under endlessly many distinct URLs, each its own cache key on
+// the video relay. Anyone holding the room link could fill the VPS disk with
+// copies of the same segment.
 const EPOCH_RE = /^e([1-9]\d*)$/
 
 export function registerApi(app: FastifyInstance, deps: AppDeps): void {
@@ -49,8 +49,8 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     return addFolder(path, reply)
   })
 
-  // Idempotente: quitar una carpeta que ya no está sigue devolviendo la biblioteca.
-  // Las salas activas no se tocan (su sesión ya tiene el archivo abierto).
+  // Idempotent: removing a folder that is already gone still returns the library.
+  // Active rooms are left alone (their session already has the file open).
   app.delete('/api/config/folders', { preHandler: requireAdmin }, async (req) => {
     const { path } = (req.body ?? {}) as { path?: string }
     deps.config.mediaFolders = deps.config.mediaFolders.filter(f => f !== path)
@@ -69,8 +69,8 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.media?.item.title ?? 'No movie' })),
   }))
 
-  // Resuelve el ítem y valida que esté dentro de las carpetas de medios. Envía
-  // la respuesta de error y devuelve null; el llamador hace `return reply`.
+  // Resolves the item and checks it sits inside the media folders. Sends the
+  // error response and returns null; the caller does `return reply`.
   const resolveItem = async (itemId: string | undefined, reply: FastifyReply) => {
     const item = (await deps.library()).find(i => i.id === itemId)
     if (!item) { reply.code(404).send({ error: 'item not found' }); return null }
@@ -83,8 +83,8 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
 
   app.post('/api/rooms', { preHandler: requireAdmin }, async (req, reply) => {
     const { itemId } = (req.body ?? {}) as { itemId?: string }
-    // Sin itemId, sala vacía: el host reparte el enlace y elige luego, con la
-    // gente ya dentro charlando.
+    // No itemId means an empty room: the host hands out the link and picks
+    // later, with people already inside chatting.
     if (itemId === undefined) return { token: (await deps.rooms.create()).token }
     const item = await resolveItem(itemId, reply)
     if (!item) return reply
@@ -100,8 +100,8 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     if (!item) return reply
     try {
       const media = await deps.rooms.setMedia(token, item, typeof by === 'string' ? by : null)
-      // El enfriamiento de reintento de la película anterior no debe aplicarse
-      // a la nueva: son ejecuciones de ffmpeg distintas.
+      // The previous movie's retry cooldown must not apply to the new one:
+      // these are different ffmpeg runs.
       lastRetryAt.delete(token)
       return { epoch: media.epoch }
     } catch (e) {
@@ -119,21 +119,22 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) return reply.code(404).send({ error: 'room not found' })
     const media = room.media
-    // '' = mismo origen (ver streamBaseUrl en config.ts). Va al nivel superior y
-    // no dentro de `media` porque describe dónde vive el servidor, no la
-    // película: el cliente lo necesita igual en una sala vacía. Y viaja en esta
-    // respuesta, que el cliente ya espera antes de montar el reproductor, para
-    // no abrir una ventana en la que el <video> exista sin saber su origen.
+    // '' means same origin (see streamBaseUrl in config.ts). It sits at the top
+    // level rather than inside `media` because it describes where the server
+    // lives, not the movie: the client needs it just as much in an empty room. It
+    // rides along in this response, which the client already awaits before
+    // mounting the player, so there is never a window where the <video> exists
+    // without knowing its origin.
     const streamBase = deps.config.streamBaseUrl ?? ''
     if (!media) return { media: null, error: null, streamBase }
     return {
       media: {
         epoch: media.epoch,
-        // El identificador del ítem de biblioteca, para que el selector sepa
-        // cuál está en emisión sin comparar títulos: `title` de aquí abajo pasa
-        // por displayTitle (año, nombre de TMDB, etiqueta de episodio) y deja de
-        // parecerse al título del ítem en cuanto TMDB resuelve. Es un sha1 de la
-        // ruta, así que no filtra dónde vive el fichero.
+        // The library item's id, so the picker can tell which one is playing
+        // without comparing titles: `title` below goes through displayTitle
+        // (year, TMDB name, episode label) and stops resembling the item's title
+        // the moment TMDB resolves. It is a sha1 of the path, so it does not leak
+        // where the file lives.
         itemId: media.item.id,
         title: displayTitle(media.meta, media.item.title),
         durationSec: media.info.durationSec,
@@ -149,7 +150,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   app.post('/api/rooms/:token/retry', async (req, reply) => {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) return reply.code(404).send()
-    // Sin película no hay ejecución de ffmpeg que reintentar.
+    // With no movie there is no ffmpeg run to retry.
     if (!room.media) return reply.code(409).send({ error: 'room has no media' })
     const now = Date.now()
     const last = lastRetryAt.get(room.token)
@@ -164,18 +165,18 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     return { ok: true }
   })
 
-  // Con el plano de datos en otro origen (streamBaseUrl), hls.js pide las
-  // playlists y los segmentos cross-origin y el <video> pide los VTT con
-  // `crossorigin`: sin estas cabeceras el navegador se los traga en silencio y
-  // la sala se queda en negro sin un error que mirar. `*` es la respuesta
-  // correcta y no una relajación: esta ruta nunca lee cookies —el token de sala
-  // ES el secreto, y va en el path— y `*` es precisamente lo que impide al
-  // navegador enviar credenciales.
+  // With the data plane on another origin (streamBaseUrl), hls.js fetches the
+  // playlists and segments cross-origin and the <video> fetches the VTTs with
+  // `crossorigin`: without these headers the browser swallows them silently and
+  // the room goes black with no error to look at. `*` is the correct answer here
+  // and not a relaxation: this route never reads cookies (the room token IS the
+  // secret, and it travels in the path) and `*` is precisely what stops the
+  // browser from sending credentials.
   const allowCors = (reply: FastifyReply) => reply.header('access-control-allow-origin', '*')
 
-  // Los GET de hls.js son peticiones simples y no disparan preflight, así que
-  // esto es red de seguridad: el día que algo pida un Range o una cabecera
-  // propia, un preflight sin responder es otra pantalla en negro muda.
+  // hls.js's GETs are simple requests and do not trigger a preflight, so this is
+  // a safety net: the day something asks for a Range or a custom header, an
+  // unanswered preflight is one more silent black screen.
   app.options('/stream/:token/:epoch/:file', async (_req, reply) => allowCors(reply)
     .header('access-control-allow-methods', 'GET, HEAD, OPTIONS')
     .header('access-control-allow-headers', 'range')
@@ -184,32 +185,32 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
 
   app.get('/stream/:token/:epoch/:file', async (req, reply) => {
     const { token, epoch, file } = req.params as { token: string; epoch: string; file: string }
-    // Antes que nada, incluido el 404: un error cross-origin sin cabeceras CORS
-    // se lo traga el navegador sin dejar rastro que mirar.
+    // Before anything else, the 404 included: a cross-origin error without CORS
+    // headers gets swallowed by the browser with no trace to look at.
     allowCors(reply)
     const room = deps.rooms.get(token)
     if (!room) return reply.code(404).send()
     const media = room.media
-    // Sin película todavía no hay nada que servir bajo este token.
+    // With no movie yet, there is nothing to serve under this token.
     if (!media) return reply.code(404).send()
     const parsed = epoch.match(EPOCH_RE)
-    // Forma inválida: nunca fue una URL nuestra.
+    // Malformed: it was never one of our URLs.
     if (!parsed) return reply.code(404).send()
-    // Generación anterior: existió y ya no. 410 y no 404 porque durante la
-    // transición la instancia vieja de hls.js sigue pidiendo estas URLs, y sin
-    // este corte requestInit las dejaría colgadas 30 s esperando un fichero de
-    // un directorio ya borrado.
+    // An earlier generation: it existed and no longer does. 410 rather than 404
+    // because during the switch the old hls.js instance keeps asking for these
+    // URLs, and without this cutoff requestInit would leave them hanging for 30 s
+    // waiting on a file in a directory that is already deleted.
     if (Number(parsed[1]) !== media.epoch) return reply.code(410).send()
 
     if (file === 'master.m3u8') return reply.type(M3U8).send(buildMasterPlaylist(media.info.audio))
     if (file === 'video.m3u8') return reply.type(M3U8).send(buildMediaPlaylist(media.segments, 0))
-    // Variant numbering follows ffmpegArgs's -var_stream_map: variant 0 is
-    // video (con el audio dentro si solo hay una pista) y, cuando hay varias,
-    // las variantes 1..audioCount son una por pista (audio_1..audio_N en la
-    // playlist maestra). Anything outside that range is a bogus/attacker
-    // request and must 404 without ever touching the transcode session — y con
-    // un solo variant eso incluye audio_1, que ffmpeg no escribe: dejarlo pasar
-    // colgaría la petición 30 s esperando un archivo que nunca llega.
+    // Variant numbering follows ffmpegArgs's -var_stream_map: variant 0 is video
+    // (with the audio inside it when there is only one track) and, when there are
+    // several, variants 1..audioCount are one per track (audio_1..audio_N in the
+    // master playlist). Anything outside that range is a bogus/attacker request
+    // and must 404 without ever touching the transcode session — and with a
+    // single variant that includes audio_1, which ffmpeg does not write: letting
+    // it through would hang the request for 30 s on a file that never arrives.
     const variants = variantCount(media.info.audio.length)
     const audio = file.match(/^audio_(\d+)\.m3u8$/)
     if (audio) {
@@ -231,11 +232,11 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
       const variant = Number(seg[1])
       if (variant < 0 || variant >= variants) return reply.code(404).send()
       const index = Number(seg[2])
-      // Un índice fuera del plan es una petición inventada, no un fallo del
-      // servidor: con el proceso de ffmpeg ya terminado, requestSegment lo
-      // resolvería mirando solo existsSync y acabaría sirviendo bytes sin
-      // reanclar en silencio (el fallo que openSegment existe para matar). Se
-      // rechaza aquí, sin tocar la sesión, igual que la variante de arriba.
+      // An index outside the plan is a made-up request, not a server failure:
+      // with the ffmpeg process already finished, requestSegment would resolve it
+      // on existsSync alone and end up serving bytes without re-anchoring, in
+      // silence (the very bug openSegment exists to kill). It is rejected here,
+      // without touching the session, just like the variant above.
       if (index < 0 || index >= media.segments.length) return reply.code(404).send()
       try {
         return reply.type('video/mp4').send(await media.session.openSegment(variant, index))

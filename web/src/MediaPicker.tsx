@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getLibrary, rescanLibrary, setRoomMedia } from './api'
-// Se reutilizan del buscador de emojis en vez de duplicarlos: `normalize` ya
-// hace el NFD sin diacríticos que hace falta para que «corazon» encuentre
-// «Corazón», y `SEARCH_LIMIT` ya es el tope de 120 resultados que evita meter
-// cientos de botones en el DOM.
+// Reused from the emoji search rather than duplicated: `normalize` already does
+// the diacritic-free NFD that lets "corazon" find "Corazón", and `SEARCH_LIMIT`
+// is already the 120-result cap that keeps hundreds of buttons out of the DOM.
 import { normalize, SEARCH_LIMIT } from './chat/emojiSearch'
 import type { LibraryItem } from './types'
 
@@ -12,8 +11,8 @@ interface Folder { path: string; name: string; items: LibraryItem[] }
 export function groupByFolder(items: LibraryItem[]): Folder[] {
   const byPath = new Map<string, Folder>()
   for (const i of items) {
-    // Por folderPath y no por folderName: dos series pueden tener una «Season 1»
-    // cada una, y agrupar por nombre las fusiona con los episodios mezclados.
+    // By folderPath and not folderName: two series can each have a "Season 1",
+    // and grouping by name merges them with the episodes mixed together.
     const f = byPath.get(i.folderPath) ?? { path: i.folderPath, name: i.folderName, items: [] }
     f.items.push(i)
     byPath.set(i.folderPath, f)
@@ -21,12 +20,12 @@ export function groupByFolder(items: LibraryItem[]): Folder[] {
   return [...byPath.values()]
 }
 
-// `currentItemId` y no el título: el que enseña la sala sale de displayTitle
-// («La Gran Peli (2020)») y el de la biblioteca de cleanName del nombre de
-// fichero («La Gran Peli»), así que con TMDB resolviendo —el caso normal— nunca
-// son iguales. Comparar por texto pintado ata este modal a cómo se compone un
-// título en el servidor y se rompe cada vez que alguien lo toca; el id es un
-// identificador estable que ya viaja en la respuesta de la sala.
+// `currentItemId` and not the title: the one the room shows comes from
+// displayTitle ("The Big Movie (2020)") and the library's from cleanName of the
+// file name ("The Big Movie"), so with TMDB resolving — the normal case — they
+// are never equal. Comparing rendered text ties this modal to how a title is
+// composed on the server and breaks every time someone touches it; the id is a
+// stable identifier that already travels in the room's response.
 export function MediaPicker({ token, currentItemId, by, onClose }: {
   token: string
   currentItemId: string | null
@@ -36,22 +35,22 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
   const [items, setItems] = useState<LibraryItem[] | null>(null)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<string | null>(null)
-  // Se separan porque las dos esperas se cuentan distinto: al poner película se
-  // tapa el modal con el cartel de espera (es la operación larga: el servidor
-  // analiza el vídeo y extrae subtítulos), mientras que reescanear solo cambia
-  // la etiqueta de su botón. `busy` sigue siendo el «no toques nada» común.
+  // Kept apart because the two waits are told differently: setting a movie
+  // covers the modal with the waiting card (that is the long operation: the
+  // server probes the video and extracts subtitles), while a rescan only changes
+  // its button's label. `busy` remains the shared "don't touch anything".
   const [applying, setApplying] = useState<LibraryItem | null>(null)
   const [rescanning, setRescanning] = useState(false)
   const busy = applying !== null || rescanning
   const [error, setError] = useState<string | null>(null)
-  // Confirmación en dos pasos DENTRO del modal, no `window.confirm`: un diálogo
-  // nativo puede sacar al host de pantalla completa, y el proyecto ya resuelve
-  // esto con modales propios en vez de nativos (ver EmojiPicker).
+  // Two-step confirmation INSIDE the modal, not `window.confirm`: a native
+  // dialog can kick the host out of fullscreen, and this project already solves
+  // that with its own modals rather than native ones (see EmojiPicker).
   const [pending, setPending] = useState<LibraryItem | null>(null)
-  // Sigue montado: `apply` y `rescan` lanzan peticiones que pueden tardar, y el
-  // host puede cerrar el modal (✕ o clic en el fondo) sin esperar a que
-  // acaben. Sin esta bandera sus callbacks harían setState sobre un
-  // componente ya desmontado.
+  // Still mounted: `apply` and `rescan` fire requests that can take a while, and
+  // the host can close the modal (✕ or a click on the backdrop) without waiting
+  // for them. Without this flag their callbacks would setState on an already
+  // unmounted component.
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
 
@@ -65,14 +64,14 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
 
   const folders = useMemo(() => groupByFolder(items ?? []), [items])
 
-  // Ya se hizo el auto-open inicial: sin esta bandera, cerrar a mano la
-  // carpeta abierta (el toggle pone `open` a null) volvería a disparar este
-  // efecto y la reabriría de inmediato, dejando esa carpeta imposible de
-  // colapsar. `open` se deja fuera de las dependencias a propósito: el efecto
-  // solo debe correr una vez, cuando llega la biblioteca.
+  // The initial auto-open has already happened: without this flag, closing the
+  // open folder by hand (the toggle sets `open` to null) would fire this effect
+  // again and reopen it immediately, leaving that folder impossible to collapse.
+  // `open` is deliberately left out of the dependencies: the effect should run
+  // once, when the library arrives.
   const autoOpenedRef = useRef(false)
 
-  // Arranca abierta la carpeta de la película puesta; si no hay, la primera.
+  // The folder of the movie now playing starts open; failing that, the first.
   useEffect(() => {
     if (autoOpenedRef.current || folders.length === 0) return
     autoOpenedRef.current = true
@@ -92,13 +91,13 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
     setError(null)
     try {
       await setRoomMedia(token, item.id, by)
-      // La sala se refresca sola con el {t:'media'} que llega por el socket.
-      // Se llama siempre, montado o no: es el padre quien decide cerrar, y
-      // seguirá estándolo aunque este componente ya no lo esté.
+      // The room refreshes itself on the {t:'media'} that arrives over the
+      // socket. This is always called, mounted or not: the parent decides to
+      // close, and it will still be around even when this component is not.
       onClose()
     } catch (e) {
       if (!mountedRef.current) return
-      // Se muestra dentro del modal sin cerrarlo, para poder elegir otra cosa.
+      // Shown inside the modal without closing it, so something else can be picked.
       setError(e instanceof Error ? e.message : String(e))
       setPending(null)
     } finally {
@@ -106,8 +105,8 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
     }
   }
 
-  // Cambiar interrumpe a todo el mundo, así que se confirma. Poner la primera
-  // película en una sala vacía no interrumpe nada: va directa.
+  // Changing interrupts everyone, so it is confirmed. Setting the first movie in
+  // an empty room interrupts nothing: it goes straight through.
   const pick = (item: LibraryItem) => { if (currentItemId) setPending(item); else void apply(item) }
 
   const rescan = () => {
@@ -138,17 +137,17 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      {/* Sin cierre con Escape: en pantalla completa el navegador se queda esa
-          tecla para salir del modo y no se puede evitar, así que sería un atajo
-          que funciona a medias. Se cierra con el fondo y con la ✕. */}
+      {/* No Escape-to-close: in fullscreen the browser keeps that key to leave
+          the mode and there is no preventing it, so it would be a shortcut that
+          half works. It closes with the backdrop and with the ✕. */}
       <div className="modal media-modal" onClick={e => e.stopPropagation()}>
         <button className="modal-close" aria-label="Close" onClick={onClose}>✕</button>
         <h2>{currentItemId ? 'Change movie' : 'Pick movie'}</h2>
 
-        {/* Mientras se pone la película el modal no enseña la lista: la espera
-            es de varios segundos y dejar la biblioteca a la vista con todo
-            deshabilitado no contaba que estuviera pasando nada. La ✕ sigue
-            ahí para poder irse sin esperar (lo cubre `mountedRef`). */}
+        {/* While the movie is being set the modal hides the list: the wait runs
+            several seconds and leaving the library on screen with everything
+            disabled said nothing about anything happening. The ✕ is still there
+            so you can leave without waiting (`mountedRef` covers that). */}
         {applying ? (
           <div className="modal-busy" role="status" aria-live="polite">
             <span className="spinner spinner--lg" aria-hidden="true" />
@@ -168,8 +167,8 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
                 <p>You're about to change the movie <strong>for everyone</strong>. Playback
                   starts over and the chat is kept.</p>
                 <p className="media-title">“{pending.title}”</p>
-                {/* Sin etiqueta de «poniendo»: en cuanto se pulsa, `applying` se
-                    lleva por delante esta rama y sale el cartel de espera. */}
+                {/* No "setting…" label: the moment it is pressed, `applying`
+                    takes this branch away and the waiting card appears. */}
                 <button type="button" className="btn-primary" disabled={busy} onClick={() => void apply(pending)}>
                   Play it
                 </button>
@@ -196,8 +195,8 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
                       <span>{open === f.path ? '▾' : '▸'} {f.name}</span>
                       <span className="hint">{f.items.length}</span>
                     </button>
-                    {/* Solo la carpeta abierta se renderiza: con cientos de medios,
-                        pintarlas todas mete miles de botones en el DOM. */}
+                    {/* Only the open folder renders: with hundreds of items,
+                        painting them all puts thousands of buttons in the DOM. */}
                     {open === f.path && (
                       <>
                         <p className="hint media-folder-path">{f.path}</p>

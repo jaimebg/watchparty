@@ -1,6 +1,6 @@
-// Metadatos de TMDB a partir del título limpio del archivo. La API key vive en
-// la config del servidor y nunca llega al cliente. Cualquier fallo → null (los
-// metadatos jamás bloquean la creación de una sala).
+// TMDB metadata derived from the file's cleaned title. The API key lives in the
+// server's config and never reaches the client. Any failure yields null (metadata
+// never blocks room creation).
 
 export interface RoomMeta {
   title: string
@@ -12,8 +12,8 @@ export interface RoomMeta {
   originalLang: string | null
 }
 
-// "La Peli 2023" → query "La Peli" + year 2023. "Serie S01E02" → query "Serie"
-// + episode "S01E02" (se busca como serie de TV, no como película).
+// "The Movie 2023" → query "The Movie" + year 2023. "Show S01E02" → query "Show"
+// + episode "S01E02" (looked up as a TV series, not as a film).
 export function parseTitleYear(cleanTitle: string): { query: string; year: number | null; episode: string | null } {
   let query = cleanTitle
   const ep = query.match(/\bS(\d{1,2})E(\d{1,3})\b/i)

@@ -1,48 +1,48 @@
-// Evaluación pura del estado del entorno: recibe hechos ya recolectados y
-// devuelve hallazgos. Separado de la recolección (preflight.ts) porque así todo
-// el criterio —qué es fatal, qué es un aviso, qué se le dice al usuario— se
-// puede probar sin tocar disco, red ni procesos.
+// Pure evaluation of the environment's state: it takes facts already gathered
+// and returns findings. Kept apart from the gathering (preflight.ts) so that all
+// the judgement — what is fatal, what is a warning, what the user is told — can
+// be tested without touching disk, network or processes.
 
 export type Level = 'ok' | 'warn' | 'fatal'
 
 export interface Finding {
   level: Level
   title: string
-  /** Qué se ha observado. */
+  /** What was observed. */
   detail?: string
-  /** Qué hacer al respecto, en imperativo. */
+  /** What to do about it, in the imperative. */
   fix?: string
 }
 
 export type TunnelState =
-  /** Plataforma sin soporte de relevo (hoy: todo lo que no sea macOS/Windows). */
+  /** Platform with no relay support (today: anything other than macOS/Windows). */
   | 'unsupported'
-  /** Sin fichero de configuración: no hay relevo montado en esta máquina. */
+  /** No configuration file: no relay is set up on this machine. */
   | 'unconfigured'
-  /** Configurado pero la interfaz no está levantada. */
+  /** Configured, but the interface is not up. */
   | 'down'
-  /** Interfaz levantada. */
+  /** Interface is up. */
   | 'up'
-  /** Configurado, pero falta el programa de WireGuard. */
+  /** Configured, but the WireGuard program is missing. */
   | 'missing-wireguard'
 
 export interface Facts {
   platform: string
   nodeMajor: number
-  /** Los binarios empaquetados existen y son ejecutables. */
+  /** The bundled binaries exist and are executable. */
   ffmpegOk: boolean
   ffprobeOk: boolean
-  /** web/dist con un index.html dentro. */
+  /** web/dist with an index.html inside. */
   webBuilt: boolean
   mediaFolders: string[]
-  /** Subconjunto de mediaFolders que existe de verdad en disco. */
+  /** The subset of mediaFolders that actually exists on disk. */
   mediaFoldersPresent: string[]
   port: number
   portFree: boolean
-  /** Config del relevo; null = servir desde el mismo origen. */
+  /** Relay config; null means serve from the same origin. */
   streamBaseUrl: string | null
   tunnel: TunnelState
-  /** Solo significativo con tunnel === 'up'. */
+  /** Only meaningful when tunnel === 'up'. */
   tunnelPeerReachable: boolean
   tunnelToken: string | null
   tunnelUrl: string | null
@@ -52,7 +52,7 @@ export const MIN_NODE = 20
 
 const RELAY_PLATFORMS = new Set(['darwin', 'win32'])
 
-/** Si algún hallazgo es fatal, arrancar no tiene sentido. */
+/** If any finding is fatal, starting makes no sense. */
 export function worstLevel(findings: Finding[]): Level {
   if (findings.some(f => f.level === 'fatal')) return 'fatal'
   if (findings.some(f => f.level === 'warn')) return 'warn'
@@ -73,13 +73,13 @@ export function evaluate(f: Facts): Finding[] {
     out.push({ level: 'ok', title: `Node ${f.nodeMajor}` })
   }
 
-  // Sin ffmpeg no hay nada que servir, y el fallo nativo llega tarde y mudo
-  // (ffmpeg muere y la sala se queda esperando segmentos hasta el timeout).
+  // Without ffmpeg there is nothing to serve, and the native failure arrives
+  // late and mute (ffmpeg dies and the room waits for segments until timeout).
   if (!f.ffmpegOk || !f.ffprobeOk) {
-    const falta = [!f.ffmpegOk && 'ffmpeg', !f.ffprobeOk && 'ffprobe'].filter(Boolean).join(' and ')
+    const absent = [!f.ffmpegOk && 'ffmpeg', !f.ffprobeOk && 'ffprobe'].filter(Boolean).join(' and ')
     out.push({
       level: 'fatal',
-      title: `Missing ${falta}`,
+      title: `Missing ${absent}`,
       detail: 'The binaries come from ffmpeg-static/ffprobe-static and download on install.',
       fix: 'Run `npm install` (if you already did, delete node_modules and repeat: the download may have failed).',
     })
@@ -88,7 +88,7 @@ export function evaluate(f: Facts): Finding[] {
   }
 
   if (!f.webBuilt) {
-    // Aviso y no fatal: `npm start` compila web justo después de este chequeo.
+    // A warning and not fatal: `npm start` builds web right after this check.
     out.push({
       level: 'warn',
       title: 'Web UI not built',
@@ -109,8 +109,8 @@ export function evaluate(f: Facts): Finding[] {
   } else {
     const missing = f.mediaFolders.filter(p => !f.mediaFoldersPresent.includes(p))
     if (missing.length > 0) {
-      // Caso típico al mover el repo entre máquinas o al desmontar un disco
-      // externo: la ruta está en la config pero no existe aquí.
+      // The typical case when moving the repo between machines or unmounting an
+      // external drive: the path is in the config but does not exist here.
       const s = missing.length === 1 ? '' : 's'
       out.push({
         level: 'warn',
@@ -126,8 +126,8 @@ export function evaluate(f: Facts): Finding[] {
   }
 
   if (!f.portFree) {
-    // El error nativo es un EADDRINUSE sin contexto; aquí se dice el puerto y
-    // la causa más probable (otra instancia ya levantada).
+    // The native error is a contextless EADDRINUSE; here we name the port and
+    // the likeliest cause (another instance already running).
     out.push({
       level: 'fatal',
       title: `Port ${f.port} is taken`,
@@ -138,7 +138,7 @@ export function evaluate(f: Facts): Finding[] {
     out.push({ level: 'ok', title: `Port ${f.port} free` })
   }
 
-  // Los dos campos del túnel de Cloudflare solo sirven juntos.
+  // The two Cloudflare tunnel fields are only useful together.
   if (Boolean(f.tunnelToken) !== Boolean(f.tunnelUrl)) {
     out.push({
       level: 'warn',
@@ -152,9 +152,9 @@ export function evaluate(f: Facts): Finding[] {
   return out
 }
 
-// El relevo del plano de datos: solo importa si está configurado. Sin
-// streamBaseUrl el vídeo sale por el mismo origen que la app y no hay túnel que
-// vigilar, así que no se molesta al usuario con nada.
+// The data-plane relay: it only matters when configured. Without streamBaseUrl
+// the video goes out over the same origin as the app and there is no tunnel to
+// watch, so the user is not bothered with anything.
 function evaluateRelay(f: Facts): Finding[] {
   if (!f.streamBaseUrl) {
     return f.tunnel === 'up'
@@ -194,8 +194,8 @@ function evaluateRelay(f: Facts): Finding[] {
         fix: 'Run `npm run setup` to generate the keys and the tunnel configuration.',
       }]
     case 'down':
-      // No es fatal: el panel y la LAN funcionan igual. Pero los invitados
-      // remotos se quedarían con el reproductor en negro, así que se avisa.
+      // Not fatal: the panel and the LAN work either way. But remote guests
+      // would be left with a black player, so it warns.
       return [{
         level: 'warn',
         title: 'Relay tunnel is down',
@@ -216,7 +216,7 @@ function evaluateRelay(f: Facts): Finding[] {
   }
 }
 
-/** Render de una línea de informe, con el icono según el nivel. */
+/** Renders one report line, with the icon matching the level. */
 export function formatFinding(f: Finding): string {
   const icon = f.level === 'fatal' ? '❌' : f.level === 'warn' ? '⚠️ ' : '✅'
   const lines = [`${icon} ${f.title}`]

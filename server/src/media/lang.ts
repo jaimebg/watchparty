@@ -1,4 +1,4 @@
-// Nombres humanos de idioma para etiquetas de pistas (códigos ISO 639-1/639-2).
+// Human-readable language names for track labels (ISO 639-1/639-2 codes).
 const LANG_NAMES: Record<string, string> = {
   es: 'Español', spa: 'Español',
   en: 'English', eng: 'English',
@@ -26,7 +26,7 @@ export function langLabel(code: string | null | undefined): string | null {
   return LANG_NAMES[code.toLowerCase()] ?? null
 }
 
-// Palabras de idioma dentro de un nombre de archivo ("Spanish", "castellano"...).
+// Language words inside a file name ("Spanish", "castellano", …).
 export function guessLangFromWords(filename: string): string | null {
   const lower = filename.toLowerCase()
   const words: [RegExp, string][] = [
@@ -41,18 +41,18 @@ export function guessLangFromWords(filename: string): string | null {
   return null
 }
 
-// Pista de idioma en el NOMBRE de un .srt: sufijo ".es.srt" / ".spa.srt" o
-// palabras tipo "Spanish"/"castellano" en el nombre.
+// A language hint in a .srt's NAME: an ".es.srt" / ".spa.srt" suffix, or words
+// like "Spanish"/"castellano" in the name.
 export function guessLangFromName(filename: string): string | null {
   const suffix = filename.match(/\.([a-z]{2,3})\.srt$/i)
   if (suffix && langLabel(suffix[1])) return suffix[1].toLowerCase()
   return guessLangFromWords(filename)
 }
 
-// Etiqueta pistas de audio sin idioma declarado ('und'). Con UNA sola pista se
-// puede inferir: palabras del nombre del archivo (un rip "castellano" es doblaje)
-// o, en su defecto, el idioma original según TMDB. Con varias pistas sin
-// etiquetar no se adivina (no hay forma de saber cuál es cuál).
+// Labels audio tracks with no declared language ('und'). With ONE track it can
+// be inferred: words from the file name (a "castellano" rip is a dub) or, failing
+// that, the original language according to TMDB. With several unlabelled tracks
+// there is no guessing (no way to tell which is which).
 export function enrichAudioLangs<T extends { lang: string; label: string }>(
   audio: T[], filename: string, originalLang: string | null,
 ): T[] {
@@ -65,8 +65,8 @@ export function enrichAudioLangs<T extends { lang: string; label: string }>(
   })
 }
 
-// Heurística de idioma por contenido (stopwords distintivas). Suficiente para
-// etiquetar subtítulos sin metadatos; devuelve null si no hay señal clara.
+// Content-based language heuristic (distinctive stopwords). Good enough to label
+// subtitles that carry no metadata; returns null when there is no clear signal.
 const PROFILES: [string, RegExp][] = [
   ['en', /\b(the|and|you|what|with|have|this|that|was|were)\b/gi],
   ['es', /\b(que|los|las|est[aá]|pero|porque|se[ñn]or|gracias|s[ií]|c[oó]mo|m[aá]s|cuando)\b/gi],

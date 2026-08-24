@@ -17,7 +17,7 @@ describe('binaryUrl', () => {
 describe('parseTunnelUrl', () => {
   it('extracts trycloudflare url from log line', () => {
     expect(parseTunnelUrl('2026-07-28 INF |  https://tos-abc-123.trycloudflare.com  |')).toBe('https://tos-abc-123.trycloudflare.com')
-    expect(parseTunnelUrl('otra línea')).toBeNull()
+    expect(parseTunnelUrl('some other line')).toBeNull()
   })
 })
 

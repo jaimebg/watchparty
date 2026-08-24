@@ -4,8 +4,8 @@ import { addQuick, parseQuick, QUICK_KEY, removeQuick } from './quickEmojis'
 import type { ClientMsg } from '../types'
 
 export function ReactionsBar({ send }: { send: (m: ClientMsg) => void }) {
-  // La lista vive aquí porque esta barra es su único consumidor. Persistencia
-  // por navegador: no hay cuentas y las salas son efímeras.
+  // The list lives here because this bar is its only consumer. Persistence is
+  // per browser: there are no accounts and rooms are ephemeral.
   const [quick, setQuick] = useState(() => parseQuick(localStorage.getItem(QUICK_KEY)))
   const [pickerOpen, setPickerOpen] = useState(false)
 

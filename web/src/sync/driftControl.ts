@@ -17,12 +17,13 @@ export function targetPosition(state: PlaybackState, serverNow: number, received
   return positionAt(state, serverNow + (now - receivedAt))
 }
 
-// Tipado estructural en vez de `TimeRanges` para poder testearlo sin DOM.
+// Structurally typed rather than `TimeRanges`, so it can be tested without a DOM.
 export interface Ranges { length: number; start(i: number): number; end(i: number): number }
 
-// Segundos contiguos ya descargados a partir de `t`; 0 si `t` cae fuera de todo
-// rango. La tolerancia en el borde inicial evita que un `t` justo en la frontera
-// de un rango se lea como «nada bufferizado» por un error de coma flotante.
+// Contiguous seconds already downloaded from `t` onwards; 0 when `t` falls
+// outside every range. The tolerance at the leading edge stops a `t` sitting
+// exactly on a range boundary reading as "nothing buffered" through a
+// floating-point error.
 export function bufferedAhead(ranges: Ranges, t: number): number {
   for (let i = 0; i < ranges.length; i++) {
     if (ranges.start(i) - 0.1 <= t && t < ranges.end(i)) return ranges.end(i) - t

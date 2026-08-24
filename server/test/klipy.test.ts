@@ -10,7 +10,7 @@ const sample = {
         sm: { gif: { url: 'https://k/sm.gif', width: 100, height: 80 } },
         md: { gif: { url: 'https://k/md.gif', width: 200, height: 160 } },
       },
-    }, { id: 456, title: 'sin-files' }],
+    }, { id: 456, title: 'no-files' }],
     has_next: true,
   },
 }

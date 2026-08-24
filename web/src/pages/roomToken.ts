@@ -1,10 +1,10 @@
-// Los tokens reales son 22 caracteres base64url (randomBytes(16) en
-// server/src/rooms/roomManager.ts) y el enrutado de App.tsx acepta [\w-]+.
-// El mínimo de 8 es solo un suelo de cordura para no navegar a basura.
+// Real tokens are 22 base64url characters (randomBytes(16) in
+// server/src/rooms/roomManager.ts) and App.tsx's routing accepts [\w-]+.
+// The minimum of 8 is just a sanity floor so we do not navigate to garbage.
 const TOKEN_RE = /^[\w-]{8,}$/
 
-// Acepta tanto el código pelado como un enlace de sala pegado entero, que es lo
-// que el host comparte y lo que el invitado tiene a mano en el portapapeles.
+// It accepts both the bare code and a whole room link pasted in, which is what
+// the host shares and what the guest has to hand on the clipboard.
 export function parseRoomToken(input: string): string | null {
   const trimmed = input.trim()
   if (!trimmed) return null
@@ -13,9 +13,9 @@ export function parseRoomToken(input: string): string | null {
   return TOKEN_RE.test(candidate) ? candidate : null
 }
 
-// Enlace que el host comparte. El origen puede venir de config.json escrito a
-// mano (túnel con nombre), así que la barra final se normaliza aquí en vez de
-// colar un `//room/…` en el enlace que se reparte por WhatsApp.
+// The link the host shares. The origin can come from a hand-written config.json
+// (a named tunnel), so the trailing slash is normalized here rather than slipping
+// a `//room/…` into the link people pass around.
 export function roomLink(origin: string, token: string): string {
   return `${origin.trim().replace(/\/+$/, '')}/room/${token}`
 }

@@ -6,7 +6,7 @@ const item = (path: string, folderPath: string, folderName: string): LibraryItem
   ({ id: path, path, title: path, folderName, folderPath, srtFiles: [] })
 
 describe('groupByFolder', () => {
-  it('no fusiona dos carpetas distintas que se llamen igual', () => {
+  it('does not merge two different folders that share a name', () => {
     const groups = groupByFolder([
       item('/m/Alien/Season 1/a.mkv', '/m/Alien/Season 1', 'Season 1'),
       item('/m/Dune/Season 1/b.mkv', '/m/Dune/Season 1', 'Season 1'),
@@ -17,7 +17,7 @@ describe('groupByFolder', () => {
     expect(new Set(groups.map(g => g.path)).size).toBe(2)
   })
 
-  it('agrupa los medios de una misma carpeta y conserva su orden', () => {
+  it('groups items from the same folder and keeps their order', () => {
     const groups = groupByFolder([
       item('/m/S/1.mkv', '/m/S', 'S'),
       item('/m/S/2.mkv', '/m/S', 'S'),
@@ -28,7 +28,7 @@ describe('groupByFolder', () => {
     expect(groups[1].items).toHaveLength(1)
   })
 
-  it('con la biblioteca vacía no devuelve grupos', () => {
+  it('returns no groups for an empty library', () => {
     expect(groupByFolder([])).toEqual([])
   })
 })

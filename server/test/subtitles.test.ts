@@ -28,7 +28,7 @@ describe('subtitles', () => {
     const out = join(dir, 'emb.vtt')
     await extractSubtitle(fixture, info, [extSrt], 0, out)
     expect(readFileSync(out, 'utf8')).toContain('WEBVTT')
-    expect(readFileSync(out, 'utf8')).toContain('Hola fixture')
+    expect(readFileSync(out, 'utf8')).toContain('Hello fixture')
   })
   it('converts external srt to vtt', async () => {
     const out = join(dir, 'ext.vtt')

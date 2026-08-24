@@ -1,12 +1,12 @@
-// Accesos rápidos de la barra de reacciones, elegidos por cada espectador.
-// Este módulo NO toca localStorage a propósito: Vitest corre en entorno node,
-// donde no existe. El componente lee y escribe la clave; aquí solo hay lógica
-// pura, que es lo que se prueba. Mismo reparto que parseStoredVolume.
+// The reactions bar's shortcuts, chosen by each viewer.
+// This module deliberately does NOT touch localStorage: Vitest runs in a node
+// environment, where it does not exist. The component reads and writes the key;
+// only pure logic lives here, and that is what gets tested. Same split as
+// parseStoredVolume.
 
 export const QUICK_KEY = 'jbg-quick-emojis'
 
-// Tope necesario: en pantalla completa la barra es una fila única dentro de un
-// panel estrecho.
+// A necessary cap: in fullscreen the bar is a single row inside a narrow panel.
 export const MAX_QUICK = 12
 
 export const DEFAULT_QUICK = ['😂', '❤️', '😱', '🤯', '🍿', '🔥', '👏', '😭', '💀', '🙈']
@@ -16,8 +16,8 @@ export function parseQuick(raw: string | null): string[] {
   let parsed: unknown
   try { parsed = JSON.parse(raw) } catch { return DEFAULT_QUICK }
   if (!Array.isArray(parsed)) return DEFAULT_QUICK
-  // Una lista vacía es una elección legítima y se respeta; solo se repuebla
-  // cuando no hay nada guardado o lo guardado es inservible.
+  // An empty list is a legitimate choice and is respected; it is only
+  // repopulated when nothing is stored or what is stored is unusable.
   return [...new Set(parsed.filter((e): e is string => typeof e === 'string' && e !== ''))].slice(0, MAX_QUICK)
 }
 

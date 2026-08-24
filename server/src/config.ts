@@ -9,33 +9,32 @@ export interface Config {
   tmdbApiKey?: string | null
   tunnelToken?: string | null
   tunnelUrl?: string | null
-  // Origen desde el que los clientes piden el vídeo (segmentos, init, VTT), si
-  // no es el mismo que sirve la app. Separa el plano de datos del de control:
-  // el HTML/API/WebSocket siguen entrando por el túnel de Cloudflare (uso para
-  // el que su CDN está pensado y tráfico despreciable), mientras los megas de
-  // vídeo salen por un relevo propio. Hace falta porque los términos del CDN de
-  // Cloudflare para planes Free/Pro/Business se reservan el derecho a limitar el
-  // servicio a quien lo use para servir vídeo alojado fuera de Cloudflare, y el
-  // hostname de un túnel es un CNAME a cfargotunnel.com que SOLO resuelve a
-  // través del proxy: no se puede dejar en gris, así que todos los bytes pasan
-  // por el CDN por construcción.
-  // null = mismo origen, que es lo correcto en LAN y sin relevo montado.
+  // Origin the clients fetch video from (segments, init, VTT), when it is not the
+  // one serving the app. Separates the data plane from the control plane: the
+  // HTML/API/WebSocket keep coming in through the Cloudflare tunnel (what its CDN
+  // is meant for, and negligible traffic), while the video gigabytes go out over a
+  // relay of our own. Needed because Cloudflare's CDN terms for Free/Pro/Business
+  // plans reserve the right to limit service for anyone using it to serve video
+  // hosted outside Cloudflare, and a tunnel hostname is a CNAME to
+  // cfargotunnel.com that ONLY resolves through the proxy: it cannot be
+  // grey-routed, so every byte goes through the CDN by construction.
+  // null = same origin, which is the right answer on a LAN and with no relay.
   streamBaseUrl?: string | null
-  // Datos del relevo, para que `npm run setup` pueda montar el túnel en una
-  // máquina nueva sin que nadie recuerde nada. Van en la capa compartida
-  // (config.defaults.json) porque describen el VPS, no la máquina: ninguno es
-  // secreto —una clave pública y un endpoint— y así viajan con el clon.
-  /** Clave pública WireGuard del VPS. */
+  // Relay details, so `npm run setup` can bring the tunnel up on a new machine
+  // without anyone having to remember anything. They describe the VPS rather than
+  // the machine, and none of them is secret (a public key and an endpoint), so
+  // multi-machine owners may keep them in the shared layer (config.defaults.json).
+  /** WireGuard public key of the VPS. */
   relayPeerPublicKey?: string | null
-  /** `host:puerto` UDP donde escucha el VPS, p. ej. `1.2.3.4:51820`. */
+  /** UDP `host:port` the VPS listens on, e.g. `1.2.3.4:51820`. */
   relayEndpoint?: string | null
-  /** IP del VPS dentro del túnel. */
+  /** The VPS's IP inside the tunnel. */
   relayPeerIp?: string | null
   /**
-   * IP de ESTA máquina dentro del túnel. Fija a propósito y no una por host: el
-   * `reverse_proxy` del VPS apunta a una sola dirección, así que cambiarla
-   * obligaría a reconfigurar el VPS por cada host. Solo sirve una máquina a la
-   * vez, así que `npm run setup` reemplaza el peer en el VPS en lugar de añadirlo.
+   * THIS machine's IP inside the tunnel. Fixed on purpose rather than one per
+   * host: the VPS's `reverse_proxy` points at a single address, so changing it
+   * would mean reconfiguring the VPS for every host. It serves one machine at a
+   * time, so `npm run setup` replaces the peer on the VPS instead of adding one.
    */
   relayLocalIp?: string | null
   port: number
@@ -60,8 +59,9 @@ export function dataDir(): string {
 export const cacheDir = () => join(dataDir(), 'cache')
 const configPath = () => join(dataDir(), 'config.json')
 
-// config.defaults.json vive en el repo (privado): así las API keys y el túnel
-// viajan con el clon y no hay que reconfigurar nada en cada máquina.
+// config.defaults.json is versioned in the repo, so a clone arrives with sane
+// defaults. It is public: it holds only non-secret values. API keys and tunnel
+// tokens belong in the local config.json (see loadConfig below).
 function defaultsPath(): string | null {
   if (process.env.JBG_DEFAULTS_FILE) return process.env.JBG_DEFAULTS_FILE
   let dir = dirname(fileURLToPath(import.meta.url))
@@ -85,14 +85,14 @@ function readJson(path: string): Partial<Config> {
   }
 }
 
-// null/undefined = «sin configurar»: no pisa la capa de debajo.
+// null/undefined means "not configured": it does not override the layer below.
 function overlay(base: Config, patch: Partial<Config>): Config {
   const out = { ...base }
   for (const [k, v] of Object.entries(patch)) if (v !== null && v !== undefined) Reflect.set(out, k, v)
   return out
 }
 
-/** Capa compartida: valores de fábrica + lo versionado en el repo. */
+/** Shared layer: factory values plus whatever is versioned in the repo. */
 function baseConfig(): Config {
   const path = defaultsPath()
   return path && existsSync(path) ? overlay(DEFAULTS, readJson(path)) : DEFAULTS
@@ -100,7 +100,8 @@ function baseConfig(): Config {
 
 export function loadConfig(): Config {
   mkdirSync(dataDir(), { recursive: true })
-  // El config local solo lleva lo propio de esta máquina; lo demás sale del repo.
+  // The local config carries only what is specific to this machine; the rest
+  // comes from the repo.
   if (!existsSync(configPath())) writeFileSync(configPath(), JSON.stringify({ mediaFolders: [] }, null, 2))
   return overlay(baseConfig(), readJson(configPath()))
 }

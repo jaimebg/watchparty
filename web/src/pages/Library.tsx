@@ -13,8 +13,8 @@ export function Library() {
   const [busyFolders, setBusyFolders] = useState(false)
   const [roomInput, setRoomInput] = useState('')
   const [roomError, setRoomError] = useState<string | null>(null)
-  // null = nada en marcha. El objeto describe la sala que se está montando:
-  // `id`/`title` a null en la sala vacía, que no prepara ningún vídeo.
+  // null = nothing under way. The object describes the room being built:
+  // `id`/`title` are null for an empty room, which prepares no video.
   const [starting, setStarting] = useState<{ id: string | null; title: string | null } | null>(null)
 
   const load = async () => {
@@ -23,28 +23,29 @@ export function Library() {
       setItems(await getLibrary())
       setFolders(await getMediaFolders())
     } catch (e) {
-      // 401 = visitante sin cookie de admin: típico invitado que abrió la URL
-      // pública base en vez del enlace de sala. No es un error, es una portada.
+      // 401 = a visitor with no admin cookie: typically a guest who opened the
+      // base public URL instead of the room link. Not an error, just a landing
+      // page.
       if (e instanceof Error && e.message.includes('401')) setGuest(true)
       else setError(String(e))
     }
   }
 
-  // Sin ítem: sala vacía. El enlace se copia igual, así que el host puede
-  // repartirlo y elegir película con la gente ya dentro.
+  // No item means an empty room. The link is still copied, so the host can hand
+  // it around and pick a movie with people already inside.
   const start = async (item?: LibraryItem) => {
-    // Con película, `createRoom` no vuelve hasta que el servidor ha analizado
-    // el vídeo, sacado los keyframes y extraído los subtítulos: segundos. Se
-    // bloquea la reentrada porque dos clics impacientes crearían dos salas y el
-    // enlace copiado sería el de la segunda.
+    // With a movie, `createRoom` does not return until the server has probed the
+    // video, pulled the keyframes and extracted the subtitles: seconds. Re-entry
+    // is blocked because two impatient clicks would create two rooms and the
+    // copied link would be the second one's.
     if (starting) return
     setStarting({ id: item?.id ?? null, title: item?.title ?? null })
     try {
       const { token } = await createRoom(item?.id)
       const { tunnelUrl } = await getStatus()
       await navigator.clipboard.writeText(roomLink(tunnelUrl ?? location.origin, token)).catch(() => {})
-      // Sin limpiar `starting`: la navegación tarda en pintar y el cartel debe
-      // seguir puesto hasta que se vaya la página.
+      // `starting` is deliberately not cleared: navigation takes a moment to
+      // paint and the card has to stay up until the page goes away.
       location.pathname = `/room/${token}`
     } catch (e) {
       setStarting(null)
@@ -52,8 +53,8 @@ export function Library() {
     }
   }
 
-  // Cualquier operación de carpetas devuelve la biblioteca reescaneada; la
-  // lista de carpetas se refresca aparte (contrato estable con el server).
+  // Any folder operation returns the rescanned library; the folder list is
+  // refreshed separately (a stable contract with the server).
   const folderOp = async (op: () => Promise<LibraryItem[] | null>) => {
     setBusyFolders(true)
     setFolderError(null)
@@ -121,8 +122,8 @@ export function Library() {
   )
   if (!items) return <main className="page"><p className="loading">Warming up the projector…</p></main>
 
-  // Fijo sobre toda la página, así que se monta igual en las dos vistas de
-  // cartelera (con títulos y sin ellos) sin importar dónde caiga en el árbol.
+  // Fixed over the whole page, so it mounts the same in both marquee views
+  // (with titles and without) wherever it lands in the tree.
   const startingOverlay = starting && (
     <div className="busy-overlay" role="status" aria-live="polite">
       <span className="spinner spinner--lg" aria-hidden="true" />
@@ -130,10 +131,10 @@ export function Library() {
         {starting.title ? `Setting up the room for “${starting.title}”` : 'Setting up the room…'}
       </p>
       {starting.title && (
-        <p className="hint">Analizamos el vídeo y preparamos los subtítulos: con
-          películas largas puede tardar unos segundos.</p>
+        <p className="hint">We probe the video and prepare the subtitles: with
+          long movies this can take a few seconds.</p>
       )}
-      <p className="hint">El enlace se copia al portapapeles en cuanto esté lista.</p>
+      <p className="hint">The link is copied to your clipboard as soon as it's ready.</p>
     </div>
   )
 
@@ -182,7 +183,7 @@ export function Library() {
     return (
       <main className="page">
         <header className="masthead">
-          <p className="eyebrow">JBG Watchparty</p>
+          <p className="eyebrow">Watchparty</p>
           <h1>The marquee</h1>
           <div className="marquee-rule" aria-hidden="true" />
         </header>
@@ -197,13 +198,13 @@ export function Library() {
     )
   }
 
-  // Por folderPath y no por folderName: dos series con una «Season 1» cada una
-  // se fusionarían en una sección con los episodios de ambas mezclados.
+  // By folderPath and not folderName: two series each with a "Season 1" would be
+  // merged into one section with both sets of episodes mixed together.
   const groups = [...new Map(items.map(i => [i.folderPath, i.folderName])).entries()]
   return (
     <main className="page">
       <header className="masthead">
-        <p className="eyebrow">JBG Watchparty</p>
+        <p className="eyebrow">Watchparty</p>
           <h1>The marquee</h1>
           <div className="marquee-rule" aria-hidden="true" />
         </header>

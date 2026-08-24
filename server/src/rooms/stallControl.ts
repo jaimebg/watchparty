@@ -1,11 +1,11 @@
 import { apply, type PlaybackState } from './syncState.js'
 
-// Tope de espera y enfriamiento tras agotarlo. Mutables a propósito: los tests
-// los bajan a milisegundos para no dormir 20 s de reloj real.
+// Wait cap and the cooldown after it runs out. Mutable on purpose: the tests
+// lower them to milliseconds rather than sleep 20 s of wall clock.
 export const stallTiming = { capMs: 20_000, cooldownMs: 10_000 }
 
-// Solo se necesita el estado: tipar contra `Room` entero ataría este módulo a
-// ffmpeg, subtítulos y TMDB, y obligaría a los tests a construir todo eso.
+// Only the state is needed: typing against the whole `Room` would tie this
+// module to ffmpeg, subtitles and TMDB, and force the tests to build all of it.
 export interface StallRoom { state: PlaybackState }
 
 interface Entry {
@@ -18,8 +18,8 @@ interface Entry {
 const entries = new Map<StallRoom, Entry>()
 
 export function attach(room: StallRoom, onState: () => void): void {
-  // Re-registrar sin limpiar dejaría vivo el timer de la entrada anterior,
-  // disparando contra `room.state` a través de un `onState` obsoleto.
+  // Re-registering without cleaning up would leave the previous entry's timer
+  // alive, firing at `room.state` through a stale `onState`.
   detach(room)
   entries.set(room, { buffering: new Set(), timer: null, cooldownUntil: 0, onState })
 }
@@ -46,10 +46,10 @@ export function forget(room: StallRoom, who: object, now: number): void {
   evaluate(room, e, now)
 }
 
-// Para seek y play. Una orden explícita del usuario merece una ventana de
-// espera nueva y completa, y además hay que reevaluar: si el tope acaba de
-// expirar, el rezagado ya emitió su flanco `buffering:true` y no va a emitir
-// otro, así que sin esta llamada la sala no volvería a esperarlo jamás.
+// For seek and play. An explicit user command deserves a fresh, full waiting
+// window, and it also has to re-evaluate: if the cap has just expired, the
+// straggler already emitted its `buffering:true` edge and is not going to emit
+// another, so without this call the room would never wait for them again.
 export function refresh(room: StallRoom, now: number): void {
   const e = entries.get(room)
   if (!e) return
@@ -63,8 +63,8 @@ function arm(room: StallRoom, e: Entry): void {
   e.timer = setTimeout(() => {
     e.timer = null
     const now = Date.now()
-    // El enfriamiento es lo único que evita volver a congelar al instante: el
-    // rezagado sigue en el Set y no va a emitir otro flanco.
+    // The cooldown is the only thing stopping an immediate re-freeze: the
+    // straggler is still in the Set and is not going to emit another edge.
     e.cooldownUntil = now + stallTiming.cooldownMs
     if (!room.state.stalled) return
     room.state = apply(room.state, { type: 'resume', at: now })

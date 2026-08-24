@@ -25,13 +25,13 @@ describe('guessLangFromName', () => {
 
 describe('enrichAudioLangs', () => {
   const und = { index: 0, codec: 'aac', lang: 'und', label: 'Pista 1', channels: 2 }
-  it('una pista und + idioma original TMDB → etiquetada', () => {
+  it('a single und track plus TMDB\'s original language gets labelled', () => {
     expect(enrichAudioLangs([und], 'Peli.2026.mp4', 'en')[0]).toMatchObject({ lang: 'en', label: 'English' })
   })
-  it('la palabra del nombre del archivo gana al idioma original (doblaje)', () => {
+  it('a word in the file name beats the original language (a dub)', () => {
     expect(enrichAudioLangs([und], 'Peli.2026.Castellano.mp4', 'en')[0]).toMatchObject({ lang: 'es', label: 'Español' })
   })
-  it('pista ya etiquetada → intacta', () => {
+  it('an already-labelled track is left untouched', () => {
     const spa = { ...und, lang: 'spa', label: 'Español' }
     expect(enrichAudioLangs([spa], 'x.mp4', 'en')[0]).toBe(spa)
   })
@@ -39,7 +39,7 @@ describe('enrichAudioLangs', () => {
     const two = [und, { ...und, index: 1, label: 'Pista 2' }]
     expect(enrichAudioLangs(two, 'x.mp4', 'en')).toBe(two)
   })
-  it('sin ninguna pista → intacto', () => {
+  it('with no tracks at all, nothing changes', () => {
     expect(enrichAudioLangs([und], 'x.mp4', null)[0]).toBe(und)
   })
 })
@@ -47,7 +47,7 @@ describe('enrichAudioLangs', () => {
 describe('detectLangFromText', () => {
   const es = 'Pero qué está pasando aquí. Gracias señor, sí, cómo no. Porque los niños y las niñas cuando llegan más tarde. Está bien, gracias. Sí señor.'
   const en = 'What are you doing with the ship. You have this and that. The crew was here and you were there. What do you have. This is the end.'
-  it('detecta español', () => expect(detectLangFromText(es)).toBe('es'))
-  it('detecta inglés', () => expect(detectLangFromText(en)).toBe('en'))
-  it('sin señal clara -> null', () => expect(detectLangFromText('12345 --> 000 abc xyz')).toBeNull())
+  it('detects Spanish', () => expect(detectLangFromText(es)).toBe('es'))
+  it('detects English', () => expect(detectLangFromText(en)).toBe('en'))
+  it('returns null with no clear signal', () => expect(detectLangFromText('12345 --> 000 abc xyz')).toBeNull())
 })

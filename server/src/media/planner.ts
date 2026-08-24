@@ -4,19 +4,19 @@ import { variantCount } from './hlsLayout.js'
 
 export interface Segment { index: number; start: number; duration: number; seekAt: number }
 
-// El demuxer de Matroska retrocede al keyframe ANTERIOR cuando el -ss cae justo
-// sobre uno (ffmpeg se guarda un margen de ~0,17 s), y aquí todos los límites
-// salen de la lista real de keyframes: sin esto, cada reinicio a mitad de
-// película en un MKV empieza un GOP antes de lo que declara la playlist y hls.js
-// bufferiza el segmento en el sitio equivocado. Apuntar al punto medio hasta el
-// siguiente keyframe acierta sin depender de adivinar ese margen; un epsilon
-// pequeño y fijo no basta (medido: +0,05 s sigue cayendo un GOP antes).
-// Lo que decide si hace falta este punto medio es el MODO, no si hay lista de
-// keyframes: en copy no se puede descartar fotogramas, así que el seek tiene
-// que apuntar más allá del keyframe. En transcode ffmpeg decodifica y descarta
-// hasta el instante pedido, así que debe apuntar al límite mismo (seg.start) —
-// buildTranscodeArgs es quien elige entre seekAt y start según el modo; esta
-// función solo calcula el valor por si hace falta.
+// The Matroska demuxer backs up to the PREVIOUS keyframe when -ss lands right on
+// one (ffmpeg keeps a margin of ~0.17 s), and here every boundary comes from the
+// real keyframe list: without this, every mid-movie restart on an MKV starts one
+// GOP earlier than the playlist declares and hls.js buffers the segment in the
+// wrong place. Aiming at the midpoint to the next keyframe gets it right without
+// having to guess that margin; a small fixed epsilon is not enough (measured:
+// +0.05 s still lands a GOP early).
+// What decides whether this midpoint is needed is the MODE, not whether a
+// keyframe list exists: in copy mode frames cannot be discarded, so the seek has
+// to aim past the keyframe. In transcode mode ffmpeg decodes and discards up to
+// the requested instant, so it must aim at the boundary itself (seg.start) —
+// buildTranscodeArgs is what picks between seekAt and start based on the mode;
+// this function only computes the value in case it is needed.
 function seekPoint(start: number, keyframes: number[] | null, durationSec: number): number {
   if (start === 0 || !keyframes || keyframes.length === 0) return start
   const next = keyframes.find(k => k > start) ?? durationSec
@@ -50,9 +50,9 @@ const escapeAttr = (s: string): string => s.replace(/"/g, "'")
 
 export function buildMasterPlaylist(audio: AudioTrack[]): string {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:7']
-  // Con 0 o 1 pista el audio viaja dentro del propio variant de vídeo
-  // (hlsLayout.ts), así que no hay rendición alternativa que anunciar:
-  // anunciarla mandaría a hls.js a por un audio_1.m3u8 inexistente.
+  // With 0 or 1 track the audio travels inside the video variant itself
+  // (hlsLayout.ts), so there is no alternate rendition to announce: announcing
+  // one would send hls.js after an audio_1.m3u8 that does not exist.
   const alternate = variantCount(audio.length) > 1
   if (alternate) {
     audio.forEach((a, i) => lines.push(

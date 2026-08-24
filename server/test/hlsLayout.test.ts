@@ -8,11 +8,11 @@ const info = (patch: Partial<MediaInfo> = {}): MediaInfo => ({
   audio: [track(0)], subs: [], ...patch,
 })
 
-// La playlist es VOD: hay que saber de antemano dónde cortará ffmpeg, y en modo
-// copy eso no se puede saber. Medido en un WEBRip real de 2:36: el planner
-// calculaba 1295 cortes y ffmpeg hizo 2212, de modo que la playlist se quedaba
-// sin vídeo en el minuto 1:26:58 de una película de 2:36. Transcodificar
-// forzando keyframes cada 4 s hace que los límites coincidan por construcción.
+// The playlist is VOD: where ffmpeg will cut has to be known in advance, and in
+// copy mode it cannot be. Measured on a real 2:36 WEBRip: the planner computed
+// 1295 cuts and ffmpeg made 2212, so the playlist ran out of video at minute
+// 1:26:58 of a 2:36 movie. Transcoding while forcing keyframes every 4 s makes
+// the boundaries line up by construction.
 describe('pickMode', () => {
   it('transcodes even an h264 8-bit 4:2:0 source with a single audio track', () => {
     expect(pickMode(info())).toBe('transcode')
@@ -28,8 +28,8 @@ describe('pickMode', () => {
 })
 
 describe('variantCount', () => {
-  // 0 o 1 pista => un único variant con vídeo y audio en el MISMO segmento:
-  // así es imposible que sus límites se separen.
+  // 0 or 1 track => a single variant with video and audio in the SAME segment:
+  // that way their boundaries cannot come apart.
   it('muxes video and audio into one variant when there is at most one track', () => {
     expect(variantCount(0)).toBe(1)
     expect(variantCount(1)).toBe(1)

@@ -5,12 +5,12 @@ import { cleanName } from './nameClean.js'
 
 export interface LibraryItem {
   id: string; path: string; title: string
-  /** Nombre de la carpeta contenedora, para la etiqueta de la UI. */
+  /** Name of the containing folder, for the UI label. */
   folderName: string
   /**
-   * Ruta absoluta de la carpeta contenedora. Es esto y no `folderName` lo que
-   * identifica un grupo: dos series pueden tener una «Season 1» cada una, y
-   * agrupar por basename las fusiona en una sección con episodios de las dos.
+   * Absolute path of the containing folder. This, and not `folderName`, is what
+   * identifies a group: two series can each have a "Season 1", and grouping by
+   * basename merges them into one section holding episodes from both.
    */
   folderPath: string
   srtFiles: string[]
@@ -31,10 +31,10 @@ async function walk(dir: string, out: string[]): Promise<void> {
 export async function scanLibrary(folders: string[]): Promise<LibraryItem[]> {
   const files: string[] = []
   for (const f of folders) await walk(resolve(f), files)
-  // Un solo listado por directorio, no uno por vídeo: con 200 episodios en una
-  // carpeta, emparejar los .srt leyéndola cada vez son 200 lecturas del mismo
-  // sitio. Y desde que se puede elegir película DENTRO de la sala, este escaneo
-  // corre en mitad de la función, no solo en la portada.
+  // One listing per directory, not one per video: with 200 episodes in a folder,
+  // pairing up the .srt files by re-reading it every time is 200 reads of the
+  // same place. And since movies can be picked from INSIDE the room, this scan
+  // runs mid-session, not only on the landing page.
   const srtByDir = new Map<string, string[]>()
   for (const dir of new Set(files.map(f => dirname(f)))) {
     const names = await readdir(dir).catch(() => [] as string[])

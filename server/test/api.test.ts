@@ -15,7 +15,7 @@ const ADMIN = 'test-admin-token'
 const fakeSession = {
   start: () => {}, seekTo: () => {}, stop: async () => {}, onError: () => {}, lastLog: [] as string[],
   openSegment: vi.fn(async (_v: number, _i: number) => Readable.from([Buffer.from('seg-retimed')])),
-  requestInit: vi.fn(async () => { throw new Error('sin init') }),
+  requestInit: vi.fn(async () => { throw new Error('no init') }),
 }
 
 beforeAll(async () => {
@@ -65,7 +65,7 @@ describe('api', () => {
   })
 
   it('rejects a non-existent path with 400', async () => {
-    const res = await app.inject({ method: 'POST', url: '/api/config/folders', payload: { path: '/no/existe/de/verdad/xyz' }, ...admin })
+    const res = await app.inject({ method: 'POST', url: '/api/config/folders', payload: { path: '/definitely/does/not/exist/xyz' }, ...admin })
     expect(res.statusCode).toBe(400)
   })
 
@@ -75,7 +75,7 @@ describe('api', () => {
   })
 
   it('room exposes TMDB meta and composed title when lookup succeeds', async () => {
-    const meta = { title: 'La Gran Peli', year: 2020, overview: 'Sinopsis.', posterUrl: null, rating: 7.5, episodeTag: null, originalLang: 'en' }
+    const meta = { title: 'The Big Movie', year: 2020, overview: 'Synopsis.', posterUrl: null, rating: 7.5, episodeTag: null, originalLang: 'en' }
     const metaRooms = new RoomManager({ createSession: () => fakeSession, lookupMeta: async () => meta })
     const metaApp = await buildApp({
       config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 },
@@ -84,7 +84,7 @@ describe('api', () => {
     const items = await scanLibrary([mediaDir])
     const room = await metaRooms.create(items[0])
     const res = await metaApp.inject({ url: `/api/rooms/${room.token}` })
-    expect(res.json().media.title).toBe('La Gran Peli (2020)')
+    expect(res.json().media.title).toBe('The Big Movie (2020)')
     expect(res.json().media.meta).toEqual(meta)
     await metaRooms.close(room.token)
     await metaApp.close()
@@ -105,11 +105,11 @@ describe('api', () => {
     expect((await folderApp.inject({ method: 'DELETE', url: '/api/config/folders', payload: { path: extraDir } })).statusCode).toBe(401)
     const removed = await folderApp.inject({ method: 'DELETE', url: '/api/config/folders', payload: { path: extraDir }, ...admin })
     expect(removed.statusCode).toBe(200)
-    expect(removed.json()).toHaveLength(1) // solo queda el item de mediaDir
+    expect(removed.json()).toHaveLength(1) // only mediaDir's item is left
     expect(cfg.mediaFolders).toEqual([mediaDir])
-    expect(loadConfig().mediaFolders).toEqual([mediaDir]) // persistido
+    expect(loadConfig().mediaFolders).toEqual([mediaDir]) // persisted
 
-    // idempotente: quitar de nuevo no falla
+    // idempotent: removing again does not fail
     const again = await folderApp.inject({ method: 'DELETE', url: '/api/config/folders', payload: { path: extraDir }, ...admin })
     expect(again.statusCode).toBe(200)
 
@@ -133,7 +133,7 @@ describe('api', () => {
     expect(res.json()).toHaveLength(2)
     expect(cfg.mediaFolders).toContain(pickedDir)
 
-    pick = null // el usuario cancela el diálogo
+    pick = null // the user cancels the dialog
     const cancelled = await pickApp.inject({ method: 'POST', url: '/api/config/pick-folder', ...admin })
     expect(cancelled.statusCode).toBe(200)
     expect(cancelled.json()).toEqual({ cancelled: true })
@@ -169,17 +169,17 @@ describe('api', () => {
     expect(token.length).toBeGreaterThan(15)
     const info = (await app.inject({ url: `/api/rooms/${token}` })).json()
     expect(info.media.epoch).toBe(1)
-    // El selector de película identifica la que está en emisión por este id: el
-    // título de la sala pasa por displayTitle y no coincide con el del ítem.
+    // The movie picker identifies the one now playing by this id: the room's
+    // title goes through displayTitle and does not match the item's.
     expect(info.media.itemId).toBe(items[0].id)
     expect(info.media.audio).toHaveLength(2)
     expect(info.media.subtitles.length).toBeGreaterThanOrEqual(1)
     expect(info.error).toBeNull()
-    // Sin streamBaseUrl configurado el cliente debe quedarse en el mismo origen.
+    // With no streamBaseUrl configured the client must stay on the same origin.
     expect(info.streamBase).toBe('')
   })
 
-  it('anuncia el origen del relevo cuando hay streamBaseUrl', async () => {
+  it('announces the relay origin when streamBaseUrl is set', async () => {
     const relayApp = await buildApp({
       config: {
         mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10,
@@ -192,9 +192,10 @@ describe('api', () => {
     await relayApp.close()
   })
 
-  // Con el vídeo en otro origen, hls.js y los <track> lo piden cross-origin: sin
-  // estas cabeceras el navegador descarta la respuesta sin error visible.
-  it('permite CORS en el plano de datos, también en el preflight', async () => {
+  // With the video on another origin, hls.js and the <track>s fetch it
+  // cross-origin: without these headers the browser discards the response with no
+  // visible error.
+  it('allows CORS on the data plane, preflight included', async () => {
     const seg = await app.inject({ url: `/stream/${token}/e1/seg_0_00000.m4s` })
     expect(seg.headers['access-control-allow-origin']).toBe('*')
     const master = await app.inject({ url: `/stream/${token}/e1/master.m3u8` })
@@ -234,17 +235,17 @@ describe('api', () => {
   it('serves segments via session and rejects weird paths', async () => {
     const s = await app.inject({ url: `/stream/${token}/e1/seg_0_00000.m4s` })
     expect(s.statusCode).toBe(200)
-    // Traversal codificado: llega como valor del param :file y debe caer en el 404 del handler.
+    // Encoded traversal: it arrives as the :file param's value and must land in the handler's 404.
     expect((await app.inject({ url: `/stream/${token}/e1/..%2F..%2Fetc%2Fpasswd` })).statusCode).toBe(404)
-    // Traversal sin codificar: la URL se normaliza fuera de /stream (puede acabar en el SPA
-    // fallback si web/dist existe); lo que importa es que el archivo del sistema nunca se sirva.
+    // Unencoded traversal: the URL is normalized outside /stream (it may end up in the SPA
+    // fallback when web/dist exists); what matters is that the system file is never served.
     const raw = await app.inject({ url: `/stream/${token}/e1/../../etc/passwd` })
     expect(raw.body).not.toContain('root:')
     expect((await app.inject({ url: `/stream/${token}/e1/evil.txt` })).statusCode).toBe(404)
-    expect((await app.inject({ url: `/stream/NOEXISTE/e1/master.m3u8` })).statusCode).toBe(404)
+    expect((await app.inject({ url: `/stream/NOSUCHROOM/e1/master.m3u8` })).statusCode).toBe(404)
   })
 
-  it('el segmento se sirve por openSegment, que es quien lo ancla en el tiempo', async () => {
+  it('the segment is served through openSegment, which is what anchors it in time', async () => {
     const s = await app.inject({ url: `/stream/${token}/e1/seg_0_00000.m4s` })
     expect(s.statusCode).toBe(200)
     expect(s.body).toBe('seg-retimed')
@@ -258,10 +259,10 @@ describe('api', () => {
     expect(fakeSession.openSegment).not.toHaveBeenCalled()
   })
 
-  // Con el proceso de ffmpeg ya terminado, requestSegment resuelve mirando
-  // solo existsSync: una petición a un índice fuera del plan se resolvería y
-  // caería en el fallback silencioso que este arreglo existe para matar. Un
-  // índice inventado tiene que 404 sin tocar la sesión, igual que la variante.
+  // With the ffmpeg process already finished, requestSegment resolves on
+  // existsSync alone: a request for an index outside the plan would resolve and
+  // fall into the silent fallback this fix exists to kill. A made-up index has to
+  // 404 without touching the session, just like the variant.
   it('rejects a segment index outside the plan (0..segments.length) without touching the session', async () => {
     fakeSession.openSegment.mockClear()
     const room = rooms.get(token)!
@@ -279,10 +280,10 @@ describe('api', () => {
     expect((await app.inject({ url: `/stream/${token}/e1/init_3.mp4` })).statusCode).toBe(404)
   })
 
-  // Con una sola pista el audio va dentro del variant de vídeo (hlsLayout.ts):
-  // no hay variant 1, así que pedirlo debe ser un 404 seco. Sin esta guarda la
-  // petición llegaría a la sesión, que esperaría 30 s por un archivo que ffmpeg
-  // nunca va a escribir.
+  // With a single track the audio rides inside the video variant (hlsLayout.ts):
+  // there is no variant 1, so asking for it must be a flat 404. Without this
+  // guard the request would reach the session, which would wait 30 s for a file
+  // ffmpeg is never going to write.
   it('exposes a single variant when the source has one audio track', async () => {
     const monoDir = mkdtempSync(join(tmpdir(), 'apimono-'))
     await makeFixtureMkv(monoDir, { audioTracks: 1 })
@@ -314,9 +315,10 @@ describe('api', () => {
     expect(missingSub.statusCode).toBe(404)
     expect(missingSub.body).not.toContain(process.env.JBG_DATA_DIR!)
 
-    // El init ya no se busca en disco desde la ruta: se pide a la sesión, que
-    // responde «todavía no» agotando el plazo. Eso es un 504 (no listo), no un
-    // 404 (no existe); el 404 queda para variantes fuera de rango.
+    // The init is no longer looked up on disk from the route: it is asked of the
+    // session, which answers "not yet" by exhausting the deadline. That is a 504
+    // (not ready), not a 404 (does not exist); 404 is left for out-of-range
+    // variants.
     const missingInit = await app.inject({ url: `/stream/${token}/e1/init_0.mp4` })
     expect(missingInit.statusCode).toBe(504)
     expect(missingInit.body).not.toContain(process.env.JBG_DATA_DIR!)
@@ -336,7 +338,7 @@ describe('api', () => {
       adminToken: ADMIN, tunnel: { url: null },
       fetchImpl: (async () => new Response(JSON.stringify({}))) as unknown as typeof fetch,
     })
-    const res = await gifApp.inject({ url: '/api/gifs/search?q=lol&room=NOEXISTE' })
+    const res = await gifApp.inject({ url: '/api/gifs/search?q=lol&room=NOSUCHROOM' })
     expect(res.statusCode).toBe(401)
     await gifApp.close()
   })
@@ -369,7 +371,7 @@ describe('api', () => {
     await gifApp.close()
   })
 
-  it('crea una sala vacía cuando no se manda itemId', async () => {
+  it('creates an empty room when no itemId is sent', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: {}, ...admin })
     expect(res.statusCode).toBe(200)
     const empty = res.json().token
@@ -379,14 +381,14 @@ describe('api', () => {
     expect(info.error).toBeNull()
     expect(info.streamBase).toBe('')
 
-    // Sin película, el plano de datos no existe en ninguna de sus formas.
+    // Without a movie the data plane does not exist in any of its forms.
     for (const file of ['master.m3u8', 'video.m3u8', 'audio_1.m3u8', 'init_0.mp4', 'seg_0_00000.m4s', 'sub_0.vtt']) {
       expect((await app.inject({ url: `/stream/${empty}/e1/${file}` })).statusCode).toBe(404)
     }
     await rooms.close(empty)
   })
 
-  it('la sala vacía aparece en /api/status sin título de película', async () => {
+  it('the empty room shows up in /api/status with no movie title', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: {}, ...admin })
     const empty = res.json().token
     const status = (await app.inject({ url: '/api/status', ...admin })).json()
@@ -394,30 +396,31 @@ describe('api', () => {
     await rooms.close(empty)
   })
 
-  it('cambiar de película exige admin', async () => {
+  it('changing the movie requires admin', async () => {
     const items = (await app.inject({ url: '/api/library', ...admin })).json()
     const res = await app.inject({ method: 'POST', url: `/api/rooms/${token}/media`, payload: { itemId: items[0].id } })
     expect(res.statusCode).toBe(401)
   })
 
-  it('cambiar de película rechaza un item inexistente y una sala inexistente', async () => {
+  it('changing the movie rejects a non-existent item and a non-existent room', async () => {
     expect((await app.inject({
-      method: 'POST', url: `/api/rooms/${token}/media`, payload: { itemId: 'no-existe' }, ...admin,
+      method: 'POST', url: `/api/rooms/${token}/media`, payload: { itemId: 'no-such-item' }, ...admin,
     })).statusCode).toBe(404)
     expect((await app.inject({
-      method: 'POST', url: '/api/rooms/NOEXISTE/media', payload: { itemId: 'x' }, ...admin,
+      method: 'POST', url: '/api/rooms/NOSUCHROOM/media', payload: { itemId: 'x' }, ...admin,
     })).statusCode).toBe(404)
   })
 
-  // Sin esta validación el endpoint sería un lector arbitrario de ficheros para
-  // quien tenga la cookie: no se hereda de POST /api/rooms, hay que repetirla.
-  it('cambiar de película rechaza un item fuera de las carpetas de medios', async () => {
-    const outsideDir = mkdtempSync(join(tmpdir(), 'apifuera-'))
+  // Without this validation the endpoint would be an arbitrary file reader for
+  // anyone holding the cookie: it is not inherited from POST /api/rooms, it has
+  // to be repeated.
+  it('changing the movie rejects an item outside the media folders', async () => {
+    const outsideDir = mkdtempSync(join(tmpdir(), 'apioutside-'))
     await makeFixtureMkv(outsideDir)
     const outside = (await scanLibrary([outsideDir]))[0]
     const wideApp = await buildApp({
       config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 },
-      // La biblioteca declara el ítem, pero mediaFolders NO lo contiene.
+      // The library declares the item, but mediaFolders does NOT contain it.
       library: async () => [...await scanLibrary([mediaDir]), outside],
       rooms, adminToken: ADMIN, tunnel: { url: null },
     })
@@ -430,24 +433,24 @@ describe('api', () => {
     await wideApp.close()
   })
 
-  it('el epoch de una generación anterior da 410 (con CORS) y una forma inválida da 404', async () => {
+  it('an earlier generation\'s epoch gives 410 (with CORS) and a malformed one gives 404', async () => {
     const items = (await app.inject({ url: '/api/library', ...admin })).json()
     const changed = await app.inject({
-      method: 'POST', url: `/api/rooms/${token}/media`, payload: { itemId: items[0].id, by: 'Jaime' }, ...admin,
+      method: 'POST', url: `/api/rooms/${token}/media`, payload: { itemId: items[0].id, by: 'Alex' }, ...admin,
     })
     expect(changed.statusCode).toBe(200)
     expect(changed.json().epoch).toBe(2)
 
     const stale = await app.inject({ url: `/stream/${token}/e1/master.m3u8` })
     expect(stale.statusCode).toBe(410)
-    // Un 410 cross-origin sin cabeceras CORS es un fallo mudo en el navegador.
+    // A cross-origin 410 without CORS headers is a mute failure in the browser.
     expect(stale.headers['access-control-allow-origin']).toBe('*')
 
     expect((await app.inject({ url: `/stream/${token}/e2/master.m3u8` })).statusCode).toBe(200)
-    // 'e01' y 'e02' son las generaciones escritas con un cero delante: `Number`
-    // las aceptaría (`Number('02') === 2`, y 'e02' llegaría a servir los bytes de
-    // la actual), y cada variante es una clave de caché distinta para los mismos
-    // bytes en el relevo de vídeo.
+    // 'e01' and 'e02' are the generations written with a leading zero: `Number`
+    // would accept them (`Number('02') === 2`, and 'e02' would go on to serve the
+    // current generation's bytes), and each variant is a distinct cache key for
+    // the same bytes on the video relay.
     for (const bad of ['1', 'x2', 'e', 'ee2', 'e01', 'e02']) {
       expect((await app.inject({ url: `/stream/${token}/${bad}/master.m3u8` })).statusCode).toBe(404)
     }
@@ -456,14 +459,14 @@ describe('api', () => {
     expect(info.media.epoch).toBe(2)
   })
 
-  it('el preflight de CORS cubre la ruta versionada', async () => {
+  it('the CORS preflight covers the versioned route', async () => {
     const pre = await app.inject({ method: 'OPTIONS', url: `/stream/${token}/e2/seg_0_00000.m4s` })
     expect(pre.statusCode).toBe(204)
     expect(pre.headers['access-control-allow-origin']).toBe('*')
     expect(pre.headers['access-control-allow-methods']).toContain('GET')
   })
 
-  it('retry devuelve 409 en una sala sin película', async () => {
+  it('retry returns 409 on a room with no movie', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: {}, ...admin })
     const empty = res.json().token
     const retry = await app.inject({ method: 'POST', url: `/api/rooms/${empty}/retry` })

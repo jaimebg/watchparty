@@ -1,22 +1,22 @@
-// Regenera web/src/chat/emojiCatalog.ts desde emojibase-data (inglés).
+// Regenerates web/src/chat/emojiCatalog.ts from emojibase-data (English).
 //
 //   node web/scripts/gen-emoji-catalog.mjs
 //
-// Se ejecuta A MANO, solo cuando Unicode saque emojis nuevos. Queda fuera de
-// `npm run build` y de `npm test` a propósito: nadie debería necesitar red para
-// compilar el proyecto ni para pasar los tests.
+// Run BY HAND, only when Unicode ships new emojis. It stays out of
+// `npm run build` and `npm test` on purpose: nobody should need network access
+// to build the project or to run the tests.
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Versión fijada, no `latest`: una regeneración no debe cambiar el resultado
-// por su cuenta entre una ejecución y la siguiente.
+// A pinned version, not `latest`: a regeneration must not change its result on
+// its own between one run and the next.
 const SOURCE = 'https://cdn.jsdelivr.net/npm/emojibase-data@16/en/compact.json'
-// Modificadores de tono de piel y de pelo. No son emotes.
+// Skin-tone and hair modifiers. Not emotes.
 const COMPONENT_GROUP = 2
 
 const res = await fetch(SOURCE)
-if (!res.ok) throw new Error(`${SOURCE} respondió ${res.status}`)
+if (!res.ok) throw new Error(`${SOURCE} responded ${res.status}`)
 const data = await res.json()
 
 const rows = data
@@ -26,7 +26,7 @@ const rows = data
 
 const out = `// GENERATED — do not edit by hand. Regenerate with:
 //   node web/scripts/gen-emoji-catalog.mjs
-// Fuente: ${SOURCE}
+// Source: ${SOURCE}
 import type { EmojiRow } from './emojiSearch'
 
 export const EMOJI_CATALOG: EmojiRow[] = ${JSON.stringify(rows)}

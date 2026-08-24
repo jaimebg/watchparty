@@ -5,8 +5,8 @@ export interface ReactionFlash { id: number; emoji: string }
 export interface ChatState {
   entries: ChatEntry[]; participants: Participant[]
   buffering: string[]; reactions: { id: number; emoji: string }[]
-  // Último emoji de cada participante, indexado por su id (no por nombre: dos
-  // invitados pueden llamarse igual). Caduca solo, por animationend.
+  // Each participant's last emoji, indexed by their id (not by name: two guests
+  // can share one). It expires on its own, via animationend.
   flashes: Record<string, ReactionFlash>
 }
 
@@ -17,8 +17,8 @@ export function resetReactionIds(): void {
   reactionId = 0
 }
 
-// Quien reacciona y se marcha acto seguido deja su chip fuera del DOM, así que
-// su animationend no llega nunca y su destello se quedaría colgado.
+// Someone who reacts and leaves right after takes their chip out of the DOM, so
+// its animationend never arrives and their flash would hang around.
 function pruneFlashes(flashes: Record<string, ReactionFlash>, participants: Participant[]): Record<string, ReactionFlash> {
   const live = new Set(participants.map(p => p.id))
   const next: Record<string, ReactionFlash> = {}
@@ -29,10 +29,10 @@ function pruneFlashes(flashes: Record<string, ReactionFlash>, participants: Part
 export function chatReducer(s: ChatState, m: ServerMsg): ChatState {
   switch (m.t) {
     // Reset buffering too: a `buffering:false` broadcast missed while
-    // disconnected would otherwise leave a stale "X está cargando…" forever,
+    // disconnected would otherwise leave a stale "X is buffering…" forever,
     // since welcome is the only signal that we're rejoining from scratch.
-    // Los destellos se reinician por lo mismo: una pestaña en segundo plano no
-    // ejecuta animaciones, así que uno podría sobrevivir a la reconexión.
+    // The flashes reset for the same reason: a backgrounded tab does not run
+    // animations, so one could survive the reconnect.
     case 'welcome': return { ...s, entries: m.history, participants: m.participants, buffering: [], flashes: {} }
     case 'chat': return { ...s, entries: [...s.entries, m.entry].slice(-500) }
     case 'presence': return { ...s, participants: m.participants, flashes: pruneFlashes(s.flashes, m.participants) }
@@ -52,8 +52,8 @@ export function chatReducer(s: ChatState, m: ServerMsg): ChatState {
 export const dropReaction = (s: ChatState, id: number): ChatState =>
   ({ ...s, reactions: s.reactions.filter(r => r.id !== id) })
 
-// Solo retira si el id coincide: si esa persona ha vuelto a reaccionar mientras
-// tanto, el animationend del destello viejo no debe llevarse por delante al nuevo.
+// It only removes when the id matches: if that person has reacted again in the
+// meantime, the old flash's animationend must not take the new one down.
 export const dropFlash = (s: ChatState, pid: string, id: number): ChatState => {
   if (s.flashes[pid]?.id !== id) return s
   const next = { ...s.flashes }

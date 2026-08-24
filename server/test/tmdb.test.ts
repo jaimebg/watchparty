@@ -28,7 +28,7 @@ describe('mapTmdbResult', () => {
   it('tolerates garbage and empty results', () => {
     expect(mapTmdbResult(null, null)).toBeNull()
     expect(mapTmdbResult({ results: [] }, null)).toBeNull()
-    expect(mapTmdbResult({ results: [{ overview: 'sin título' }] }, null)).toBeNull()
+    expect(mapTmdbResult({ results: [{ overview: 'no title' }] }, null)).toBeNull()
   })
 })
 
@@ -36,7 +36,7 @@ describe('displayTitle', () => {
   it('composes title, year and episode', () => {
     expect(displayTitle({ title: 'Interstellar', year: 2014, overview: '', posterUrl: null, rating: null, episodeTag: null, originalLang: 'en' }, 'x')).toBe('Interstellar (2014)')
     expect(displayTitle({ title: 'La Serie', year: 2019, overview: '', posterUrl: null, rating: null, episodeTag: 'S01E02', originalLang: 'en' }, 'x')).toBe('La Serie (2019) — S01E02')
-    expect(displayTitle(null, 'archivo pelado')).toBe('archivo pelado')
+    expect(displayTitle(null, 'bare file name')).toBe('bare file name')
   })
 })
 
@@ -54,7 +54,7 @@ describe('makeTmdbLookup', () => {
     expect(meta?.title).toBe('La Peli')
   })
   it('searches tv for episodes and never throws on network errors', async () => {
-    const boom = (async () => { throw new Error('red caída') }) as unknown as typeof fetch
+    const boom = (async () => { throw new Error('network down') }) as unknown as typeof fetch
     expect(await makeTmdbLookup('KEY', boom)('Serie S01E02')).toBeNull()
     let calledUrl = ''
     const fetchStub = (async (url: string | URL | Request) => {

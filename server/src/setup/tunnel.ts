@@ -1,19 +1,18 @@
-// Túnel WireGuard del relevo del plano de datos, en macOS y Windows.
+// The data-plane relay's WireGuard tunnel, on macOS and Windows.
 //
-// Se engancha a `npm start` en vez de a un servicio de arranque porque el túnel
-// solo hace falta mientras hay sesión. Dos decisiones para que no moleste:
+// It hangs off `npm start` rather than a boot service because the tunnel is only
+// needed while there is a session. Two decisions keep it out of the way:
 //
-//   - Solo pide elevación si el túnel NO está ya arriba. Arrancar el servidor
-//     dos veces en la misma tarde no vuelve a preguntar.
-//   - No se baja al terminar. Un túnel inactivo cuesta un paquete cada 25 s, y
-//     bajarlo obligaría a una segunda autenticación por sesión. Para bajarlo a
-//     mano: `npm run tunnel:down`.
+//   - It only asks for elevation when the tunnel is NOT already up. Starting the
+//     server twice the same afternoon does not ask again.
+//   - It is not taken down when done. An idle tunnel costs one packet every 25 s,
+//     and tearing it down would force a second authentication per session. To
+//     take it down by hand: `npm run tunnel:down`.
 //
-// Sobre la elevación: se pide por el diálogo del sistema (osascript en macOS,
-// UAC en Windows) y NO por una regla sudo sin contraseña. En macOS el prefijo de
-// Homebrew es escribible por el usuario, así que dar sudo sin contraseña a un
-// binario que ese mismo usuario puede reemplazar sería una escalada a root para
-// cualquier proceso que corra como él.
+// On elevation: it goes through the system dialog (osascript on macOS, UAC on
+// Windows) and NOT through a passwordless sudo rule. On macOS the Homebrew prefix
+// is user-writable, so granting passwordless sudo to a binary that same user
+// could replace would be a root escalation for any process running as them.
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -24,13 +23,13 @@ import type { TunnelState } from './checks.js'
 
 export const IFACE = 'wg0'
 
-/** Direcciones del túnel, sacadas del propio wg0.conf para no fijar la subred aquí. */
+/** The tunnel's addresses, read from wg0.conf itself so the subnet is not pinned here. */
 export interface TunnelAddresses { local: string | null; peer: string | null }
 
 /**
- * `Address` es la IP de este extremo; la del otro sale de `AllowedIPs`, que en
- * esta topología es exactamente el /32 del VPS. Se leen del fichero en vez de
- * codificarlas para que cambiar de subred no exija tocar este módulo.
+ * `Address` is this end's IP; the other end's comes from `AllowedIPs`, which in
+ * this topology is exactly the VPS's /32. They are read from the file rather than
+ * hard-coded so that changing subnet does not require touching this module.
  */
 export function parseConfAddresses(conf: string): TunnelAddresses {
   const strip = (v: string): string => v.trim().split('/')[0].trim()
@@ -43,34 +42,34 @@ export function parseConfAddresses(conf: string): TunnelAddresses {
 }
 
 /**
- * La clave privada del `.conf`, para poder derivar la pública sin privilegios.
- * `wg show <iface> public-key` haría lo mismo, pero en macOS necesita root: lee
- * el socket de control en /var/run/wireguard.
+ * The private key from the `.conf`, so the public one can be derived without
+ * privileges. `wg show <iface> public-key` would do the same, but on macOS it
+ * needs root: it reads the control socket in /var/run/wireguard.
  */
 export function parseConfPrivateKey(conf: string): string | null {
   return conf.match(/^\s*PrivateKey\s*=\s*(\S+)/mi)?.[1] ?? null
 }
 
 /**
- * El número de `utun` cambia entre arranques, así que la interfaz se reconoce
- * por su dirección y no por su nombre.
+ * The `utun` number changes between boots, so the interface is recognised by its
+ * address rather than by its name.
  */
 export function interfaceHasAddress(ifconfigOutput: string, ip: string): boolean {
   if (!ip) return false
-  // Anclado a final de palabra: sin esto, 10.77.0.1 daría positivo con 10.77.0.10.
+  // Anchored at a word boundary: without this, 10.77.0.1 would match 10.77.0.10.
   return new RegExp(`inet\\s+${ip.replace(/\./g, '\\.')}(?![0-9.])`).test(ifconfigOutput)
 }
 
-/** Lo único que hace falta de `os.networkInterfaces()`. */
+/** The only part of `os.networkInterfaces()` we need. */
 export type InterfaceAddresses = Record<string, readonly { address: string }[] | undefined>
 
 /**
- * La versión Windows de interfaceHasAddress, preguntándole al sistema en vez de
- * a un comando: `sc query` diría lo mismo, pero traduce sus etiquetas —en un
- * Windows en español imprime `ESTADO : 4  RUNNING`— y buscar «STATE» daba por
- * bajado un túnel que estaba vivo. Aquí no hay texto que interpretar, y de paso
- * se comprueba lo que de verdad importa (que la dirección esté puesta) y no que
- * el servicio exista.
+ * The Windows counterpart of interfaceHasAddress, asking the system instead of a
+ * command: `sc query` would say the same, but it translates its labels — a
+ * Spanish Windows prints `ESTADO : 4  RUNNING` — and looking for "STATE" reported
+ * a live tunnel as down. Here there is no text to interpret, and as a bonus it
+ * checks what actually matters (that the address is assigned) rather than that
+ * the service exists.
  */
 export function addressIsAssigned(ifaces: InterfaceAddresses, ip: string): boolean {
   if (!ip) return false
@@ -78,10 +77,10 @@ export function addressIsAssigned(ifaces: InterfaceAddresses, ip: string): boole
 }
 
 // ---------------------------------------------------------------------------
-// Rutas por plataforma
+// Per-platform paths
 // ---------------------------------------------------------------------------
 
-/** Prefijo de Homebrew: Apple Silicon usa /opt/homebrew, Intel /usr/local. */
+/** Homebrew prefix: Apple Silicon uses /opt/homebrew, Intel /usr/local. */
 function brewPrefix(): string | null {
   for (const p of ['/opt/homebrew', '/usr/local']) if (existsSync(join(p, 'bin', 'wg-quick'))) return p
   return null
@@ -90,9 +89,9 @@ function brewPrefix(): string | null {
 const WINDOWS_WIREGUARD = 'C:\\Program Files\\WireGuard\\wireguard.exe'
 
 /**
- * En macOS el fichero tiene que vivir en una de las rutas que busca wg-quick;
- * en Windows lo pone donde ya vive la config de la app, porque allí lo pasamos a
- * `wireguard.exe` por ruta completa y no hay convención que respetar.
+ * On macOS the file has to live in one of the paths wg-quick looks in; on Windows
+ * it goes where the app's config already lives, because there we hand it to
+ * `wireguard.exe` by full path and there is no convention to respect.
  */
 export function confPath(): string {
   if (process.platform === 'win32') return join(dataDir(), 'wireguard', `${IFACE}.conf`)
@@ -101,7 +100,7 @@ export function confPath(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Estado
+// State
 // ---------------------------------------------------------------------------
 
 function quiet(bin: string, args: string[]): string {
@@ -140,13 +139,13 @@ export function addresses(): TunnelAddresses {
 }
 
 /**
- * Una interfaz levantada no implica que el otro extremo esté vivo (VPS caído,
- * red del host cambiada). El ping sí lo prueba, y no necesita privilegios.
+ * An interface being up does not mean the far end is alive (VPS down, host's
+ * network changed). A ping does prove it, and needs no privileges.
  */
 export function peerReachable(): boolean {
   const { peer } = addresses()
   if (!peer) return false
-  // Windows mide el timeout en ms con -w; macOS con -W, y cuenta con -n/-c.
+  // Windows measures the timeout in ms with -w; macOS with -W, and counts with -n/-c.
   const args = process.platform === 'win32'
     ? ['-n', '1', '-w', '2000', peer]
     : ['-c', '1', '-W', '2000', peer]
@@ -159,15 +158,15 @@ export function peerReachable(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Levantar y bajar (con elevación)
+// Bringing up and down (with elevation)
 // ---------------------------------------------------------------------------
 
 function elevateMac(verb: 'up' | 'down'): void {
   const prefix = brewPrefix()
   if (!prefix) throw new Error('WireGuard is not installed (wg-quick missing)')
-  // PATH explícito y bash de brew a la fuerza: wg-quick lleva shebang
-  // `env bash` y el bash 3.2 del sistema lo rechaza en su primera comprobación;
-  // además necesita encontrar `wg` y `wireguard-go` del mismo prefijo.
+  // Explicit PATH and brew's bash forced in: wg-quick carries an `env bash`
+  // shebang and the system's bash 3.2 rejects it on its first check; it also
+  // needs to find `wg` and `wireguard-go` from the same prefix.
   const inner = `PATH=${prefix}/bin:/usr/bin:/bin:/usr/sbin:/sbin ${prefix}/bin/bash ${prefix}/bin/wg-quick ${verb} ${IFACE} 2>&1`
   const script = `do shell script "${inner.replace(/"/g, '\\"')}" with administrator privileges`
   execFileSync('/usr/bin/osascript', ['-e', script], { stdio: ['ignore', 'ignore', 'inherit'] })
@@ -175,9 +174,9 @@ function elevateMac(verb: 'up' | 'down'): void {
 
 function elevateWindows(verb: 'up' | 'down'): void {
   if (!existsSync(WINDOWS_WIREGUARD)) throw new Error('WireGuard for Windows is not installed')
-  // /installtunnelservice registra el túnel como servicio (y así sobrevive al
-  // cierre de esta consola); /uninstalltunnelservice lo retira. Ambos exigen
-  // administrador, de ahí el -Verb RunAs que dispara el UAC.
+  // /installtunnelservice registers the tunnel as a service (so it survives this
+  // console closing); /uninstalltunnelservice removes it. Both require an
+  // administrator, hence the -Verb RunAs that triggers UAC.
   const args = verb === 'up'
     ? `'/installtunnelservice','${confPath()}'`
     : `'/uninstalltunnelservice','${IFACE}'`
@@ -211,7 +210,7 @@ export function bringUp(): TunnelResult {
   } catch {
     return { ok: false, message: 'Could not bring up the tunnel (was authentication cancelled?).' }
   }
-  // En Windows no hay wg-quick, así que el mensaje no nombra la herramienta.
+  // There is no wg-quick on Windows, so the message does not name the tool.
   if (tunnelState() !== 'up') return { ok: false, message: 'WireGuard finished but the interface does not appear.' }
   return peerReachable()
     ? { ok: true, message: 'Relay tunnel is up.' }

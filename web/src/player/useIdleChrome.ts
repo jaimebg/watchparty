@@ -3,18 +3,18 @@ import type { RefObject } from 'react'
 
 const IDLE_MS = 3000
 
-// Retira controles, chat flotante y barra de reacciones tras un rato sin
-// actividad, y los devuelve a la primera señal de vida. Solo se arma en
-// pantalla completa: fuera de ella el chrome se ve siempre.
+// Retires the controls, the floating chat and the reactions bar after a spell of
+// inactivity, and brings them back at the first sign of life. It only arms in
+// fullscreen: outside it the chrome is always visible.
 export function useIdleChrome({
   enabled, container, isBlocked, idleMs = IDLE_MS,
 }: {
   enabled: boolean
   container: RefObject<HTMLElement | null>
-  // Devuelve true cuando el chrome NO puede irse todavía (se está escribiendo,
-  // o la sala está en pausa). Es una función y no un booleano para que el
-  // temporizador consulte el valor del momento en que vence, no el de cuando
-  // se armó.
+  // Returns true while the chrome may NOT leave yet (something is being typed,
+  // or the room is paused). A function rather than a boolean so the timer
+  // consults the value at the moment it expires, not the one from when it was
+  // armed.
   isBlocked: () => boolean
   idleMs?: number
 }): { awake: boolean; wake: () => void } {
@@ -45,9 +45,9 @@ export function useIdleChrome({
     }
     const el = container.current
     wake()
-    // El teclado va en `window` y no en el contenedor: en pantalla completa el
-    // foco puede estar en el <body>, que no es descendiente del contenedor a
-    // efectos de burbujeo de teclas.
+    // The keyboard listener goes on `window` and not on the container: in
+    // fullscreen the focus can sit on the <body>, which is not a descendant of
+    // the container as far as key bubbling is concerned.
     window.addEventListener('keydown', wake)
     el?.addEventListener('pointermove', wake)
     el?.addEventListener('pointerdown', wake)

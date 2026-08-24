@@ -194,8 +194,8 @@ Oracle is a good fit: 10 TB/month of egress on Always Free, and its acceptable u
 has no content-type clause equivalent to Cloudflare's CDN one.
 
 1. **Instance and network.** Create the VM and open 443 in the VCN *Security List* (ingress
-   0.0.0.0/0 → TCP 443). **Watch out for the step everyone skips:** Oracle images ship
-   persistent restrictive `iptables`, so opening the VCN isn't enough:
+   0.0.0.0/0 → TCP 443). Oracle images also ship persistent restrictive `iptables`,
+   so opening the VCN isn't enough on its own:
    ```bash
    sudo iptables -I INPUT 5 -p tcp --dport 443 -j ACCEPT
    sudo netfilter-persistent save     # Ubuntu; on Oracle Linux: firewall-cmd --add-port=443/tcp --permanent

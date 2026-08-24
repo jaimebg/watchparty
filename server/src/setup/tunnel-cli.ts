@@ -1,5 +1,5 @@
-// `npm run tunnel:up` / `npm run tunnel:down`. El control manual del túnel del
-// relevo, para cuando no se quiere pasar por `npm start`.
+// `npm run tunnel:up` / `npm run tunnel:down`. Manual control of the relay
+// tunnel, for when you do not want to go through `npm start`.
 
 import { bringDown, bringUp } from './tunnel.js'
 

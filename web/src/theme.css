@@ -1,7 +1,7 @@
-/* ─── Cine nocturno ────────────────────────────────────────────────────────
-   Sala a oscuras con marquesina encendida: negros cálidos (nunca neutros),
-   ámbar dorado como única voz de color, Fraunces para los títulos de cartel
-   e Instrument Sans para todo lo demás. La UI cede el protagonismo al vídeo. */
+/* ─── Night at the cinema ──────────────────────────────────────────────────
+   A darkened room with the marquee lit: warm blacks (never neutral), golden
+   amber as the only voice of colour, Fraunces for poster titles and Instrument
+   Sans for everything else. The UI hands the spotlight to the video. */
 
 @import '@fontsource-variable/fraunces/opsz.css';
 @import '@fontsource-variable/fraunces/opsz-italic.css';
@@ -29,7 +29,7 @@
 
   --seek-fill: var(--marquee);
   --seek-track: oklch(30% 0.02 68);
-  --boost-fill: oklch(68% 0.16 40); /* tramo de volumen amplificado (>100%) */
+  --boost-fill: oklch(68% 0.16 40); /* the amplified stretch of the volume range (>100%) */
 
   --font-display: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
   --font-body: 'Instrument Sans Variable', system-ui, sans-serif;
@@ -68,7 +68,7 @@ body {
   padding: clamp(1.25rem, 4vw, 2.5rem);
 }
 
-/* ─── Tipografía ─── */
+/* ─── Typography ─── */
 
 h1, h2 {
   font-family: var(--font-display);
@@ -94,7 +94,7 @@ h2 { font-size: clamp(1.15rem, 1rem + 0.6vw, 1.4rem); }
 
 a { color: var(--marquee); }
 
-/* ─── Cabecera de marquesina ─── */
+/* ─── Marquee header ─── */
 
 .masthead { margin-bottom: clamp(1.75rem, 5vw, 3rem); }
 
@@ -105,8 +105,8 @@ a { color: var(--marquee); }
   margin: 0;
 }
 
-/* Bombillas de marquesina: dos capas de puntos alternos que parpadean a
-   contratiempo, como las luces de un cine antiguo. */
+/* Marquee bulbs: two layers of alternating dots blinking off the beat, like an
+   old cinema's lights. */
 .marquee-rule {
   position: relative;
   height: 8px;
@@ -136,7 +136,7 @@ a { color: var(--marquee); }
   50% { opacity: 0.3; }
 }
 
-/* ─── Botones ─── */
+/* ─── Buttons ─── */
 
 button {
   font-family: var(--font-body);
@@ -239,7 +239,7 @@ ul {
 
 .name-form input { flex: 1; min-width: 0; }
 
-/* ─── Estados y avisos ─── */
+/* ─── States and warnings ─── */
 
 .banner {
   display: flex;
@@ -285,13 +285,13 @@ ul {
   animation: soft-pulse 2s ease-in-out infinite;
 }
 
-/* ─── Esperas largas (crear sala, cambiar película) ───
-   Preparar un medio hace ffprobe, saca los keyframes, extrae los subtítulos y
-   consulta TMDB: son segundos en los que la interfaz no cambiaba de aspecto y
-   el host acababa volviendo a hacer clic. */
+/* ─── Long waits (creating a room, changing movie) ───
+   Preparing a medium runs ffprobe, pulls the keyframes, extracts the subtitles
+   and queries TMDB: seconds in which the interface used to look unchanged and
+   the host ended up clicking again. */
 
-/* En `em` y con `currentColor`, como los iconos SVG del reproductor: la misma
-   anilla vale dentro de un `.btn-primary` sobre marquesina y en un `.hint`. */
+/* In `em` and with `currentColor`, like the player's SVG icons: the same ring
+   works inside a `.btn-primary` on the marquee and inside a `.hint`. */
 .spinner {
   display: inline-block;
   width: 0.9em;
@@ -313,8 +313,9 @@ ul {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Tapa la cartelera entera mientras se monta la sala. Además de contar lo que
-   pasa se come los clics, y así dos clics impacientes no crean dos salas. */
+/* Covers the whole library while the room is being built. On top of saying
+   what is happening it swallows clicks, so two impatient clicks do not create
+   two rooms. */
 .busy-overlay {
   position: fixed;
   inset: 0;
@@ -339,8 +340,9 @@ ul {
 
 .busy-overlay .hint { max-width: 36ch; margin: 0; }
 
-/* Ocupa el hueco de la lista dentro del modal en vez de flotar encima: el
-   modal ya tiene scroll propio y una capa absoluta se despegaría al bajar. */
+/* It fills the list's slot inside the modal rather than floating over it: the
+   modal already scrolls on its own and an absolute layer would come unstuck on
+   the way down. */
 .modal-busy {
   display: flex;
   flex-direction: column;
@@ -375,7 +377,7 @@ details summary:hover { color: var(--marquee); }
   font-size: 0.85rem;
 }
 
-/* ─── Biblioteca: la cartelera ─── */
+/* ─── Library: the marquee listing ─── */
 
 .bill { margin-bottom: clamp(1.5rem, 4vw, 2.5rem); }
 
@@ -458,11 +460,11 @@ details summary:hover { color: var(--marquee); }
   .film-go { opacity: 1; transform: none; }
 }
 
-/* El «Crear sala →» solo asoma al pasar por encima, pero el aviso de que esa
-   fila es la que se está montando tiene que verse aunque el ratón ya no esté. */
+/* The «Create room →» only shows on hover, but the notice that this row is the
+   one being built has to stay visible once the mouse has moved away. */
 .film-go--busy { opacity: 1; transform: none; }
 
-/* Gestión de carpetas de medios (admin) */
+/* Media folder management (admin) */
 
 .folders-manage {
   margin-top: 2.5rem;
@@ -497,7 +499,7 @@ details summary:hover { color: var(--marquee); }
   padding: 0;
 }
 
-/* ─── Taquilla: entrada a la sala ─── */
+/* ─── Box office: entering the room ─── */
 
 .page--gate { max-width: 640px; }
 
@@ -510,7 +512,7 @@ details summary:hover { color: var(--marquee); }
   border: 1px solid var(--line-soft);
   border-radius: 14px;
   box-shadow: 0 30px 60px -35px oklch(0% 0 0 / 0.7);
-  /* Muescas troqueladas a la altura de la línea de corte, como una entrada. */
+  /* Notches punched at the tear line, like a ticket stub. */
   mask-image:
     radial-gradient(circle at 0 calc(100% - 102px), transparent 10px, black 10.5px),
     radial-gradient(circle at 100% calc(100% - 102px), transparent 10px, black 10.5px);
@@ -534,7 +536,7 @@ details summary:hover { color: var(--marquee); }
   height: 0;
 }
 
-/* ─── Reproductor ─── */
+/* ─── Player ─── */
 
 .player video {
   width: 100%;
@@ -549,13 +551,13 @@ details summary:hover { color: var(--marquee); }
 
 .player .controls {
   display: flex;
-  flex-wrap: wrap; /* en pantallas estrechas los selects bajan de línea */
+  flex-wrap: wrap; /* on narrow screens the selects drop to the next line */
   gap: 0.6rem;
   align-items: center;
   margin-top: 0.7rem;
 }
 
-/* El select de audio se monta vacío hasta que hls.js anuncia pistas. */
+/* The audio select mounts empty until hls.js announces tracks. */
 .controls select:empty { display: none; }
 
 .btn-play {
@@ -612,7 +614,7 @@ details summary:hover { color: var(--marquee); }
   color: var(--text);
 }
 
-/* Volumen por espectador */
+/* Per-viewer volume */
 
 .volume-group {
   display: flex;
@@ -633,7 +635,7 @@ details summary:hover { color: var(--marquee); }
 }
 
 .seek.volume {
-  width: 110px; /* el recorrido llega al 200%, necesita algo más de pista */
+  width: 110px; /* the travel reaches 200%, it needs a little more track */
   height: 5px;
 }
 
@@ -657,7 +659,7 @@ details summary:hover { color: var(--marquee); }
 @media (max-width: 560px) {
   .seek.volume,
   .volume-pct {
-    display: none; /* en pantallas muy estrechas queda solo el botón de mute */
+    display: none; /* on very narrow screens only the mute button is left */
   }
 }
 
@@ -698,17 +700,18 @@ details summary:hover { color: var(--marquee); }
   border: 2px solid var(--marquee);
 }
 
-/* La barra de posición ocupa el hueco entre los dos relojes; el relleno lo pinta
-   positionGradient() en el fondo, porque un input[type=range] no admite hijos. */
+/* The position bar fills the gap between the two clocks; positionGradient()
+   paints the fill into the background, because an input[type=range] takes no
+   children. */
 .seek.position {
   flex: 1;
   min-width: 120px;
 }
 
-/* ─── Sala: vídeo + chat ─── */
+/* ─── Room: video + chat ─── */
 
-/* La sala es siempre modo teatro: a todo el ancho, vídeo protagonista y el
-   resto del chrome en susurro. */
+/* The room is always theatre mode: full width, video in the lead and the rest
+   of the chrome down to a whisper. */
 .page--room {
   max-width: none;
   padding: 0.75rem 1.25rem;
@@ -750,7 +753,7 @@ details summary:hover { color: var(--marquee); }
   flex-shrink: 0;
 }
 
-/* Solo aparece si el portapapeles falla: el enlace, listo para seleccionar. */
+/* Only appears when the clipboard fails: the link, ready to select. */
 .share-fallback {
   display: flex;
   align-items: center;
@@ -805,7 +808,7 @@ details summary:hover { color: var(--marquee); }
   .room-head h1 { white-space: normal; }
 }
 
-/* ─── Modal de metadatos (TMDB) ─── */
+/* ─── Metadata modal (TMDB) ─── */
 
 .modal-backdrop {
   position: fixed;
@@ -885,7 +888,7 @@ details summary:hover { color: var(--marquee); }
   .modal-poster { width: 130px; }
 }
 
-/* ─── Reacciones ─── */
+/* ─── Reactions ─── */
 
 .reactions-bar {
   display: flex;
@@ -980,9 +983,9 @@ details summary:hover { color: var(--marquee); }
 }
 
 .quick-chips button {
-  /* Es el control destructivo (quita el emoji): el objetivo táctil manda,
-     aunque el icono de la ✕ se quede pequeño dentro (.impeccable.md exige
-     ≥40px táctiles; media sala entra desde el móvil). */
+  /* This is the destructive control (it removes the emoji): the touch target
+     wins, even if the ✕ icon stays small inside it (the project's design rules
+     require ≥40px touch targets; half the room joins from a phone). */
   width: 40px;
   height: 40px;
   padding: 0;
@@ -1011,8 +1014,8 @@ details summary:hover { color: var(--marquee); }
 .emoji-tabs button {
   font-size: 1.05rem;
   line-height: 1;
-  /* Alto táctil ≥40px (.impeccable.md): el icono de categoría se queda igual
-     de grande, solo crece el relleno vertical. */
+  /* ≥40px touch height: the category icon stays the same size, only the
+     vertical padding grows. */
   padding: 0.75rem 0.45rem;
   border-color: transparent;
   border-radius: 8px;
@@ -1026,11 +1029,11 @@ details summary:hover { color: var(--marquee); }
 
 .emoji-grid {
   display: grid;
-  /* 40px de columna mínima por el objetivo táctil (.impeccable.md); caben
-     algo menos de emojis por fila que antes, y es lo esperado. */
+  /* 40px minimum column, for the touch target; slightly fewer emojis fit per
+     row than before, which is expected. */
   grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
   gap: 0.15rem;
-  /* Alto fijo: al cambiar de categoría el modal no debe pegar saltos. */
+  /* Fixed height: switching category must not make the modal jump. */
   height: 44vh;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1039,7 +1042,7 @@ details summary:hover { color: var(--marquee); }
 .emoji-grid button {
   font-size: 1.3rem;
   line-height: 1;
-  /* Alto táctil ≥40px: el emoji mantiene su tamaño, crece el relleno. */
+  /* ≥40px touch height: the emoji keeps its size, the padding grows. */
   padding: 0.65rem 0;
   border-color: transparent;
   border-radius: 8px;
@@ -1239,18 +1242,18 @@ details summary:hover { color: var(--marquee); }
   outline-color: var(--marquee);
 }
 
-/* ─── Pantalla completa ───
-   El elemento que va a pantalla completa es .room-grid, porque ya contiene el
-   vídeo Y el chat: así el árbol de React no cambia al entrar y salir, y el
-   ChatPanel no se desmonta (no se pierde lo escrito ni el scroll). */
+/* ─── Fullscreen ───
+   The element that goes fullscreen is .room-grid, because it already holds both
+   the video AND the chat: that way React's tree does not change on the way in
+   and out, and ChatPanel never unmounts (nothing typed and no scroll is lost). */
 
 .room-grid--fs {
-  /* Alturas fijas para poder apilar los tres pisos con calc() desde abajo. */
+  /* Fixed heights, so the three tiers can be stacked with calc() from the bottom. */
   --fs-controls-h: 3.4rem;
   --fs-emos-h: 3.1rem;
-  /* Con los 10 emojis por defecto (o los 12 del tope) los botones de
-     .reactions-bar no caben en el ancho del panel de chat: 340px se pensó
-     para el chat, no para una fila de reacciones sin envolver. */
+  /* With the 10 default emojis (or the 12 at the cap) the .reactions-bar
+     buttons do not fit the chat panel's width: 340px was sized for the chat,
+     not for a reactions row that never wraps. */
   --fs-dock-w: min(440px, 46vw);
   display: block;
   position: relative;
@@ -1260,8 +1263,8 @@ details summary:hover { color: var(--marquee); }
   background: #000;
 }
 
-/* Respaldo para el iPhone, que no deja poner un contenedor HTML a pantalla
-   completa: se ocupa la ventana desde dentro de la propia página. */
+/* A fallback for the iPhone, which will not put an HTML container fullscreen:
+   the window is filled from inside the page itself. */
 .room-grid--cinema {
   position: fixed;
   inset: 0;
@@ -1289,14 +1292,14 @@ details summary:hover { color: var(--marquee); }
   height: var(--fs-controls-h);
   margin: 0;
   padding: 0 0.9rem;
-  /* Una fila única con scroll si no cabe. No es cosmético: así la altura es
-     fija y conocida, y el chat puede apilarse encima con calc() en vez de con
-     desplazamientos a ojo que se rompen en cuanto los controles envuelven. */
+  /* A single row that scrolls if it does not fit. Not cosmetic: it makes the
+     height fixed and known, so the chat can stack on top with calc() instead of
+     eyeballed offsets that break the moment the controls wrap. */
   flex-wrap: nowrap;
   overflow-x: auto;
   background: linear-gradient(to top, oklch(0% 0 0 / 0.8), transparent);
-  /* El scroll sigue funcionando (rueda/trackpad/dedo); solo se esconde la
-     barra clásica, que de dejarse visible le robaría alto útil a esta fila. */
+  /* Scrolling still works (wheel/trackpad/finger); only the classic scrollbar
+     is hidden, which left visible would steal useful height from this row. */
   scrollbar-width: none;
 }
 
@@ -1313,15 +1316,15 @@ details summary:hover { color: var(--marquee); }
   align-items: center;
   flex-wrap: nowrap;
   overflow-x: auto;
-  /* Igual que en .controls: sin barra de scroll visible. En Windows/Linux una
-     barra clásica de ~15px dentro de una tira de 3,1rem dejaría muy poco alto
-     para los botones de 40px+ del hover. */
+  /* Same as in .controls: no visible scrollbar. On Windows/Linux a classic
+     ~15px bar inside a 3.1rem strip would leave very little height for the
+     40px+ hover buttons. */
   scrollbar-width: none;
-  /* Fondo opaco y NADA de backdrop-filter: un filtro aquí convertiría esta
-     barra en bloque contenedor de sus descendientes `position: fixed`, y el
-     modal de emojis —que se renderiza dentro— quedaría atrapado y recortado
-     dentro de una tira de 3,1 rem. Además, el glassmorphism decorativo es una
-     anti-referencia declarada del proyecto (.impeccable.md). */
+  /* An opaque background and NO backdrop-filter: a filter here would turn this
+     bar into a containing block for its `position: fixed` descendants, and the
+     emoji modal — which renders inside — would be trapped and clipped inside a
+     3.1 rem strip. Decorative glassmorphism is also an explicit anti-reference
+     for this project. */
   background: oklch(15% 0.014 65 / 0.94);
   border: 1px solid color-mix(in oklab, var(--marquee) 20%, transparent);
   border-top: none;
@@ -1330,19 +1333,19 @@ details summary:hover { color: var(--marquee); }
 
 .room-grid--fs .reactions-bar::-webkit-scrollbar { display: none; }
 
-/* Botones más compactos que en el resto de la app: con los 10 emojis por
-   defecto (o los 12 del tope) hacen falta en una sola fila dentro de un panel
-   que también tiene que dejar sitio al chat.
-   Hijo directo a propósito: el modal de emojis se renderiza DENTRO de
-   .reactions-bar, así que un selector de descendiente encogería también sus
-   pestañas y su rejilla por debajo del mínimo táctil de 40px. */
+/* Buttons more compact than in the rest of the app: with the 10 default emojis
+   (or the 12 at the cap) they have to fit one row inside a panel that also has
+   to leave room for the chat.
+   A direct child on purpose: the emoji modal renders INSIDE .reactions-bar, so
+   a descendant selector would also shrink its tabs and its grid below the 40px
+   touch minimum. */
 .room-grid--fs .reactions-bar > button {
   font-size: 1rem;
   padding: 0.3rem 0.4rem;
 }
 
-/* El panel y la barra son hermanos en el DOM, pero encajados se leen como una
-   sola pieza flotante. */
+/* The panel and the bar are siblings in the DOM, but flush together they read
+   as one floating piece. */
 .room-grid--fs .chat-panel {
   position: absolute;
   right: 1rem;
@@ -1350,17 +1353,17 @@ details summary:hover { color: var(--marquee); }
   width: var(--fs-dock-w);
   max-height: min(60vh, 420px);
   overflow: hidden;
-  /* Mismo motivo que en la barra: sin backdrop-filter, para no atrapar aquí
-     dentro al buscador de GIFs ni a ningún descendiente posicionado. */
+  /* Same reason as on the bar: no backdrop-filter, so the GIF search and any
+     positioned descendant are not trapped in here. */
   background: oklch(15% 0.014 65 / 0.94);
   border-color: color-mix(in oklab, var(--marquee) 20%, transparent);
   border-bottom: none;
   border-radius: 12px 12px 0 0;
 }
 
-/* El panel es flex column con overflow oculto, así que la lista de mensajes
-   cede alto (flex:1 + min-height:0) y el buscador de GIFs cabe entero en vez
-   de quedar cortado por debajo del borde. */
+/* The panel is a flex column with overflow hidden, so the message list yields
+   height (flex:1 + min-height:0) and the GIF search fits whole instead of being
+   cut off below the edge. */
 .room-grid--fs .chat-entries {
   min-height: 0;
   max-height: none;
@@ -1376,9 +1379,9 @@ details summary:hover { color: var(--marquee); }
   transition: opacity 0.35s var(--ease-out);
 }
 
-/* El chrome se retira solo tras unos segundos sin actividad. El
-   .reaction-overlay se queda FUERA de la regla a propósito: los emojis volando
-   son justo lo que se quiere ver con la sala a oscuras. */
+/* The chrome retreats on its own after a few seconds of inactivity. The
+   .reaction-overlay is left OUT of the rule on purpose: flying emojis are
+   exactly what you want to see with the room dark. */
 .room-grid--fs.is-idle { cursor: none; }
 
 .room-grid--fs.is-idle .controls,
@@ -1388,17 +1391,17 @@ details summary:hover { color: var(--marquee); }
   pointer-events: none;
 }
 
-/* `opacity` se hereda a todo el subárbol, incluidos los descendientes
-   `position: fixed` como el modal de emojis o el buscador de GIFs: sin esto,
-   leer la rejilla del modal 3s sin tocar el ratón lo desvanecería y dejaría
-   de aceptar clics con el picker todavía abierto. */
+/* `opacity` is inherited by the whole subtree, `position: fixed` descendants
+   like the emoji modal or the GIF search included: without this, reading the
+   modal's grid for 3s without touching the mouse would fade it out and stop it
+   accepting clicks with the picker still open. */
 .room-grid--fs.is-idle .reactions-bar:has(.modal-backdrop),
 .room-grid--fs.is-idle .chat-panel:has(.gif-picker) {
   opacity: 1;
   pointer-events: auto;
 }
 
-/* ─── Movimiento reducido ─── */
+/* ─── Reduced motion ─── */
 
 @media (prefers-reduced-motion: reduce) {
   .film-list li {
@@ -1416,13 +1419,14 @@ details summary:hover { color: var(--marquee); }
   .buffering-note::before,
   .loading { animation: none; }
 
-  /* La anilla no gira, pero sigue latiendo: quitarle la animación del todo
-     dejaría un adorno estático justo donde hace falta señalar «esto sigue». */
+  /* The ring does not spin, but it keeps pulsing: dropping the animation
+     entirely would leave a static ornament exactly where something has to say
+     "this is still going". */
   .spinner { animation: soft-pulse 1.2s ease-in-out infinite; }
   .busy-overlay { animation: none; }
 
-  /* Las reacciones conservan su duración (la lógica de retirada depende de
-     animationend) pero se desvanecen en el sitio en vez de volar. */
+  /* The reactions keep their duration (the removal logic depends on
+     animationend) but fade in place instead of flying. */
   .reaction-overlay span,
   .reaction-flash { animation-name: fade-hold; }
 
@@ -1442,8 +1446,8 @@ details summary:hover { color: var(--marquee); }
   100% { opacity: 0; transform: none; }
 }
 
-/* El modal del picker: alto acotado y scroll interno, porque la biblioteca
-   puede tener cientos de títulos. */
+/* The picker's modal: bounded height and internal scrolling, because the
+   library can hold hundreds of titles. */
 .media-modal {
   width: min(560px, 92vw);
   max-height: min(80vh, 640px);
@@ -1478,8 +1482,8 @@ details summary:hover { color: var(--marquee); }
 .media-title { font-weight: 600; }
 .media-current { font-weight: 400; opacity: 0.75; }
 
-/* Confirmación en dos pasos, dentro del modal: un window.confirm nativo puede
-   sacar al host de pantalla completa. */
+/* Two-step confirmation, inside the modal: a native window.confirm can kick the
+   host out of fullscreen. */
 .media-confirm {
   display: flex;
   flex-direction: column;
@@ -1490,9 +1494,9 @@ details summary:hover { color: var(--marquee); }
 }
 .media-confirm p { margin: 0; }
 
-/* Cartel de la sala sin película, en el hueco del vídeo. Borde con la misma
-   variable que usa `.modal` (`--line-soft`): el proyecto no usa currentColor
-   ni glassmorphism decorativo (nada de backdrop-filter). */
+/* The waiting card for a room with no movie, in the video's slot. Its border
+   uses the same variable as `.modal` (`--line-soft`): this project uses neither
+   currentColor nor decorative glassmorphism (no backdrop-filter). */
 .stage-waiting {
   display: flex;
   flex-direction: column;

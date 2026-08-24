@@ -1,10 +1,10 @@
-// Cada fila del catálogo: [unicode, etiqueta, palabras clave, grupo].
-// Formato de tupla y no de objeto porque son ~1.900 filas y los nombres de
-// campo repetidos costarían más que los propios datos.
+// Each catalog row: [unicode, label, keywords, group].
+// A tuple rather than an object because there are ~1,900 rows and the repeated
+// field names would cost more than the data itself.
 export type EmojiRow = [string, string, string, number]
 
-// El grupo 2 de emojibase son modificadores de tono de piel y de pelo: no son
-// emotes y no deben aparecer en el selector, así que no tiene pestaña.
+// emojibase's group 2 is skin-tone and hair modifiers: they are not emotes and
+// must not show up in the picker, so it gets no tab.
 export const EMOJI_GROUPS: { group: number; label: string; icon: string }[] = [
   { group: 0, label: 'Smileys', icon: '😀' },
   { group: 1, label: 'People', icon: '👋' },
@@ -17,13 +17,13 @@ export const EMOJI_GROUPS: { group: number; label: string; icon: string }[] = [
   { group: 9, label: 'Flags', icon: '🏳️' },
 ]
 
-// Sin tope, buscar «a» metería más de mil botones en el DOM de golpe.
+// Uncapped, searching for "a" would put over a thousand buttons in the DOM at once.
 export const SEARCH_LIMIT = 120
 
 export function normalize(s: string): string {
-  // NFD separa la letra de su tilde y el rango borra las marcas combinantes.
-  // Escrito con escapes a propósito: los caracteres literales son invisibles y
-  // no sobreviven bien a un copiar y pegar.
+  // NFD separates the letter from its accent and the range deletes the
+  // combining marks. Written with escapes on purpose: the literal characters are
+  // invisible and do not survive copy-paste well.
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 

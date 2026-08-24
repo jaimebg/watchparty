@@ -9,7 +9,7 @@ describe('cleanName', () => {
     ['simple.mp4', 'simple'],
     ['Peli.Con.Puntos.mkv', 'Peli Con Puntos'],
     ['Spider-Man.mkv', 'Spider-Man'],
-    ['otra-peli.mkv', 'otra-peli'],
+    ['another-movie.mkv', 'another-movie'],
     ['Spider-Man.2002.1080p.BluRay.x264-GRUPO.mkv', 'Spider-Man 2002'],
     ['Project Hail Mary (2026) [IMAX] [1080p] [WEBRip] [5.1] [YTS.BZ].mp4', 'Project Hail Mary 2026'],
     ['Project.Hail.Mary.2026.IMAX.1080p.WEBRip.x264.AAC5.1-[YTS.BZ].mp4', 'Project Hail Mary 2026'],

@@ -12,7 +12,7 @@ describe('planSegments', () => {
     expect(segs.at(-1)!.duration).toBeCloseTo(2.9)
   })
   it('aims the seek at the midpoint to the next keyframe, not at the boundary itself', () => {
-    // Matroska retrocedería un GOP si el -ss cayera exacto sobre el keyframe.
+    // Matroska would back up a GOP if -ss landed exactly on the keyframe.
     const segs = planSegments(12, [0, 2, 4.5, 6, 9.1, 11])
     expect(segs.map(s => s.start)).toEqual([0, 4.5, 9.1])
     expect(segs.map(s => s.seekAt)).toEqual([0, 5.25, 10.05]) // (4.5+6)/2, (9.1+11)/2
@@ -47,10 +47,10 @@ describe('playlists', () => {
     expect(m).toContain('AUDIO="aud"')
     expect(m.trim().endsWith('video.m3u8')).toBe(true)
   })
-  // Con una sola pista el audio viaja dentro del propio variant de vídeo (ver
-  // hlsLayout.ts), así que no hay rendición alternativa que anunciar: dejar el
-  // grupo "aud" en el master mandaría a hls.js a por un audio_1.m3u8 que ni
-  // existe ni tendría los mismos límites que el vídeo.
+  // With a single track the audio rides inside the video variant itself (see
+  // hlsLayout.ts), so there is no alternate rendition to announce: leaving the
+  // "aud" group in the master would send hls.js after an audio_1.m3u8 that
+  // neither exists nor would share the video's boundaries.
   it('master has no alternate-audio group when there is a single track', () => {
     const m = buildMasterPlaylist([audio[0]])
     expect(m).not.toContain('#EXT-X-MEDIA')
@@ -64,14 +64,14 @@ describe('playlists', () => {
     expect(m.trim().endsWith('video.m3u8')).toBe(true)
   })
   it('escapes double quotes in NAME/LANGUAGE so a source-provided label cannot break the attribute list', () => {
-    // Dos pistas: es el único caso con #EXT-X-MEDIA que escapar (con una sola,
-    // el audio va dentro del variant de vídeo y no hay atributos que romper).
+    // Two tracks: the only case with an #EXT-X-MEDIA to escape (with one, the
+    // audio rides inside the video variant and there are no attributes to break).
     const quoted = [
-      { index: 0, codec: 'aac', lang: 'spa "Latino"', label: 'Comentario del "Director"', channels: 2 },
+      { index: 0, codec: 'aac', lang: 'spa "Latino"', label: 'The "Director" commentary', channels: 2 },
       { index: 1, codec: 'aac', lang: 'eng', label: 'English', channels: 2 },
     ]
     const m = buildMasterPlaylist(quoted)
-    expect(m).toContain('NAME="Comentario del \'Director\'"')
+    expect(m).toContain('NAME="The \'Director\' commentary"')
     expect(m).toContain('LANGUAGE="spa \'Latino\'"')
     // GROUP-ID, NAME, LANGUAGE and URI are each a quoted attribute (4 pairs =
     // 8 delimiters); any extra `"` would mean an unescaped quote leaked in.

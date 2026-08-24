@@ -12,10 +12,10 @@ import { TranscodeSession } from '../src/media/transcoder.js'
 import { parseBoxes, type Box } from '../src/media/fmp4.js'
 import { run } from './support/run.js'
 
-// Envuelve createReadStream (sin cambiar su comportamiento: reenvía a la
-// implementación real) para poder observar, desde fuera, el stream que
-// openSegment abre para el `mdat` y comprobar que un abort del consumidor lo
-// destruye — la regresión de fd colgado que este mock existe para vigilar.
+// Wraps createReadStream (without changing its behaviour: it forwards to the
+// real implementation) so the stream openSegment opens for the `mdat` can be
+// observed from outside, and a consumer abort can be checked to destroy it —
+// the dangling-fd regression this mock exists to watch.
 vi.mock('node:fs', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs')>()
   return { ...actual, createReadStream: vi.fn(actual.createReadStream) }
@@ -29,11 +29,11 @@ async function drain(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
-// media_time de las entradas del elst de un trak (o [] si no tiene edts). El
-// trim del retardo del códec sobrevive a canonicalizeInit (no depende del
-// run), así que un `edts` presente no es, por sí solo, prueba de nada; lo que
-// no puede sobrevivir es una entrada con media_time==-1 (el empty edit que
-// memoriza dónde arrancó ESE proceso).
+// media_time of a trak's elst entries (or [] when it has no edts). The codec
+// delay trim survives canonicalizeInit (it does not depend on the run), so an
+// `edts` being present is not on its own proof of anything; what cannot survive
+// is an entry with media_time==-1 (the empty edit that records where THAT
+// process started).
 function elstMediaTimes(buf: Buffer, trak: Box): number[] {
   const edtsBox = parseBoxes(buf, trak.start + trak.hdr, trak.start + trak.size).find(b => b.type === 'edts')
   if (!edtsBox) return []
@@ -49,8 +49,9 @@ function elstMediaTimes(buf: Buffer, trak: Box): number[] {
   return out
 }
 
-// start_time de cada pista de un fMP4, que solo es reproducible con su init
-// delante. Es la medida que importa: es donde hls.js coloca el segmento.
+// start_time of each track in an fMP4, which is only playable with its init in
+// front. This is the measurement that matters: it is where hls.js places the
+// segment.
 async function startTimes(dir: string, init: Buffer, seg: Buffer): Promise<number[]> {
   const joined = join(dir, `joined-${randomBytes(4).toString('hex')}.mp4`)
   writeFileSync(joined, Buffer.concat([init, seg]))
@@ -147,8 +148,8 @@ describe('TranscodeSession', () => {
   }, 60_000)
 
   it('seekTo to the segment the live process already started from does not restart it', async () => {
-    // Vídeo y audio piden el mismo índice: si cada petición reiniciara ffmpeg,
-    // se matarían entre sí en bucle y no se produciría nunca ese segmento.
+    // Video and audio request the same index: if every request restarted ffmpeg
+    // they would kill each other in a loop and that segment would never appear.
     const dir = mkdtempSync(join(tmpdir(), 'tsc-same-'))
     const sameOutDir = join(dir, 'out'); mkdirSync(sameOutDir)
     const segments = session['segments']
@@ -167,8 +168,8 @@ describe('TranscodeSession', () => {
   }, 60_000)
 
   it('a segment far ahead of the working point restarts ffmpeg there instead of timing out', async () => {
-    // Sin esto, el cliente espera los 30 s completos a un segmento que nadie
-    // está produciendo y acaba en 504.
+    // Without this, the client waits the full 30 s for a segment nobody is
+    // producing and ends up with a 504.
     const dir = mkdtempSync(join(tmpdir(), 'tsc-fwd-'))
     const fwdOutDir = join(dir, 'out'); mkdirSync(fwdOutDir)
     const segments = session['segments']
@@ -179,8 +180,8 @@ describe('TranscodeSession', () => {
     })
     const seekSpy = vi.spyOn(s, 'seekTo')
     s.start(0)
-    // Se mata el proceso a mano para que nadie avance hacia `late`: es la
-    // situación real en la que ffmpeg quedó muy por detrás del reloj de sala.
+    // The process is killed by hand so nothing advances toward `late`: the real
+    // situation where ffmpeg fell far behind the room clock.
     s['proc']?.kill('SIGKILL')
     await new Promise(r => setTimeout(r, 300))
 
@@ -227,8 +228,8 @@ describe('TranscodeSession', () => {
     const snapshot = readFileSync(p)
     expect(snapshot.length).toBeGreaterThan(0)
 
-    // Simula el reinicio de ffmpeg dejando el init vivo a medio escribir: el
-    // snapshot ya entregado no puede verse afectado.
+    // Simulates an ffmpeg restart by leaving the live init half-written: the
+    // snapshot already handed out must be unaffected.
     writeFileSync(join(initOutDir, 'init_0.mp4'), Buffer.alloc(3))
     expect(await s.requestInit(0, 5_000)).toBe(p)
     expect(readFileSync(p).equals(snapshot)).toBe(true)
@@ -236,20 +237,20 @@ describe('TranscodeSession', () => {
     await s.stop()
   }, 60_000)
 
-  it('el init entregado es canónico y no depende del run que lo produjo', async () => {
-    // El fallo de bb67bc0: ffmpeg guarda en el edts del init la posición donde
-    // arrancó ESE proceso, y el servidor fija un init para toda la sala. Si el
-    // init recuerda su run, los segmentos de cualquier otro reinicio se colocan
-    // en el offset equivocado.
+  it('the init handed out is canonical and does not depend on the run that produced it', async () => {
+    // The bb67bc0 bug: ffmpeg records in the init's edts the position where THAT
+    // process started, and the server pins one init for the whole room. If the
+    // init remembers its run, segments from any other restart land at the wrong
+    // offset.
     const segments = session['segments']
     const mid = Math.floor(segments.length / 2)
     const paths: string[] = []
-    for (const [name, from] of [['desde0', 0], ['mid', mid]] as const) {
+    for (const [name, from] of [['from0', 0], ['mid', mid]] as const) {
       const dir = mkdtempSync(join(tmpdir(), `tsc-canon-${name}-`))
       const out = join(dir, 'out'); mkdirSync(out)
-      // audioCount 1 → una sola variante con el audio DENTRO del segmento de
-      // vídeo (ver hlsLayout.ts), que es la forma en que corre una sala normal y
-      // la única en la que el init 0 tiene dos pistas que comprobar.
+      // audioCount 1 → a single variant with the audio INSIDE the video segment
+      // (see hlsLayout.ts), which is how a normal room runs and the only case
+      // where init 0 has two tracks to check.
       const s = new TranscodeSession({
         input: fixture, mode: 'transcode', encoder: 'libx264', segments, audioCount: 1, outDir: out,
       })
@@ -258,42 +259,42 @@ describe('TranscodeSession', () => {
       await s.stop()
     }
 
-    const [desde0, desdeMid] = paths.map(p => readFileSync(p))
-    // Ningún trak conserva el empty edit (media_time==-1) del -ss. El edts en
-    // sí puede sobrevivir: el trim del retardo del códec no depende del run
-    // y hay que conservarlo para que retimeHeader clave el tfdt sin dejar el
-    // vídeo sistemáticamente tarde (ver canonicalizeInit en fmp4.ts).
-    const moov = parseBoxes(desde0).find(b => b.type === 'moov')!
-    for (const t of parseBoxes(desde0, moov.start + moov.hdr, moov.start + moov.size)) {
+    const [from0, fromMid] = paths.map(p => readFileSync(p))
+    // No trak keeps the -ss empty edit (media_time==-1). The edts itself may
+    // survive: the codec delay trim does not depend on the run and has to be
+    // kept so retimeHeader nails the tfdt without leaving video systematically
+    // late (see canonicalizeInit in fmp4.ts).
+    const moov = parseBoxes(from0).find(b => b.type === 'moov')!
+    for (const t of parseBoxes(from0, moov.start + moov.hdr, moov.start + moov.size)) {
       if (t.type !== 'trak') continue
-      const mediaTimes = elstMediaTimes(desde0, t)
+      const mediaTimes = elstMediaTimes(from0, t)
       expect(mediaTimes).not.toContain(-1)
-      // [] tampoco contiene -1: sin esto, revertir a "quitar el edts entero"
-      // -el defecto exacto de bb67bc0 que este arreglo corrige- dejaría este
-      // test en verde igualmente, porque las dos pistas de un run real de
-      // libx264 conservan una entrada de trim (vídeo [0,1024], audio [0,0]).
+      // [] does not contain -1 either: without this, reverting to "drop the
+      // whole edts" — the exact defect from bb67bc0 that this fix corrects —
+      // would leave this test green anyway, because both tracks of a real
+      // libx264 run keep a trim entry (video [0,1024], audio [0,0]).
       expect(mediaTimes.length).toBeGreaterThan(0)
     }
-    // Y los dos runs dan exactamente el mismo init.
-    expect(desdeMid.equals(desde0)).toBe(true)
+    // And both runs produce exactly the same init.
+    expect(fromMid.equals(from0)).toBe(true)
   }, 120_000)
 
-  it('un segmento de un run reiniciado aterriza en su sitio con el init de OTRO run', async () => {
-    // Exactamente el fallo reportado en bb67bc0: la sala arranca en 0, fija ese
-    // init, el host salta a mitad de película y ffmpeg reinicia. Medido antes de
-    // este arreglo: el segmento decodificaba en 0:00:00 en vez de en su minuto.
+  it('a segment from a restarted run lands in its place using ANOTHER run\'s init', async () => {
+    // Exactly the bug reported in bb67bc0: the room starts at 0, pins that init,
+    // the host jumps to the middle of the movie and ffmpeg restarts. Measured
+    // before this fix: the segment decoded at 0:00:00 instead of at its minute.
     const segments = session['segments']
     const mid = Math.floor(segments.length / 2)
 
     const dirA = mkdtempSync(join(tmpdir(), 'tsc-open-a-'))
     const outA = join(dirA, 'out'); mkdirSync(outA)
-    // audioCount 1 → el audio va dentro del segmento de vídeo, así que
-    // startTimes() devuelve las dos pistas y de paso comprueba el lipsync.
+    // audioCount 1 → the audio rides inside the video segment, so startTimes()
+    // returns both tracks and checks lip sync along the way.
     const a = new TranscodeSession({
       input: fixture, mode: 'transcode', encoder: 'libx264', segments, audioCount: 1, outDir: outA,
     })
     a.start(0)
-    const initFijado = readFileSync(await a.requestInit(0, 30_000))
+    const pinnedInit = readFileSync(await a.requestInit(0, 30_000))
     await a.stop()
 
     const dirB = mkdtempSync(join(tmpdir(), 'tsc-open-b-'))
@@ -305,21 +306,21 @@ describe('TranscodeSession', () => {
     const seg = await drain(await b.openSegment(0, mid, 30_000))
     await b.stop()
 
-    // El init es el del run A y el segmento el del run B: es el cruce que rompía.
-    const times = await startTimes(dirB, initFijado, seg)
-    expect(times).toHaveLength(2) // vídeo y audio, los dos dentro del segmento
+    // The init comes from run A and the segment from run B: the crossover that broke.
+    const times = await startTimes(dirB, pinnedInit, seg)
+    expect(times).toHaveLength(2) // video and audio, both inside the segment
     for (const t of times) {
       expect(Math.abs(t - segments[mid].start)).toBeLessThan(0.05)
     }
   }, 120_000)
 
-  it('openSegment destruye el stream del mdat si el consumidor aborta la descarga (sin fd colgado)', async () => {
-    // hls.js aborta la petición de un segmento en cada seek y en cada cambio
-    // de ABR. Antes de este arreglo, out.destroy() solo disparaba un
-    // unpipe() sobre `rest` (rest.pipe(out) manual) que lo PAUSABA sin
-    // destruirlo: el fd -y su buffer de 64 KB- se quedaba abierto para
-    // siempre. Medido entonces sobre un segmento real: tras out.destroy(),
-    // rest.destroyed=false, rest.closed=false, con el fd todavía abierto.
+  it('openSegment destroys the mdat stream when the consumer aborts the download (no dangling fd)', async () => {
+    // hls.js aborts a segment request on every seek and every ABR switch.
+    // Before this fix, out.destroy() only triggered an unpipe() on `rest`
+    // (a manual rest.pipe(out)) that PAUSED it without destroying it: the fd —
+    // and its 64 KB buffer — stayed open forever. Measured then on a real
+    // segment: after out.destroy(), rest.destroyed=false, rest.closed=false,
+    // with the fd still open.
     const dir = mkdtempSync(join(tmpdir(), 'tsc-abort-'))
     const abortOutDir = join(dir, 'out'); mkdirSync(abortOutDir)
     const segments = session['segments']
@@ -331,9 +332,9 @@ describe('TranscodeSession', () => {
     const callsBefore = spy.mock.calls.length
 
     const out = await s.openSegment(0, 0, 30_000)
-    // El stream del mdat es la última llamada a createReadStream que hizo
-    // openSegment (la única con `start: headLen`; el fallback sin timescales
-    // no aplica aquí porque requestInit ya dejó `timescales` poblado).
+    // The mdat stream is the last createReadStream call openSegment made (the
+    // only one with `start: headLen`; the no-timescales fallback does not apply
+    // here because requestInit already populated `timescales`).
     expect(spy.mock.calls.length).toBeGreaterThan(callsBefore)
     const rest = spy.mock.results.at(-1)!.value as ReturnType<typeof createReadStream>
     expect(rest.destroyed).toBe(false)
@@ -346,9 +347,9 @@ describe('TranscodeSession', () => {
   }, 60_000)
 
   it('a segment produced by a mid-film start carries the correct absolute timestamp', async () => {
-    // Si el tfdt del segmento no coincide con lo que dice la playlist, hls.js lo
-    // bufferiza en el sitio equivocado: el vídeo no aparece pero los subtítulos,
-    // que son <track> nativos guiados por currentTime, sí siguen pintándose.
+    // If the segment's tfdt does not match what the playlist says, hls.js
+    // buffers it in the wrong place: the video does not appear but the
+    // subtitles, native <track>s driven by currentTime, keep painting.
     const dir = mkdtempSync(join(tmpdir(), 'tsc-ts-'))
     const tsOutDir = join(dir, 'out'); mkdirSync(tsOutDir)
     const segments = session['segments']
@@ -360,22 +361,22 @@ describe('TranscodeSession', () => {
     const seg = await drain(await s.openSegment(0, mid, 30_000))
     const init = readFileSync(await s.requestInit(0, 30_000))
 
-    // openSegment ancla el segmento al límite que declara la playlist, así que
-    // el margen deja de ser «casi» y pasa a ser exacto salvo redondeo.
+    // openSegment anchors the segment to the boundary the playlist declares, so
+    // the margin stops being "almost" and becomes exact up to rounding.
     const [video] = await startTimes(dir, init, seg)
     expect(Math.abs(video - segments[mid].start)).toBeLessThan(0.05)
     await s.stop()
   }, 90_000)
 
-  it('openSegment sobre una variante de solo-audio (audioCount:2) también ancla al instante correcto', async () => {
-    // Las tres medidas de arriba solo pasan por la variante 0. Con
-    // audioCount:2 hay variantes 1..N, una por pista de audio -cada una con su
-    // propio init y sus propios timescales (requestInit/canonicalizeInit)-, y
-    // ese camino no tenía ni una medida. El fallo ahí sería silencioso: si el
-    // track_id no calzara entre el init de esta variante y el tfhd de su
-    // segmento, retimeHeader no lanza -se salta la pista
-    // (`if (timescale === undefined) continue`)- y sirve el segmento con el
-    // tfdt original, resucitando el bug solo en salas multi-audio.
+  it('openSegment on an audio-only variant (audioCount:2) also anchors to the right instant', async () => {
+    // The three measurements above only go through variant 0. With audioCount:2
+    // there are variants 1..N, one per audio track — each with its own init and
+    // its own timescales (requestInit/canonicalizeInit) — and that path had no
+    // measurement at all. A failure there would be silent: if the track_id did
+    // not line up between this variant's init and its segment's tfhd,
+    // retimeHeader does not throw — it skips the track
+    // (`if (timescale === undefined) continue`) — and serves the segment with
+    // its original tfdt, resurrecting the bug in multi-audio rooms only.
     const dir = mkdtempSync(join(tmpdir(), 'tsc-ts-audio-'))
     const audioOutDir = join(dir, 'out'); mkdirSync(audioOutDir)
     const segments = session['segments']
@@ -388,7 +389,7 @@ describe('TranscodeSession', () => {
     const init = readFileSync(await s.requestInit(1, 30_000))
 
     const times = await startTimes(dir, init, seg)
-    expect(times).toHaveLength(1) // v1 es solo audio: una pista, no dos
+    expect(times).toHaveLength(1) // v1 is audio only: one track, not two
     expect(Math.abs(times[0] - segments[mid].start)).toBeLessThan(0.05)
     await s.stop()
   }, 90_000)
@@ -410,18 +411,18 @@ describe('TranscodeSession', () => {
     const seg = await drain(await s.openSegment(0, mid, 30_000))
     const init = readFileSync(await s.requestInit(0, 30_000))
 
-    // openSegment ancla el segmento al límite que declara la playlist, así que
-    // el margen deja de ser «casi» y pasa a ser exacto salvo redondeo.
+    // openSegment anchors the segment to the boundary the playlist declares, so
+    // the margin stops being "almost" and becomes exact up to rounding.
     const [video] = await startTimes(dir, init, seg)
     expect(Math.abs(video - segments[mid].start)).toBeLessThan(0.05)
     await s.stop()
   }, 90_000)
 
   it('a mid-film restart in transcode mode cuts the segment at the planned 4s boundary, not x264\'s default keyint', async () => {
-    // `t` en -force_key_frames es relativo al punto de -ss, incluso con
-    // -copyts: si la expresión queda anclada a seg.start nunca se satisface,
-    // x264 cae a su keyint por defecto (~10 s a 24 fps) y el segmento
-    // producido desborda lo que la playlist (planSegments, objetivo 4 s) dice.
+    // `t` in -force_key_frames is relative to the -ss point, even with -copyts:
+    // if the expression stays anchored to seg.start it is never satisfied, x264
+    // falls back to its default keyint (~10 s at 24 fps) and the segment
+    // produced overruns what the playlist (planSegments, 4 s target) says.
     const dir = mkdtempSync(join(tmpdir(), 'tsc-kf-'))
     const kfOutDir = join(dir, 'out'); mkdirSync(kfOutDir)
     const segments = session['segments']

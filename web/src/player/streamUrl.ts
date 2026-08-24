@@ -1,21 +1,21 @@
-// El plano de datos (playlists, init, segmentos, VTT) puede vivir en un origen
-// distinto al de la app: ver `streamBaseUrl` en server/src/config.ts para el por
-// qué. Aquí solo se compone la URL.
+// The data plane (playlists, init, segments, VTT) can live on an origin other
+// than the app's: see `streamBaseUrl` in server/src/config.ts for why. All that
+// happens here is composing the URL.
 //
-// El `epoch` versiona la generación de película de la sala. Va en el PATH y no
-// en una query por dos razones: los nombres relativos de una playlist se
-// resuelven contra la URL de esa playlist, así que init_*.mp4 y seg_*.m4s caen
-// dentro de e<n>/ solos y planner.ts no necesita saber que el epoch existe; y
-// así el versionado no depende de que el proxy del relevo reenvíe la query ni
-// de cómo calcule su clave de caché.
+// The `epoch` versions the room's movie generation. It goes in the PATH and not
+// in a query for two reasons: a playlist's relative names resolve against that
+// playlist's URL, so init_*.mp4 and seg_*.m4s land inside e<n>/ on their own and
+// planner.ts never needs to know the epoch exists; and versioning then does not
+// depend on the relay proxy forwarding the query, nor on how it computes its
+// cache key.
 //
-// Basta con aplicarlo a master.m3u8 y a los VTT: el resto de la playlist sigue
-// al host y al epoch del master. Los <track>, en cambio, los construye la app y
-// no la playlist, así que esos sí pasan por aquí.
+// Applying it to master.m3u8 and the VTTs is enough: the rest of the playlist
+// follows the master's host and epoch. The <track>s, on the other hand, are built
+// by the app and not the playlist, so those do come through here.
 export function streamUrl(base: string | null | undefined, token: string, epoch: number, file: string): string {
-  // Se recorta la barra final para no emitir `https://host//stream/...`: un
-  // doble slash sobrevive a la normalización de la URL y rompe el prefijo contra
-  // el que se resuelven los nombres relativos de la playlist.
+  // The trailing slash is trimmed so we never emit `https://host//stream/...`: a
+  // double slash survives URL normalization and breaks the prefix the playlist's
+  // relative names resolve against.
   const root = (base ?? '').replace(/\/+$/, '')
   return `${root}/stream/${token}/e${epoch}/${file}`
 }

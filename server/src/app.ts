@@ -32,15 +32,15 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url))
   if (existsSync(webDist)) {
-    // wildcard:true resuelve los archivos EN CADA PETICIÓN (no con un glob al
-    // arrancar): un rebuild de web/dist con hashes nuevos funciona sin reiniciar.
+    // wildcard:true resolves files ON EVERY REQUEST (rather than with a glob at
+    // boot): rebuilding web/dist with new hashes works without a restart.
     await app.register(fastifyStatic, { root: webDist, wildcard: true })
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api') || req.url.startsWith('/stream') || req.url.startsWith('/ws')) {
         return reply.code(404).send({ error: 'not found' })
       }
-      // Un asset ausente (p. ej. bundle con hash viejo) debe fallar con 404 de
-      // verdad: servir index.html como si fuera JS mata la app en silencio.
+      // A missing asset (say, a bundle with an old hash) has to fail with a real
+      // 404: serving index.html as if it were JS kills the app silently.
       const path = req.url.split('?')[0]
       if (path.startsWith('/assets/') || /\.[a-z0-9]+$/i.test(path)) {
         return reply.code(404).send({ error: 'not found' })

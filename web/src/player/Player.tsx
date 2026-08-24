@@ -11,19 +11,19 @@ const VOLUME_KEY = 'jbg-volume'
 const MUTED_KEY = 'jbg-muted'
 const READY_AHEAD_S = 2
 const HARD_SEEK_MIN_INTERVAL_MS = 3000
-// Cierre estructural para cualquier forma de "dragging" que no dispare
-// limpieza (la rueda del ratón sobre el range en Firefox es la que conocemos
-// hoy, pero no hay por qué asumir que es la única): sin actividad durante
-// este margen, el watchdog de más abajo suelta `drag` solo.
+// A structural backstop for any form of "dragging" that never fires a cleanup
+// (the mouse wheel over the range in Firefox is the one we know about today, but
+// there is no reason to assume it is the only one): with no activity for this
+// long, the watchdog below releases `drag` on its own.
 const DRAG_WATCHDOG_MS = 2000
-// Ventana para distinguir un clic (play/pausa) de un doble clic (pantalla
-// completa). Sin ella, el doble clic mandaría dos play/pausa al servidor y
-// llenaría el chat de dos mensajes de sistema por cada entrada a pantalla
-// completa. 400ms porque el doble clic real del sistema operativo ronda ahí
-// (algo más lento que corta), no los ~220ms de una pulsación de botón: un
-// valor menor deja pasar dobles clics lentos como un solo clic + doble clic.
-// A cambio, el clic sobre el vídeo tarda esos 400ms en pausar; el botón y la
-// barra espaciadora, en cambio, siguen siendo instantáneos.
+// The window that tells a click (play/pause) apart from a double-click
+// (fullscreen). Without it, a double-click would send two play/pauses to the
+// server and fill the chat with two system messages for every trip into
+// fullscreen. 400 ms because the OS's real double-click sits around there
+// (a little slower than crisp), not the ~220 ms of a button press: a smaller
+// value lets slow double-clicks through as one click plus a double-click. The
+// trade is that clicking the video takes those 400 ms to pause; the button and
+// the space bar stay instant.
 const DOUBLE_CLICK_MS = 400
 
 const PlayIcon = () => (
@@ -67,13 +67,13 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const [audioTracks, setAudioTracks] = useState<{ id: number; name: string }[]>([])
-  // Pista activa según hls.js, no según el <select>: es él quien la elige al
-  // cargar (DEFAULT=YES de la playlist maestra, o el idioma del navegador), así
-  // que un select sin `value` pintaría siempre la primera opción y mentiría
-  // sobre lo que se está oyendo.
+  // The active track according to hls.js, not according to the <select>: hls.js
+  // is what picks it on load (DEFAULT=YES from the master playlist, or the
+  // browser's language), so a select without a `value` would always render the
+  // first option and lie about what is being heard.
   const [audioTrack, setAudioTrack] = useState(0)
   const [sub, setSub] = useState<number>(-1)
-  // Volumen y silencio son POR ESPECTADOR (no se sincronizan) y persisten.
+  // Volume and mute are PER VIEWER (never synchronized) and persist.
   const [volume, setVolume] = useState(() => parseStoredVolume(localStorage.getItem(VOLUME_KEY)))
   const [muted, setMuted] = useState(() => localStorage.getItem(MUTED_KEY) === '1')
   // 'hls': hls.js/MSE (per-viewer audio track selection available).
@@ -85,21 +85,22 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
   const audioCtxRef = useRef<AudioContext | null>(null)
   const gainRef = useRef<GainNode | null>(null)
   const [gesture, setGesture] = useState(0)
-  // Valor que enseña la barra mientras se arrastra. Sin esto, el tick de 500 ms
-  // del reloj de sala reescribe la posición bajo el pulgar y el thumb se escapa.
+  // The value the bar shows while being dragged. Without this, the room clock's
+  // 500 ms tick rewrites the position under the thumb and it runs away.
   const [drag, setDrag] = useState<number | null>(null)
   const draggingRef = useRef(false)
-  // Evita reemitir el mismo seek si un keyup ajeno a la barra (p. ej. el espacio
-  // que reanuda la reproducción justo después de soltar el pulgar) vuelve a
-  // entrar en commitSeek antes de que llegue el estado nuevo que limpia `drag`.
-  // Se reinicia al empezar cada interacción nueva y cuando el efecto de abajo
-  // por fin limpia `drag`.
+  // Stops the same seek being re-emitted when a keyup unrelated to the bar (say,
+  // the space that resumes playback right after the thumb is released) re-enters
+  // commitSeek before the new state that clears `drag` arrives. It resets at the
+  // start of each new interaction and when the effect below finally clears
+  // `drag`.
   const committedRef = useRef(false)
-  // Verdadero solo mientras un puntero real sigue físicamente abajo, entre su
-  // onPointerDown y el onPointerUp/onPointerCancel/onBlur que lo suelta. Sin
-  // esto el watchdog de abajo no podría distinguir un arrastre lento legítimo
-  // -el pulgar sigue abajo aunque el valor no cambie un rato- del enganche
-  // que llegó SIN pulgar (la rueda), y soltaría `drag` a media pulsación.
+  // True only while a real pointer is still physically down, between its
+  // onPointerDown and the onPointerUp/onPointerCancel/onBlur that releases it.
+  // Without this the watchdog below could not tell a legitimate slow drag — the
+  // thumb is still down even though the value has not changed for a while —
+  // apart from the stuck state that arrived with NO thumb (the wheel), and it
+  // would release `drag` mid-press.
   const pointerDownRef = useRef(false)
   const dragWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -126,11 +127,11 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
   // network just failed.
   useEffect(() => { bufferingRef.current = false }, [welcomeCount])
 
-  // Al soltar, la barra se queda donde la dejó el pulgar hasta que llega el
-  // estado nuevo: devolverla antes al valor viejo del reloj de sala daría un
-  // salto atrás visible durante el viaje de ida y vuelta. Mientras el pulgar
-  // siga abajo no se toca. Junto con `drag` se reinicia `committedRef`: aquí
-  // termina el ciclo de la interacción que lo puso a true.
+  // On release, the bar stays where the thumb left it until the new state
+  // arrives: putting it back to the room clock's old value sooner would show a
+  // visible jump backwards during the round trip. While the thumb is still down
+  // it is left alone. `committedRef` resets alongside `drag`: this is where the
+  // interaction that set it to true ends.
   useEffect(() => {
     if (draggingRef.current) return
     setDrag(null)
@@ -162,12 +163,12 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
         setAudioTracks(hls!.audioTracks.map((t, id) => ({ id, name: t.name })))
         setAudioTrack(hls!.audioTrack)
       })
-      // Se lee el getter `hls.audioTrack` —índice en la lista de pistas, que es
-      // justo lo que indexa el <select>— y no el `id` del evento: ese es un campo
-      // de MediaPlaylist y solo coincide con el índice mientras haya un único
-      // grupo de audio. SWITCHING responde al instante (el setter ya ha movido el
-      // índice) y SWITCHED confirma; sin el primero, el select rebotaría a la
-      // pista vieja hasta que el cambio aterrizara.
+      // The `hls.audioTrack` getter is read — the index into the track list,
+      // which is exactly what the <select> indexes — and not the event's `id`:
+      // that is a MediaPlaylist field and only matches the index while there is
+      // a single audio group. SWITCHING responds instantly (the setter has
+      // already moved the index) and SWITCHED confirms; without the first, the
+      // select would bounce back to the old track until the switch landed.
       const syncTrack = () => setAudioTrack(hls!.audioTrack)
       hls.on(Hls.Events.AUDIO_TRACK_SWITCHING, syncTrack)
       hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, syncTrack)
@@ -183,13 +184,14 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
       if (hls) { hls.destroy(); hlsRef.current = null }
       else video.removeAttribute('src')
     }
-    // Primitivas y no el objeto: el de la sala llega nuevo de cada fetch y
-    // remontaría hls.js sin motivo. El remonte por `key={epoch}` en Room.tsx
-    // sí es intencionado, y `epoch` está aquí para que la lista no mienta.
+    // Primitives rather than the object: the room's arrives fresh from every
+    // fetch and would remount hls.js for no reason. The remount via
+    // `key={epoch}` in Room.tsx is deliberate, and `epoch` is here so this
+    // dependency list does not lie.
   }, [token, streamBase, media.epoch])
 
-  // Espacio = play/pausa global, salvo que el foco esté escribiendo (chat) o
-  // sobre un control al que el espacio pertenece (botones, selects).
+  // Space = global play/pause, unless focus is typing (chat) or on a control the
+  // space belongs to (buttons, selects).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return
@@ -202,16 +204,15 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // F = pantalla completa, salvo que se esté escribiendo. Aquí no vale
-  // `spaceBelongsTo`: cuenta BUTTON como propietario de la tecla, y la F sí
-  // debe funcionar con un botón enfocado.
+  // F = fullscreen, unless something is being typed. `spaceBelongsTo` will not
+  // do here: it counts BUTTON as owning the key, and F does have to work with a
+  // button focused.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'f' && e.key !== 'F') return
-      // `key` sigue siendo 'f' aunque haya un modificador pulsado: sin esta
-      // guarda, Ctrl+F/Cmd+F (buscar del navegador) entraría en pantalla
-      // completa y se tragaría el preventDefault, dejando el buscador
-      // inservible mientras se está en la sala.
+      // `key` is still 'f' even with a modifier held: without this guard,
+      // Ctrl+F/Cmd+F (the browser's find) would enter fullscreen and swallow the
+      // preventDefault, leaving find useless while you are in the room.
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const t = e.target as HTMLElement | null
       if (isTypingTarget(t?.tagName, (t as HTMLInputElement | null)?.type, t?.isContentEditable)) return
@@ -234,9 +235,9 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
     toggleFsRef.current()
   }
 
-  // Un estado nuevo del servidor (seek, play/pausa, congelar/reanudar) desbloquea
-  // una corrección inmediata: el límite de abajo solo debe frenar al bucle de
-  // deriva, nunca a una orden explícita del usuario.
+  // A new state from the server (seek, play/pause, freeze/resume) unblocks an
+  // immediate correction: the limit below should only slow the drift loop, never
+  // an explicit user command.
   useEffect(() => { lastHardSeekRef.current = 0 }, [lastState?.state.updatedAt])
 
   useEffect(() => {
@@ -245,13 +246,13 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
       if (!video || !lastState) return
       const target = targetPosition(lastState.state, lastState.serverNow, lastState.receivedAt, Date.now())
 
-      // La señal de carga se calcula, no se escucha: con el vídeo pausado porque
-      // la sala está congelada, `playing` no dispararía nunca y la sala se
-      // quedaría esperándonos hasta agotar el tope. Cerca del final nunca habrá
-      // READY_AHEAD_S por delante, así que ese tramo cuenta siempre como listo.
-      // durationSec en 0 significa «desconocida» (ffprobe no la reportó), no
-      // «ya estamos al final»: sin la guarda `> 0` se leería como el final de
-      // cualquier vídeo y la señal de listo quedaría desactivada para siempre.
+      // The loading signal is computed, not listened for: with the video paused
+      // because the room is frozen, `playing` would never fire and the room
+      // would wait for us until the cap ran out. Near the end there will never
+      // be READY_AHEAD_S ahead, so that stretch always counts as ready.
+      // durationSec of 0 means "unknown" (ffprobe did not report it), not "we
+      // are already at the end": without the `> 0` guard it would read as the
+      // end of every video and the ready signal would be off forever.
       const nearEnd = mediaRef.current.durationSec > 0 && target >= mediaRef.current.durationSec - READY_AHEAD_S
       const starved = !nearEnd && bufferedAhead(video.buffered, target) < READY_AHEAD_S
       if (starved !== bufferingRef.current) {
@@ -259,9 +260,9 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
         sendRef.current({ t: 'buffering', value: starved })
       }
 
-      // Cada corrección dura tira el buffer que hls.js está llenando. Sin este
-      // límite, un hipo pasa a bloqueo permanente: se resiembra el buffer cada
-      // 500 ms y nunca llega a haber suficiente para reproducir.
+      // Every hard correction throws away the buffer hls.js is filling. Without
+      // this limit, a hiccup turns into a permanent stall: the buffer is reseeded
+      // every 500 ms and never gets full enough to play.
       const hardSeek = (to: number) => {
         if (video.readyState < HTMLMediaElement.HAVE_METADATA) return
         if (Date.now() - lastHardSeekRef.current < HARD_SEEK_MIN_INTERVAL_MS) return
@@ -283,8 +284,8 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
     return () => clearInterval(id)
   }, [lastState])
 
-  // Re-render periódico para que la barra de progreso avance (el tick de deriva
-  // de arriba solo toca refs y no dispara render).
+  // A periodic re-render so the progress bar advances (the drift tick above only
+  // touches refs and never triggers a render).
   useEffect(() => {
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
@@ -295,15 +296,17 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
     for (let i = 0; i < tracks.length; i++) tracks[i].mode = i === sub ? 'showing' : 'hidden'
   }, [sub])
 
-  // `video.volume` está topado al 100% por spec, así que pasar de ahí exige
-  // enrutar el elemento por un GainNode de Web Audio. El grafo se monta perezoso
-  // — solo cuando alguien pide más del 100% — porque enrutar el elemento es
-  // irreversible y no hay motivo para meter en el grafo a quien nunca amplifica.
+  // `video.volume` is capped at 100% by spec, so going beyond that means routing
+  // the element through a Web Audio GainNode. The graph is built lazily — only
+  // when someone asks for more than 100% — because routing the element is
+  // irreversible and there is no reason to pull someone who never amplifies into
+  // the graph.
   //
-  // Y se monta solo con la página ya "activada": un AudioContext creado antes de
-  // que el usuario toque nada nace suspendido, y un <video> enrutado a un
-  // contexto parado se queda MUDO. Ante la duda se cierra el contexto y el
-  // volumen se queda en su tope nativo, que es el fallo inofensivo.
+  // And it is only built once the page has been "activated": an AudioContext
+  // created before the user touches anything is born suspended, and a <video>
+  // routed into a stopped context goes SILENT. When in doubt the context is
+  // closed and the volume stays at its native cap, which is the harmless
+  // failure.
   const applyBoost = (v: number) => {
     const video = videoRef.current
     if (!video) return
@@ -331,10 +334,10 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
     localStorage.setItem(MUTED_KEY, muted ? '1' : '0')
   }, [volume, muted, gesture])
 
-  // Con un volumen guardado por encima del 100%, el efecto de arriba corre al
-  // montar —antes de cualquier gesto— y se rinde sin montar el grafo. Este
-  // contador lo despierta en cuanto llega la primera interacción, para que la
-  // amplificación guardada se aplique sin obligar a tocar el slider.
+  // With a stored volume above 100%, the effect above runs on mount — before any
+  // gesture — and gives up without building the graph. This counter wakes it as
+  // soon as the first interaction arrives, so the stored amplification is applied
+  // without forcing anyone to touch the slider.
   useEffect(() => {
     if (volume <= 1 || gainRef.current) return
     const onGesture = () => setGesture(g => g + 1)
@@ -353,11 +356,11 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
     clearTimeout(dragWatchdogRef.current)
     dragWatchdogRef.current = null
   }
-  // Se rearma en cada onChange/onPointerDown y se cancela al soltar el pulgar
-  // (commitSeek) o al empezar una interacción nueva. Si dispara con el pulgar
-  // todavía abajo no hace nada -eso es un arrastre lento legítimo, no un
-  // enganche-, así que solo libera de verdad el enganche sin dueño (rueda,
-  // o lo que venga mañana con la misma forma).
+  // Re-armed on every onChange/onPointerDown and cancelled when the thumb is
+  // released (commitSeek) or when a new interaction starts. If it fires with the
+  // thumb still down it does nothing — that is a legitimate slow drag, not a
+  // stuck state — so it only really releases the ownerless case (the wheel, or
+  // whatever turns up tomorrow with the same shape).
   const armDragWatchdog = () => {
     disarmDragWatchdog()
     dragWatchdogRef.current = setTimeout(() => {
@@ -380,10 +383,10 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
     draggingRef.current = false
     pointerDownRef.current = false
     disarmDragWatchdog()
-    // El `keyup` de una tecla que no toca la barra (el espacio que reanuda tras
-    // soltar el pulgar, por ejemplo) también llega aquí porque el foco se queda
-    // en el input. `committedRef` corta ese reenvío: solo se emite una vez por
-    // interacción, aunque el evento de soltar se dispare de más.
+    // The `keyup` of a key that never touches the bar (the space that resumes
+    // after releasing the thumb, say) also lands here because focus stays on the
+    // input. `committedRef` cuts that re-send: it is emitted once per
+    // interaction, however many release events fire.
     if (drag === null || committedRef.current) return
     committedRef.current = true
     sendRef.current({ t: 'seek', position: clampPosition(drag, media.durationSec) })
@@ -399,11 +402,11 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
 
   return (
     <div className="player">
-      {/* `crossOrigin` solo con el vídeo en otro origen: un <track> cross-origin
-          sin él lo descarta el navegador sin decir nada. Se deja fuera en el caso
-          de mismo origen para no cambiar en nada el camino de siempre — y
-          'anonymous' es lo que toca de todas formas, porque estas rutas no
-          miran cookies. */}
+      {/* `crossOrigin` only when the video is on another origin: without it the
+          browser discards a cross-origin <track> without a word. It is left off
+          in the same-origin case so the usual path changes in no way — and
+          'anonymous' is the right choice regardless, because these routes never
+          look at cookies. */}
       <video ref={videoRef} playsInline crossOrigin={streamBase ? 'anonymous' : undefined}
         onClick={onVideoClick} onDoubleClick={onVideoDoubleClick}>
         {media.subtitles.map(s => (
@@ -439,33 +442,34 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
           style={{ background: positionGradient(shownPosition, media.durationSec) }}
           value={Math.round(shownPosition)}
           onPointerDown={() => { draggingRef.current = true; committedRef.current = false; pointerDownRef.current = true; armDragWatchdog() }}
-          // Un pointercancel (el gesto táctil se reinterpreta como scroll de la
-          // página, por ejemplo) no trae pointerup: sin esto el pulgar quedaría
-          // marcado como bajado para siempre y el efecto de arriba nunca
-          // volvería a soltar `drag`. No comitea: un gesto cancelado no es una
-          // intención de salto.
+          // A pointercancel (the touch gesture being reinterpreted as a page
+          // scroll, for instance) brings no pointerup: without this the thumb
+          // would stay marked as down forever and the effect above would never
+          // release `drag` again. It does not commit: a cancelled gesture is not
+          // an intent to seek.
           onPointerCancel={() => { draggingRef.current = false; pointerDownRef.current = false; disarmDragWatchdog() }}
-          // El input nativo solo dispara `change` con las flechas/Home/End/
-          // PageUp/PageDown, que son las únicas teclas que mueven el valor de
-          // un range — así que esto ya cubre el arrastre por teclado sin
-          // necesidad de un onKeyDown aparte. Un onKeyDown que marcara *toda*
-          // tecla confundiría al espacio (que en este control global sigue
-          // siendo play/pausa, no pertenece a la barra) con el inicio de un
-          // arrastre, reabriendo el mismo reenvío que commitSeek evita arriba.
+          // The native input only fires `change` on the arrows/Home/End/
+          // PageUp/PageDown, the only keys that move a range's value — so this
+          // already covers keyboard dragging with no separate onKeyDown. An
+          // onKeyDown that marked *every* key would confuse space (which in this
+          // global control is still play/pause and does not belong to the bar)
+          // with the start of a drag, reopening the very re-send commitSeek
+          // prevents above.
           onChange={e => { draggingRef.current = true; committedRef.current = false; setDrag(Number(e.target.value)); armDragWatchdog() }}
-          // NO interceptamos la rueda: en Firefox mueve el valor sin pasar por
-          // pointerdown/up, pero eso es una anomalía que el watchdog ya absorbe.
-          // Interceptar preventivamente bloquearía el scroll de la página justo
-          // donde hace falta para alcanzar el chat en pantallas estrechas (<800px).
-          // El temblor visual de la barra tras la rueda es inofensivo y se autocorrige.
+          // The wheel is NOT intercepted: on Firefox it moves the value without
+          // going through pointerdown/up, but that is an anomaly the watchdog
+          // already absorbs. Intercepting pre-emptively would block page scroll
+          // exactly where it is needed to reach the chat on narrow screens
+          // (<800px). The bar's visual wobble after a wheel is harmless and
+          // self-corrects.
           onPointerUp={commitSeek}
           onKeyUp={commitSeek}
-          // Si el foco se va a media pulsación (raro, pero posible) tampoco
-          // llega un keyup a este input: mismo motivo que pointercancel.
+          // If focus leaves mid-press (rare, but possible) no keyup reaches this
+          // input either: same reason as pointercancel.
           onBlur={() => { draggingRef.current = false; pointerDownRef.current = false; disarmDragWatchdog() }} />
         <span className="time-label" title={`Total duration ${formatClock(media.durationSec)}`}>−{formatClock(remaining)}</span>
-        {/* Con una sola pista el audio va muxeado en el propio segmento de vídeo
-            y hls.js no anuncia ninguna: no hay nada entre lo que elegir. */}
+        {/* With a single track the audio is muxed into the video segment itself
+            and hls.js announces none: there is nothing to choose between. */}
         {mode === 'hls' && audioTracks.length > 1 && (
           <select aria-label="Audio track" value={audioTrack}
             onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>

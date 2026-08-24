@@ -13,11 +13,11 @@ export type ClientMsg =
   | { t: 'visibility'; active: boolean }
 
 export type ServerMsg =
-  // `epoch` (null = sala sin película) va aquí porque {t:'media'} solo llega a
-  // quien tenía el socket abierto en el instante del cambio: el invitado que
-  // aún no había puesto su nombre, o el que estaba reconectando, se quedarían
-  // pegados a la generación anterior para siempre. Con la generación viva en el
-  // `welcome`, el cliente compara y se pone al día por su cuenta.
+  // `epoch` (null = room with no movie) goes here because {t:'media'} only
+  // reaches whoever had the socket open at the instant of the change: the guest
+  // who had not yet entered their name, or the one who was reconnecting, would
+  // be stuck on the previous generation forever. With the live generation in the
+  // `welcome`, the client compares and catches up on its own.
   | { t: 'welcome'; self: Participant; participants: Participant[]; state: PlaybackState; serverNow: number; history: ChatEntry[]; epoch: number | null }
   | { t: 'state'; state: PlaybackState; serverNow: number }
   | { t: 'presence'; participants: Participant[] }
@@ -25,7 +25,7 @@ export type ServerMsg =
   | { t: 'reaction'; emoji: string; fromId: string }
   | { t: 'buffering'; name: string; value: boolean }
   | { t: 'error'; log: string[] }
-  // El cliente refetchea GET /api/rooms/:token y remonta el reproductor con
-  // `epoch` como key. No se manda la info aquí para no duplicar la forma de esa
-  // respuesta en dos sitios que puedan divergir.
+  // The client refetches GET /api/rooms/:token and remounts the player with
+  // `epoch` as the key. The info is not sent here so that response's shape is
+  // not duplicated in two places that could drift apart.
   | { t: 'media'; epoch: number }

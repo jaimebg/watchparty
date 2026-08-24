@@ -28,10 +28,10 @@ export function ChatPanel({
     return () => { cancelled = true }
   }, [token])
 
-  // Por altura y no por entrada nueva: cuando llega el mensaje, la <img> de un
-  // GIF aún mide 0 px y scrollHeight es el de antes, así que la lista se queda
-  // arriba en cuanto la imagen carga. Observar el contenido cubre de una vez el
-  // GIF tardío, el mensaje multilínea y el cambio de tamaño del panel.
+  // By height rather than by new entry: when the message arrives a GIF's <img>
+  // still measures 0 px and scrollHeight is the old one, so the list would stay
+  // put the moment the image loads. Observing the content covers the late GIF,
+  // the multi-line message and the panel resizing, all at once.
   useEffect(() => {
     const box = entriesRef.current
     const inner = entriesInnerRef.current
@@ -58,8 +58,8 @@ export function ChatPanel({
             <li key={p.id} className={p.active ? undefined : 'away'} title={p.active ? undefined : 'away'}>
               <span className="dot" style={{ background: p.color }} />
               {p.name}
-              {/* La key es el id del destello, no el del participante: así una
-                  reacción nueva remonta el span y la animación arranca de cero
+              {/* The key is the flash's id, not the participant's: that way a
+                  new reaction remounts the span and the animation starts over
                   en vez de quedarse a medias. */}
               {flash && (
                 <span key={flash.id} className="reaction-flash" aria-hidden

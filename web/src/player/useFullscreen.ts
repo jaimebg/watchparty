@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 
-// Safari sigue exponiendo las variantes con prefijo, y son las únicas que
-// existen en algunas versiones que aún se usan.
+// Safari still exposes the prefixed variants, and they are the only ones that
+// exist in some versions still in use.
 interface LegacyElement extends HTMLElement {
   webkitRequestFullscreen?: () => Promise<void> | void
 }
@@ -26,15 +26,15 @@ export function useFullscreen(ref: RefObject<HTMLElement | null>): {
   active: boolean; cinema: boolean; toggle: () => void; exit: () => void
 } {
   const [nativeOn, setNativeOn] = useState(false)
-  // «Modo cine»: el iPhone no deja poner un contenedor HTML a pantalla completa
-  // —solo el <video> desnudo, sin overlays—, así que allí se ocupa la ventana
-  // desde dentro de la página. El chat flotante sigue viéndose.
+  // "Cinema mode": the iPhone will not put an HTML container fullscreen — only
+  // the bare <video>, with no overlays — so there the window is filled from
+  // inside the page. The floating chat stays visible.
   const [cinema, setCinema] = useState(false)
   const cinemaRef = useRef(cinema)
   cinemaRef.current = cinema
 
-  // Salir con Escape o con el botón del navegador no pasa por `toggle`: sin
-  // esto la clase CSS se quedaría puesta con la pantalla ya restaurada.
+  // Leaving via Escape or the browser's own button never goes through `toggle`:
+  // without this the CSS class would stay on with the screen already restored.
   useEffect(() => {
     const sync = () => setNativeOn(fullscreenElement() !== null)
     document.addEventListener('fullscreenchange', sync)
@@ -45,7 +45,7 @@ export function useFullscreen(ref: RefObject<HTMLElement | null>): {
     }
   }, [])
 
-  // El modo cine no lo cierra el navegador: hay que atender Escape a mano.
+  // The browser does not close cinema mode: Escape has to be handled by hand.
   useEffect(() => {
     if (!cinema) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCinema(false) }
@@ -53,7 +53,7 @@ export function useFullscreen(ref: RefObject<HTMLElement | null>): {
     return () => window.removeEventListener('keydown', onKey)
   }, [cinema])
 
-  // Sin esto, el scroll del documento deja asomar la cabecera por debajo.
+  // Without this, the document's scroll lets the header peek out underneath.
   useEffect(() => {
     if (!cinema) return
     const previous = document.body.style.overflow
@@ -61,18 +61,17 @@ export function useFullscreen(ref: RefObject<HTMLElement | null>): {
     return () => { document.body.style.overflow = previous }
   }, [cinema])
 
-  // Guarda para un desmontaje REAL de Room (cambiar de sala, cerrar la
-  // pestaña de React): esto NO cubre la pantalla de error de ffmpeg, porque
-  // ahí Room sigue siendo la misma instancia montada y solo cambia el JSX que
-  // devuelve, así que este efecto de limpieza nunca llega a dispararse. Ese
-  // caso lo cubre `exit()`, que Room llama explícitamente al entrar en error.
+  // A guard for a REAL unmount of Room (switching rooms, closing React's tab):
+  // this does NOT cover the ffmpeg error screen, because there Room is still the
+  // same mounted instance and only the JSX it returns changes, so this cleanup
+  // effect never fires. `exit()` covers that case, which Room calls explicitly
+  // on entering the error state.
   useEffect(() => () => { if (fullscreenElement()) exitFullscreen() }, [])
 
-  // Salida forzada para cuando el propio JS decide que hay que salir (p.ej.
-  // Room al entrar en la pantalla de error), no una reacción a un evento del
-  // navegador. La nativa se autolimpia si el nodo sale del árbol, pero el
-  // modo cine es un `position: fixed` sostenido por este estado: nada lo
-  // apaga solo.
+  // A forced exit for when JS itself decides it has to leave (Room entering the
+  // error screen, say), rather than a reaction to a browser event. Native
+  // fullscreen cleans itself up when the node leaves the tree, but cinema mode is
+  // a `position: fixed` held up by this state: nothing turns it off on its own.
   const exit = useCallback(() => {
     if (fullscreenElement()) exitFullscreen()
     setCinema(false)
@@ -87,8 +86,8 @@ export function useFullscreen(ref: RefObject<HTMLElement | null>): {
     const legacy = el as LegacyElement
     const request = el.requestFullscreen?.bind(el) ?? legacy.webkitRequestFullscreen?.bind(legacy)
     if (!request) { setCinema(true); return }
-    // Puede rechazar (permiso denegado, gesto no considerado de confianza): en
-    // vez de dejar un botón muerto, se cae al modo cine.
+    // It can reject (permission denied, a gesture not deemed trusted): rather
+    // than leave a dead button, it falls back to cinema mode.
     Promise.resolve(request()).catch(() => setCinema(true))
   }, [ref])
 

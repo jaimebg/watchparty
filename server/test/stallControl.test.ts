@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initialState, positionAt, apply } from '../src/rooms/syncState.js'
 import { attach, detach, forget, refresh, setBuffering, stallTiming, type StallRoom } from '../src/rooms/stallControl.js'
 
-// Ojo con el `now` de cada llamada: mientras el enfriamiento vale 0 se pueden
-// usar valores sintéticos (1_000, 10_000…), pero en cuanto el tope expira el
-// módulo fija `cooldownUntil` con `Date.now()` real, así que a partir de ahí
-// hay que pasarle también `Date.now()` o la comparación sale siempre falsa.
+// Watch the `now` in each call: while the cooldown is 0 synthetic values work
+// (1_000, 10_000, …), but the moment the cap expires the module sets
+// `cooldownUntil` from the real `Date.now()`, so from then on it has to be
+// passed `Date.now()` too or the comparison always comes out false.
 const CAP = 60
 const COOLDOWN = 120
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -29,7 +29,7 @@ describe('stallControl', () => {
     expect(room.state.stalled).toBe(true)
     expect(states).toBe(1)
     setBuffering(room, luis, true, 1_100)
-    expect(states).toBe(1) // ya estaba congelada: sin broadcast redundante
+    expect(states).toBe(1) // it was already frozen: no redundant broadcast
     setBuffering(room, ana, false, 1_200)
     expect(room.state.stalled).toBe(true) // Luis sigue cargando
     setBuffering(room, luis, false, 1_300)
@@ -54,7 +54,7 @@ describe('stallControl', () => {
   it('the cooldown after a forced resume stops an immediate re-freeze', async () => {
     setBuffering(room, ana, true, 1_000)
     await sleep(CAP + 40)
-    expect(room.state.stalled).toBe(false) // el tope la sacó sola
+    expect(room.state.stalled).toBe(false) // the cap brought it out on its own
     setBuffering(room, ana, false, Date.now())
     setBuffering(room, ana, true, Date.now())
     expect(room.state.stalled).toBe(false) // sigue en enfriamiento
@@ -67,8 +67,9 @@ describe('stallControl', () => {
     setBuffering(room, ana, true, 1_000)
     await sleep(CAP + 40)
     expect(room.state.stalled).toBe(false)
-    // Ana sigue cargando pero ya emitió su flanco y no emitirá otro: sin este
-    // refresh explícito la sala no volvería a esperarla nunca.
+    // Ana is still loading but has already emitted her edge and will not emit
+    // another: without this explicit refresh the room would never wait for her
+    // again.
     refresh(room, Date.now())
     expect(room.state.stalled).toBe(true)
   })
@@ -82,7 +83,7 @@ describe('stallControl', () => {
     setBuffering(room, ana, true, 1_000)
     detach(room)
     await sleep(CAP + 40)
-    expect(room.state.stalled).toBe(true) // nadie lo tocó tras el detach
+    expect(room.state.stalled).toBe(true) // nothing touched it after the detach
   })
 
   it('a seek mid-wait restarts the cap window instead of inheriting what was left of it', async () => {
@@ -91,11 +92,11 @@ describe('stallControl', () => {
     expect(room.state.stalled).toBe(true)
 
     await sleep(200)
-    refresh(room, Date.now()) // reinicia la ventana: quedaban 100 ms, ahora vuelven a ser 300
+    refresh(room, Date.now()) // restarts the window: 100 ms were left, now it is 300 again
     await sleep(200)
-    expect(room.state.stalled).toBe(true) // el tope original (300 ms) ya habría expirado
+    expect(room.state.stalled).toBe(true) // the original cap (300 ms) would already have expired
 
     await sleep(200)
-    expect(room.state.stalled).toBe(false) // el tope nuevo sí ha expirado
+    expect(room.state.stalled).toBe(false) // the new cap has expired
   })
 })

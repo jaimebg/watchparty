@@ -23,10 +23,10 @@ describe('scanLibrary', () => {
     expect(ep.id).toMatch(/^[a-f0-9]{40}$/)
   })
 
-  // basename() a solas fusiona dos carpetas distintas que se llamen igual, y en
-  // una biblioteca real («Season 1» de dos series) eso mezcla episodios de ambas
-  // bajo una sola cabecera sin forma de distinguirlos.
-  it('distingue dos carpetas homónimas por su ruta completa', async () => {
+  // basename() on its own merges two different folders that share a name, and in
+  // a real library ("Season 1" from two series) that mixes episodes from both
+  // under one heading with no way to tell them apart.
+  it('tells two same-named folders apart by their full path', async () => {
     const root = mkdtempSync(join(tmpdir(), 'lib-dup-'))
     mkdirSync(join(root, 'Alien', 'Season 1'), { recursive: true })
     mkdirSync(join(root, 'Dune', 'Season 1'), { recursive: true })
@@ -40,20 +40,20 @@ describe('scanLibrary', () => {
     expect(items.every(i => i.folderPath.endsWith(join('Season 1')))).toBe(true)
   })
 
-  it('empareja los .srt hermanos con sufijo de idioma tras agrupar los readdir', async () => {
+  it('pairs sibling .srt files with a language suffix after grouping the readdirs', async () => {
     const root = mkdtempSync(join(tmpdir(), 'lib-srt-'))
-    writeFileSync(join(root, 'Peli.mkv'), '')
-    writeFileSync(join(root, 'Peli.srt'), '')
-    writeFileSync(join(root, 'Peli.es.srt'), '')
-    writeFileSync(join(root, 'Peli.en.srt'), '')
-    writeFileSync(join(root, 'Otra.mkv'), '')
-    writeFileSync(join(root, 'Otra.es.srt'), '')
+    writeFileSync(join(root, 'Movie.mkv'), '')
+    writeFileSync(join(root, 'Movie.srt'), '')
+    writeFileSync(join(root, 'Movie.es.srt'), '')
+    writeFileSync(join(root, 'Movie.en.srt'), '')
+    writeFileSync(join(root, 'Other.mkv'), '')
+    writeFileSync(join(root, 'Other.es.srt'), '')
 
     const items = await scanLibrary([root])
-    const peli = items.find(i => i.path.endsWith('Peli.mkv'))!
-    const otra = items.find(i => i.path.endsWith('Otra.mkv'))!
-    expect(peli.srtFiles).toHaveLength(3)
-    expect(otra.srtFiles).toHaveLength(1)
-    expect(otra.srtFiles[0]).toBe(join(root, 'Otra.es.srt'))
+    const movie = items.find(i => i.path.endsWith('Movie.mkv'))!
+    const other = items.find(i => i.path.endsWith('Other.mkv'))!
+    expect(movie.srtFiles).toHaveLength(3)
+    expect(other.srtFiles).toHaveLength(1)
+    expect(other.srtFiles[0]).toBe(join(root, 'Other.es.srt'))
   })
 })

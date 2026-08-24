@@ -5,11 +5,11 @@ import { planSegments } from '../src/media/planner.js'
 const base = { input: '/x/in.mkv', encoder: 'libx264', segments: planSegments(20, null), audioCount: 2, outDir: '/tmp/out' }
 
 describe('toFfmpegPath', () => {
-  it('pasa las barras de Windows a las que entiende ffmpeg', () => {
+  it('turns Windows backslashes into the slashes ffmpeg understands', () => {
     expect(toFfmpegPath('C:\\Users\\x\\out\\ffm_0.m3u8')).toBe('C:/Users/x/out/ffm_0.m3u8')
   })
 
-  it('deja intacta la ruta que ya viene con barras normales', () => {
+  it('leaves a path that already uses forward slashes untouched', () => {
     expect(toFfmpegPath('/tmp/out/ffm_0.m3u8')).toBe('/tmp/out/ffm_0.m3u8')
   })
 })
@@ -27,8 +27,8 @@ describe('buildTranscodeArgs', () => {
     for (const mode of ['copy', 'transcode'] as const) {
       const a = buildTranscodeArgs({ ...base, mode, startSegment: 2 })
       const i = a.indexOf('-copyts')
-      expect(i).toBeGreaterThan(a.indexOf('-i')) // opción de salida: tras el input
-      expect(i).toBeLessThan(a.length - 1) // y antes de la URL de salida
+      expect(i).toBeGreaterThan(a.indexOf('-i')) // an output option: after the input
+      expect(i).toBeLessThan(a.length - 1) // and before the output URL
       expect(a).not.toContain('-output_ts_offset')
     }
   })
@@ -51,13 +51,14 @@ describe('buildTranscodeArgs', () => {
     expect(segments[1].start).toBe(4)
     expect(Number(a[a.indexOf('-ss') + 1])).toBeCloseTo(5) // (4 + 6) / 2
   })
-  // Una variante de solo-audio la parte el muxer HLS cada -hls_time exacto,
-  // mientras que la de vídeo se parte en keyframes: con una sola pista no hay
-  // razón para separarlas, y juntarlas hace imposible que sus límites deriven.
-  // Medido con este ffmpeg: si -var_stream_map declara una sola variante,
-  // -hls_fmp4_init_filename deja el «%v» sin sustituir y el init acaba en un
-  // archivo llamado literalmente «init_%v.mp4», que requestInit() jamás
-  // encuentra. Con una sola variante se numera a mano y no hace falta el mapa.
+  // The HLS muxer splits an audio-only variant at exactly every -hls_time, while
+  // the video one is split at keyframes: with a single track there is no reason
+  // to separate them, and keeping them together makes it impossible for their
+  // boundaries to drift. Measured with this ffmpeg: when -var_stream_map declares
+  // a single variant, -hls_fmp4_init_filename leaves the "%v" unsubstituted and
+  // the init ends up in a file literally named "init_%v.mp4", which requestInit()
+  // never finds. With a single variant the numbering is done by hand and the map
+  // is not needed.
   it('muxes video and audio into a single, hand-numbered variant when there is at most one audio track', () => {
     const a = buildTranscodeArgs({ ...base, audioCount: 1, mode: 'copy', startSegment: 0 })
     expect(a).not.toContain('-var_stream_map')
@@ -73,13 +74,13 @@ describe('buildTranscodeArgs', () => {
     expect(a).not.toContain('-c:a')
     expect(a.join(' ')).toContain('seg_0_%05d.m4s')
   })
-  // Medido con este ffmpeg: el directorio donde deja el init lo deduce buscando
-  // la última «/» de la ruta del playlist, y las «\» que produce join() en
-  // Windows no le valen. Sin barra que encontrar se queda sin directorio y
-  // escribe init_0.mp4 en el CWD del proceso, donde requestInit() no lo busca:
-  // en Windows ninguna sala llegaba a servir vídeo. Los segmentos se salvaban
-  // porque -hls_segment_filename sí se usa tal cual.
-  it('da las rutas de salida con barras normales, que es lo que ffmpeg sabe leer', () => {
+  // Measured with this ffmpeg: it works out the directory to leave the init in by
+  // looking for the last "/" in the playlist path, and the "\" that join()
+  // produces on Windows will not do. With no slash to find it ends up with no
+  // directory and writes init_0.mp4 into the process's CWD, where requestInit()
+  // does not look: on Windows no room ever managed to serve video. The segments
+  // survived because -hls_segment_filename is used verbatim.
+  it('emits output paths with forward slashes, which is what ffmpeg can read', () => {
     const a = buildTranscodeArgs({ ...base, audioCount: 1, outDir: 'C:\\Users\\x\\out', mode: 'copy', startSegment: 0 })
     const salidas = a.filter(v => v.includes('ffm_0.m3u8') || v.includes('seg_0_'))
     expect(salidas).toHaveLength(2)

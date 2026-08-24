@@ -1,52 +1,52 @@
 import { describe, it, expect } from 'vitest'
 import { addressIsAssigned, interfaceHasAddress, parseConfAddresses, parseConfPrivateKey } from '../src/setup/tunnel.js'
 
-const CONF = `# comentario
+const CONF = `# comment
 [Interface]
 Address = 10.77.0.2/24
-PrivateKey = SECRETA=
+PrivateKey = PRIVATEKEY=
 
 [Peer]
-PublicKey = PUBLICA=
+PublicKey = PUBLICKEY=
 Endpoint = 1.2.3.4:51820
 AllowedIPs = 10.77.0.1/32
 PersistentKeepalive = 25
 `
 
 describe('parseConfAddresses', () => {
-  it('saca las dos direcciones y les quita la máscara', () => {
+  it('pulls both addresses out and strips the mask', () => {
     expect(parseConfAddresses(CONF)).toEqual({ local: '10.77.0.2', peer: '10.77.0.1' })
   })
 
-  it('tolera espacios raros y mayúsculas distintas en las claves', () => {
-    const raro = '[Interface]\n   address=10.9.9.2/24\n[Peer]\nALLOWEDIPS  =  10.9.9.1/32\n'
-    expect(parseConfAddresses(raro)).toEqual({ local: '10.9.9.2', peer: '10.9.9.1' })
+  it('tolerates odd whitespace and different casing in the keys', () => {
+    const odd = '[Interface]\n   address=10.9.9.2/24\n[Peer]\nALLOWEDIPS  =  10.9.9.1/32\n'
+    expect(parseConfAddresses(odd)).toEqual({ local: '10.9.9.2', peer: '10.9.9.1' })
   })
 
-  // Con varias redes en AllowedIPs solo interesa la primera: es la del VPS, y es
-  // la que se usa para el ping de vida.
-  it('con una lista en AllowedIPs se queda con la primera', () => {
+  // With several networks in AllowedIPs only the first matters: it is the VPS's,
+  // and the one used for the liveness ping.
+  it('takes the first entry when AllowedIPs holds a list', () => {
     const multi = '[Interface]\nAddress = 10.77.0.2/24\n[Peer]\nAllowedIPs = 10.77.0.1/32, 10.77.0.0/24\n'
     expect(parseConfAddresses(multi).peer).toBe('10.77.0.1')
   })
 
-  it('devuelve null en lo que falte en vez de inventarse una dirección', () => {
+  it('returns null for whatever is missing rather than inventing an address', () => {
     expect(parseConfAddresses('[Interface]\n')).toEqual({ local: null, peer: null })
   })
 })
 
-// Existe para derivar la clave pública sin pedir privilegios: `wg show` haría lo
-// mismo pero en macOS necesita root para leer /var/run/wireguard.
+// It exists to derive the public key without asking for privileges: `wg show`
+// would do the same but on macOS it needs root to read /var/run/wireguard.
 describe('parseConfPrivateKey', () => {
-  it('saca la clave privada', () => {
-    expect(parseConfPrivateKey(CONF)).toBe('SECRETA=')
+  it('pulls out the private key', () => {
+    expect(parseConfPrivateKey(CONF)).toBe('PRIVATEKEY=')
   })
 
-  it('no confunde PrivateKey con PublicKey', () => {
+  it('does not confuse PrivateKey with PublicKey', () => {
     expect(parseConfPrivateKey('[Peer]\nPublicKey = PUB=\n')).toBeNull()
   })
 
-  it('null cuando no está, en vez de una cadena vacía que pareciera una clave', () => {
+  it('null when absent, rather than an empty string that would look like a key', () => {
     expect(parseConfPrivateKey('[Interface]\nAddress = 10.0.0.1/24\n')).toBeNull()
   })
 })
@@ -60,60 +60,60 @@ utun6: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1420
 	inet 10.77.0.2 --> 10.77.0.2 netmask 0xffffff00
 `
 
-  it('encuentra la dirección del túnel sea cual sea el número de utun', () => {
+  it('finds the tunnel address whatever the utun number is', () => {
     expect(interfaceHasAddress(IFCONFIG, '10.77.0.2')).toBe(true)
   })
 
-  it('no la encuentra cuando el túnel está bajado', () => {
-    const sinTunel = IFCONFIG.split('utun6')[0]
-    expect(interfaceHasAddress(sinTunel, '10.77.0.2')).toBe(false)
+  it('does not find it when the tunnel is down', () => {
+    const noTunnel = IFCONFIG.split('utun6')[0]
+    expect(interfaceHasAddress(noTunnel, '10.77.0.2')).toBe(false)
   })
 
-  // La razón del anclaje en el regex: sin él, buscar .1 daría positivo con .10 y
-  // el preflight daría por vivo un túnel bajado.
-  it('no confunde un prefijo con la dirección entera', () => {
+  // The reason for the anchor in the regex: without it, looking for .1 would
+  // match .10 and the preflight would report a down tunnel as alive.
+  it('does not mistake a prefix for the whole address', () => {
     expect(interfaceHasAddress('\tinet 10.77.0.20 netmask 0xffffff00', '10.77.0.2')).toBe(false)
     expect(interfaceHasAddress('\tinet 10.77.0.2 netmask 0xffffff00', '10.77.0.20')).toBe(false)
   })
 
-  it('un punto del patrón no hace de comodín', () => {
+  it('a dot in the pattern is not a wildcard', () => {
     expect(interfaceHasAddress('\tinet 10.77.0.2', '10x77x0x2')).toBe(false)
   })
 
-  it('sin dirección que buscar responde que no', () => {
+  it('answers no when there is no address to look for', () => {
     expect(interfaceHasAddress(IFCONFIG, '')).toBe(false)
   })
 })
 
-// El estado en Windows sale de las direcciones que reporta el propio sistema y
-// no de `sc query`, porque sc.exe traduce sus etiquetas: en un Windows en
-// español la línea es `ESTADO : 4  RUNNING`, así que buscar «STATE» daba por
-// bajado un túnel vivo, y `npm start` intentaba reinstalarlo en cada arranque.
+// On Windows the state comes from the addresses the system itself reports and
+// not from `sc query`, because sc.exe translates its labels: on a Spanish
+// Windows the line reads `ESTADO : 4  RUNNING`, so looking for "STATE" reported a
+// live tunnel as down, and `npm start` tried to reinstall it on every boot.
 describe('addressIsAssigned', () => {
   const IFACES = {
     wg0: [{ address: 'fe80::1e4b:2a0f:1' }, { address: '10.77.0.2' }],
     Ethernet: [{ address: '192.168.1.175' }],
   }
 
-  it('encuentra la dirección del túnel sea cual sea el nombre del adaptador', () => {
+  it('finds the tunnel address whatever the adapter is called', () => {
     expect(addressIsAssigned(IFACES, '10.77.0.2')).toBe(true)
   })
 
-  it('no la encuentra cuando el túnel está bajado', () => {
+  it('does not find it when the tunnel is down', () => {
     expect(addressIsAssigned({ Ethernet: IFACES.Ethernet }, '10.77.0.2')).toBe(false)
   })
 
-  // Mismo motivo que en interfaceHasAddress: .2 no puede casar con .20.
-  it('no confunde un prefijo con la dirección entera', () => {
+  // Same reason as in interfaceHasAddress: .2 must not match .20.
+  it('does not mistake a prefix for the whole address', () => {
     expect(addressIsAssigned({ wg0: [{ address: '10.77.0.20' }] }, '10.77.0.2')).toBe(false)
   })
 
-  it('sin dirección que buscar responde que no', () => {
+  it('answers no when there is no address to look for', () => {
     expect(addressIsAssigned(IFACES, '')).toBe(false)
   })
 
-  // os.networkInterfaces() declara opcional el valor de cada entrada.
-  it('tolera una interfaz sin direcciones', () => {
+  // os.networkInterfaces() declares each entry's value optional.
+  it('tolerates an interface with no addresses', () => {
     expect(addressIsAssigned({ wg0: undefined }, '10.77.0.2')).toBe(false)
   })
 })

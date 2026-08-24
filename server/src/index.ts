@@ -17,8 +17,8 @@ mkdirSync(cacheDir(), { recursive: true })
 
 const encoder = await detectEncoder()
 const rooms = new RoomManager({
-  // El modo lo decide RoomManager (pickMode en hlsLayout.ts), que es quien
-  // planifica la rejilla de segmentos que ese modo tiene que producir.
+  // RoomManager decides the mode (pickMode in hlsLayout.ts), because it is what
+  // plans the segment grid that mode has to produce.
   createSession: (item, info, segments, roomDir, mode) => new TranscodeSession({
     input: item.path, mode, encoder, segments, audioCount: info.audio.length, outDir: roomDir,
   }),

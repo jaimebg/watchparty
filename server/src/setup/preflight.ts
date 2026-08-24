@@ -1,10 +1,11 @@
-// Comprobación de entorno que corre en cada `npm start`: recolecta hechos,
-// arregla solo lo que se puede arreglar solo (levantar el túnel del relevo) y
-// avisa del resto con la acción concreta al lado. Solo aborta si algo hace que
-// arrancar no tenga sentido.
+// The environment check that runs on every `npm start`: it gathers facts, fixes
+// only what can fix itself (bringing the relay tunnel up) and warns about the
+// rest with the concrete action alongside. It aborts only when something makes
+// starting pointless.
 //
-// El criterio de qué es fatal y qué es aviso vive en checks.ts, sin efectos, para
-// poder probarlo entero. Aquí solo está la recolección y la impresión.
+// The judgement about what is fatal and what is a warning lives in checks.ts,
+// effect-free, so it can be tested end to end. Only the gathering and the
+// printing are here.
 
 import { accessSync, constants, existsSync, statSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -18,7 +19,7 @@ import { bringUp, tunnelState, peerReachable } from './tunnel.js'
 function runnable(path: string | null | undefined): boolean {
   if (!path || !existsSync(path)) return false
   try {
-    // En Windows el bit de ejecución no aplica; basta con que el fichero esté.
+    // On Windows the execute bit does not apply; the file being there is enough.
     if (process.platform !== 'win32') accessSync(path, constants.X_OK)
     return true
   } catch {
@@ -34,7 +35,7 @@ const isDir = (p: string): boolean => {
   }
 }
 
-/** Intenta ocupar el puerto: la única forma fiable de saber si está libre. */
+/** Tries to take the port: the only reliable way to know whether it is free. */
 function portFree(port: number): Promise<boolean> {
   return new Promise(resolve => {
     const srv = createServer()
@@ -47,9 +48,10 @@ function portFree(port: number): Promise<boolean> {
 const config = loadConfig()
 const webDist = fileURLToPath(new URL('../../../web/dist/index.html', import.meta.url))
 
-// El relevo se levanta ANTES de evaluar, para que el informe describa el estado
-// final y no uno que ya hemos corregido. Solo si hay streamBaseUrl: sin él el
-// vídeo sale por el mismo origen y no hay nada que levantar.
+// The relay is brought up BEFORE evaluating, so the report describes the final
+// state and not one we have already corrected. Only when streamBaseUrl is set:
+// without it the video goes out over the same origin and there is nothing to
+// bring up.
 if (config.streamBaseUrl && tunnelState() === 'down') {
   const r = bringUp()
   if (!r.ok) console.log(`⚠️  ${r.message}`)
@@ -71,15 +73,15 @@ const facts: Facts = {
   tunnelToken: config.tunnelToken ?? null,
   tunnelUrl: config.tunnelUrl ?? null,
 }
-// El ping cuesta hasta 2 s, así que solo se paga si hay interfaz que probar.
+// The ping costs up to 2 s, so it is only paid when there is an interface to test.
 if (facts.tunnel === 'up') facts.tunnelPeerReachable = peerReachable()
 
 const findings = evaluate(facts)
 const level = worstLevel(findings)
 
 console.log('\n🎬 Watchparty environment check\n')
-// Con todo en verde el detalle no aporta: solo se listan los problemas, y un
-// resumen de una línea para lo que está bien.
+// With everything green the detail adds nothing: only the problems are listed,
+// plus a one-line summary for what is fine.
 const problems = findings.filter(f => f.level !== 'ok')
 if (problems.length === 0) {
   console.log(findings.map(f => formatFinding(f)).join('\n'))

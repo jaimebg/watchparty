@@ -5,9 +5,10 @@ import { join } from 'node:path'
 
 const reads: string[] = []
 
-// Interceptar el módulo (y no espiar el namespace) es lo único fiable aquí: el
-// escáner hace `import { readdir } from 'node:fs/promises'`, y ese binding ya
-// está resuelto cuando un spy sobre el namespace llegaría.
+// Intercepting the module (rather than spying on the namespace) is the only
+// reliable option here: the scanner does `import { readdir } from
+// 'node:fs/promises'`, and that binding is already resolved by the time a spy on
+// the namespace would arrive.
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
@@ -22,7 +23,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 const { scanLibrary } = await import('../src/library/scanner.js')
 
 describe('scanLibrary', () => {
-  it('hace un readdir por directorio, no uno por vídeo', async () => {
+  it('does one readdir per directory, not one per video', async () => {
     const root = mkdtempSync(join(tmpdir(), 'lib-reads-'))
     for (let i = 0; i < 8; i++) writeFileSync(join(root, `Ep${i}.mkv`), '')
     reads.length = 0
@@ -30,8 +31,8 @@ describe('scanLibrary', () => {
     const items = await scanLibrary([root])
 
     expect(items).toHaveLength(8)
-    // Uno de walk() y uno para emparejar los .srt. Antes eran 1 + 8: con 200
-    // episodios en una carpeta, 200 lecturas del mismo sitio.
+    // One from walk() and one to pair up the .srt files. It used to be 1 + 8:
+    // with 200 episodes in a folder, 200 reads of the same place.
     expect(reads.filter(p => p === root)).toHaveLength(2)
   })
 })

@@ -1,12 +1,12 @@
-// `npm run setup` — puesta a punto de una máquina nueva, Windows incluido.
+// `npm run setup` — getting a new machine ready, Windows included.
 //
-// Hace todo lo que se puede hacer sin credenciales ajenas: genera el par de
-// claves WireGuard de esta máquina y escribe su wg0.conf. Lo que no puede hacer
-// (autorizar la clave en el VPS, crear el registro DNS) lo imprime como comandos
-// listos para copiar, con los valores ya sustituidos.
+// It does everything that can be done without someone else's credentials:
+// generates this machine's WireGuard key pair and writes its wg0.conf. What it
+// cannot do (authorize the key on the VPS, create the DNS record) it prints as
+// ready-to-copy commands, with the values already substituted.
 //
-// Es idempotente: si el túnel ya está configurado no regenera nada, porque
-// hacerlo invalidaría la clave que el VPS ya tiene autorizada.
+// It is idempotent: if the tunnel is already configured it regenerates nothing,
+// because doing so would invalidate the key the VPS has already authorized.
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -17,7 +17,7 @@ import { confPath, IFACE, parseConfPrivateKey, tunnelState } from './tunnel.js'
 const config = loadConfig()
 const line = (s = '') => console.log(s)
 
-/** `wg` vive en el prefijo de brew en macOS y junto a wireguard.exe en Windows. */
+/** `wg` lives in brew's prefix on macOS and next to wireguard.exe on Windows. */
 function wgBinary(): string | null {
   const candidates = process.platform === 'win32'
     ? ['C:\\Program Files\\WireGuard\\wg.exe']
@@ -36,7 +36,7 @@ line('🎬 Watchparty machine setup')
 line()
 
 // ---------------------------------------------------------------------------
-// 1. El relevo: ¿hace falta?
+// 1. The relay: is it needed?
 // ---------------------------------------------------------------------------
 const relayWanted = Boolean(config.streamBaseUrl || config.relayEndpoint)
 
@@ -76,18 +76,19 @@ if (!wg) {
 line('✅ WireGuard installed')
 
 // ---------------------------------------------------------------------------
-// 2. Claves y wg0.conf de esta máquina
+// 2. This machine's keys and wg0.conf
 // ---------------------------------------------------------------------------
 const path = confPath()
 let publicKey: string
 
 if (tunnelState() !== 'unconfigured') {
-  // Regenerar aquí dejaría al VPS autorizando una clave que ya no usamos, y el
-  // túnel se caería sin más explicación que un handshake que nunca llega.
-  line(`✅ Túnel ya configurado en ${path} (no se toca)`)
-  // Se deriva de la clave privada del fichero y no con `wg show`: eso último
-  // necesita root en macOS (lee el socket de control de /var/run/wireguard),
-  // y aquí no hace falta pedir privilegios para nada.
+  // Regenerating here would leave the VPS authorizing a key we no longer use,
+  // and the tunnel would go down with no explanation beyond a handshake that
+  // never arrives.
+  line(`✅ Tunnel already configured at ${path} (left alone)`)
+  // Derived from the private key in the file rather than with `wg show`: that
+  // needs root on macOS (it reads the control socket in /var/run/wireguard), and
+  // nothing here has to ask for privileges.
   const priv = parseConfPrivateKey(readFileSync(path, 'utf8'))
   publicKey = priv
     ? execFileSync(wg, ['pubkey'], { input: priv, encoding: 'utf8' }).trim()
@@ -118,7 +119,7 @@ PersistentKeepalive = 25
 }
 
 // ---------------------------------------------------------------------------
-// 3. Lo que hay que hacer fuera de esta máquina
+// 3. What has to be done off this machine
 // ---------------------------------------------------------------------------
 const [host] = String(config.relayEndpoint).split(':')
 

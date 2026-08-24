@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from './run.js'
 
-const SRT = '1\n00:00:01,000 --> 00:00:03,000\nHola fixture\n\n2\n00:00:05,000 --> 00:00:07,000\nSegunda línea\n'
+const SRT = '1\n00:00:01,000 --> 00:00:03,000\nHello fixture\n\n2\n00:00:05,000 --> 00:00:07,000\nSecond line\n'
 
 export async function makeFixtureMkv(
   dir: string,

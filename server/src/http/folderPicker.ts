@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
 
-// Abre el selector de carpetas NATIVO en la máquina del host (servidor y host son la
-// misma máquina; el navegador no puede exponer rutas absolutas del filesystem).
-// Devuelve la ruta elegida, o null si el usuario cancela o no hay diálogo disponible.
+// Opens the NATIVE folder picker on the host's machine (server and host are the
+// same machine; the browser cannot expose absolute filesystem paths). Returns the
+// chosen path, or null if the user cancels or no dialog is available.
 export function pickFolderNative(): Promise<string | null> {
   const run = (bin: string, args: string[]) =>
     new Promise<string | null>(resolve =>

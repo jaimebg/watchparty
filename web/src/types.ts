@@ -1,11 +1,11 @@
-// Espejo de los tipos del server (sin dependencia cruzada entre workspaces en v1).
+// A mirror of the server's types (no cross-workspace dependency in v1).
 
 // server/src/library/scanner.ts
 export interface LibraryItem {
   id: string; path: string; title: string
   folderName: string
-  /** Ruta absoluta de la carpeta: identifica el grupo, porque dos series pueden
-   *  tener una «Season 1» cada una y el basename las fusionaría. */
+  /** Absolute path of the folder: it identifies the group, because two series
+   *  can each have a "Season 1" and the basename would merge them. */
   folderPath: string
   srtFiles: string[]
 }
@@ -38,9 +38,9 @@ export type ClientMsg =
   | { t: 'visibility'; active: boolean }
 
 export type ServerMsg =
-  // `epoch` (null = sala sin película) es la generación viva en el servidor: el
-  // cliente la compara con la suya al recibir el `welcome` porque {t:'media'}
-  // solo lo vio quien tenía el socket abierto en ese instante.
+  // `epoch` (null = room with no movie) is the live generation on the server:
+  // the client compares it with its own on receiving the `welcome`, because
+  // {t:'media'} was only seen by whoever had the socket open at that instant.
   | { t: 'welcome'; self: Participant; participants: Participant[]; state: PlaybackState; serverNow: number; history: ChatEntry[]; epoch: number | null }
   | { t: 'state'; state: PlaybackState; serverNow: number }
   | { t: 'presence'; participants: Participant[] }
@@ -65,11 +65,11 @@ export interface RoomMeta {
 }
 
 export interface RoomMediaInfo {
-  /** Generación de película de la sala: versiona las URLs y remonta el player. */
+  /** The room's movie generation: it versions the URLs and remounts the player. */
   epoch: number
-  /** Id del ítem de biblioteca en emisión: identifica la película sin depender
-   *  de cómo se pinte su título (`title` pasa por displayTitle y no coincide con
-   *  el `title` de LibraryItem en cuanto TMDB resuelve). */
+  /** Id of the library item now playing: it identifies the movie without
+   *  depending on how its title renders (`title` goes through displayTitle and
+   *  stops matching LibraryItem's `title` the moment TMDB resolves). */
   itemId: string
   title: string
   durationSec: number
@@ -79,11 +79,11 @@ export interface RoomMediaInfo {
 }
 
 export interface RoomInfo {
-  /** null = el host todavía no ha elegido película. */
+  /** null = the host has not picked a movie yet. */
   media: RoomMediaInfo | null
   error: string[] | null
-  // Origen del que pedir el vídeo; '' = mismo origen que la app. Al nivel
-  // superior y no dentro de `media`: describe dónde vive el servidor, no la
-  // película, y hace falta igual en una sala vacía.
+  // The origin to fetch video from; '' = the same origin as the app. At the top
+  // level and not inside `media`: it describes where the server lives, not the
+  // movie, and it is needed just as much in an empty room.
   streamBase: string
 }

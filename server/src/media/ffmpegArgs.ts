@@ -10,29 +10,29 @@ export interface TranscodeArgsInput {
 const ENCODER_FLAGS: Record<string, string[]> = {
   libx264: ['-preset', 'veryfast', '-crf', '21'],
   h264_videotoolbox: ['-b:v', '6M'],
-  // `-forced-idr 1` no es un ajuste de calidad: sin él NVENC se come el
-  // -force_key_frames de abajo y cae a su GOP por defecto (250 fotogramas), con
-  // lo que rompe el contrato de hlsLayout.ts —la playlist declara los cortes de
-  // antemano y ffmpeg tiene que producirlos— sin dar ningún error. Medido con
-  // este ffmpeg sobre un fuente a 24 fps: cortaba cada 10,417 s en vez de cada
-  // 4 s, y como `openSegment` reancla cada segmento al instante que la playlist
-  // ya declaró, el desfase entre lo declarado y lo servido crecía sin techo.
-  // Solo se notaba en Windows con GPU NVIDIA: es el único sitio donde
-  // parseEncoders elige este encoder. Lo vigila encoderKeyframes.test.ts.
+  // `-forced-idr 1` is not a quality setting: without it NVENC swallows the
+  // -force_key_frames below and falls back to its default GOP (250 frames),
+  // breaking hlsLayout.ts's contract — the playlist declares the cuts in advance
+  // and ffmpeg has to produce them — without raising any error. Measured with
+  // this ffmpeg on a 24 fps source: it cut every 10.417 s instead of every 4 s,
+  // and since `openSegment` re-anchors each segment to the instant the playlist
+  // already declared, the gap between declared and served grew without bound.
+  // It only showed up on Windows with an NVIDIA GPU: the one place where
+  // parseEncoders picks this encoder. encoderKeyframes.test.ts guards it.
   h264_nvenc: ['-preset', 'p4', '-cq', '23', '-forced-idr', '1'],
   h264_qsv: ['-global_quality', '23'],
 }
 
 /**
- * Las rutas de salida, con las barras que ffmpeg sabe leer.
+ * The output paths, with the slashes ffmpeg knows how to read.
  *
- * Hace falta porque ffmpeg resuelve -hls_fmp4_init_filename relativo al
- * directorio del playlist, y ese directorio lo deduce buscando la última «/» de
- * la ruta de salida. Las «\» que produce join() en Windows no le valen: sin
- * barra que encontrar se queda sin directorio base y escribe el init en el CWD
- * del proceso, donde requestInit() no lo busca —así que en Windows ninguna sala
- * llegaba a servir vídeo—. Windows acepta las barras normales en cualquier
- * ruta, y en macOS esto no cambia nada.
+ * Needed because ffmpeg resolves -hls_fmp4_init_filename relative to the
+ * playlist's directory, and it works that directory out by looking for the last
+ * "/" in the output path. The "\" that join() produces on Windows will not do:
+ * with no slash to find it ends up with no base directory and writes the init
+ * into the process's CWD, where requestInit() does not look for it — so on
+ * Windows no room ever managed to serve video. Windows accepts forward slashes
+ * in any path, and on macOS this changes nothing.
  */
 export function toFfmpegPath(p: string): string {
   return p.replace(/\\/g, '/')
@@ -50,33 +50,34 @@ export function buildTranscodeArgs(x: TranscodeArgsInput): string[] {
   args.push('-i', x.input, '-map', '0:v:0')
   if (x.mode === 'copy') args.push('-c:v', 'copy')
   else args.push('-c:v', x.encoder, ...(ENCODER_FLAGS[x.encoder] ?? []),
-    // `t` en force_key_frames es relativo al punto de -ss, incluso con
-    // -copyts (que solo afecta a los timestamps de salida, no a esta
-    // expresión). Anclarlo a seg.start la hace insatisfacible: x264 nunca
-    // fuerza un keyframe y cae a su keyint por defecto, produciendo
-    // segmentos que no coinciden con lo que dice la playlist.
+    // `t` in force_key_frames is relative to the -ss point, even with -copyts
+    // (which only affects output timestamps, not this expression). Anchoring it
+    // to seg.start makes it unsatisfiable: x264 never forces a keyframe and
+    // falls back to its default keyint, producing segments that do not match
+    // what the playlist says.
     '-force_key_frames', 'expr:gte(t,n_forced*4)',
     '-pix_fmt', 'yuv420p')
   for (let i = 0; i < x.audioCount; i++) args.push('-map', `0:a:${i}`)
   if (x.audioCount > 0) args.push('-c:a', 'aac', '-ac', '2', '-b:a', '128k')
-  // Re-anclar con -output_ts_offset daba por hecho que ffmpeg caía exactamente
-  // donde se le pedía, y en Matroska no es así. -copyts no asume nada: conserva
-  // el tiempo absoluto de la fuente, de modo que todos los reinicios comparten
-  // una sola línea de tiempo y el tfdt siempre concuerda con la playlist.
+  // Re-anchoring with -output_ts_offset assumed ffmpeg landed exactly where it
+  // was asked to, and in Matroska it does not. -copyts assumes nothing: it keeps
+  // the source's absolute time, so every restart shares a single timeline and
+  // the tfdt always agrees with the playlist.
   if (seg.start > 0) args.push('-copyts')
   args.push(
     '-f', 'hls', '-hls_time', '4', '-hls_segment_type', 'fmp4',
     '-hls_playlist_type', 'vod', '-hls_flags', 'independent_segments+temp_file',
     '-start_number', String(x.startSegment),
   )
-  // Una sola variante con el audio dentro, salvo que haya varias pistas entre
-  // las que elegir: separar el audio obliga al muxer a partirlo por su cuenta
-  // cada -hls_time exacto (ver el contrato completo en hlsLayout.ts).
+  // A single variant with the audio inside, unless there are several tracks to
+  // choose between: splitting the audio out forces the muxer to cut it on its
+  // own at exactly every -hls_time (the full contract is in hlsLayout.ts).
   //
-  // Y con una sola variante hay que numerar a mano: medido con este ffmpeg,
-  // -hls_fmp4_init_filename NO sustituye %v si -var_stream_map declara una
-  // única variante, así que el init acabaría en un archivo llamado
-  // literalmente «init_%v.mp4» y requestInit() esperaría en vano por init_0.mp4.
+  // And with a single variant the numbering has to be done by hand: measured
+  // with this ffmpeg, -hls_fmp4_init_filename does NOT substitute %v when
+  // -var_stream_map declares a single variant, so the init would end up in a
+  // file literally named "init_%v.mp4" and requestInit() would wait forever on
+  // init_0.mp4.
   if (variantCount(x.audioCount) === 1) {
     args.push(
       '-hls_segment_filename', toFfmpegPath(join(x.outDir, 'seg_0_%05d.m4s')),

@@ -50,14 +50,14 @@ export function closeRoomSockets(room: Room): void {
   conns.delete(room)
 }
 
-// Un cambio de película: el reloj vuelve a cero, el reproductor de cada cliente
-// se reconstruye y el chat se queda como estaba.
+// A movie change: the clock goes back to zero, every client's player is rebuilt
+// and the chat stays as it was.
 function onMediaChanged(room: Room, media: RoomMedia): void {
   const now = Date.now()
-  // Re-attach y no solo un refresh: `attach` hace `detach` primero, así que el
-  // set de buffering nace vacío. Un socket que quedó marcado como «cargando» en
-  // la película anterior no va a emitir otro flanco, y su marca congelaría la
-  // nueva desde el primer play sin que nadie pueda sacarla de ahí.
+  // A re-attach and not just a refresh: `attach` does a `detach` first, so the
+  // buffering set is born empty. A socket left marked as "loading" on the
+  // previous movie is not going to emit another edge, and its mark would freeze
+  // the new one from the first play with nobody able to get it out of there.
   stall.attach(room, () => broadcast(room, { t: 'state', state: room.state, serverNow: Date.now() }))
   broadcast(room, { t: 'media', epoch: media.epoch })
   broadcast(room, { t: 'state', state: room.state, serverNow: now })
@@ -73,8 +73,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
       conns.set(room, new Map())
       // One-time-per-room hookups: fan out ffmpeg errors from RoomManager to
       // every client currently (and later) connected to this room, close every
-      // socket once the room itself is torn down, y avisar del cambio de
-      // película.
+      // socket once the room itself is torn down, and announce a movie change.
       room.errorListeners.add(log => broadcast(room, { t: 'error', log }))
       room.closeListeners.add(() => closeRoomSockets(room))
       room.mediaListeners.add(media => onMediaChanged(room, media))
@@ -108,8 +107,8 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
 
         switch (msg.t) {
           case 'play': case 'pause': {
-            // Sin película no hay reloj que mover: ni estado ni mensaje de
-            // sistema. La sala vacía sirve para charlar mientras el host elige.
+            // With no movie there is no clock to move: no state, no system
+            // message. The empty room is for chatting while the host chooses.
             if (!room.media) break
             room.state = apply(room.state, { type: msg.t, at: now })
             broadcast(room, { t: 'state', state: room.state, serverNow: now })
@@ -172,7 +171,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
       if (!me) return
       peers.delete(socket)
       // A participant who disconnects mid-buffer must not leave a stale
-      // "X está cargando…" indicator behind for everyone else.
+      // "X is buffering…" indicator behind for everyone else.
       if (bufferingActive) broadcast(room, { t: 'buffering', name: me.name, value: false })
       stall.forget(room, socket, Date.now())
       broadcast(room, { t: 'presence', participants: [...peers.values()] })

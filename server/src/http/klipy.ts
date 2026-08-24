@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import type { AppDeps } from '../app.js'
 
-// Shape confirmado contra la API viva con una key de test el 2026-07-29:
+// Shape confirmed against the live API with a test key on 2026-07-29:
 //   GET https://api.klipy.com/api/v1/{KEY}/gifs/search?q=&page=1&per_page=24
 //   -> { result, data: { data: [{ id, slug, title, file: { hd|md|sm|xs: { gif|webp|jpg|mp4|webm: { url, width, height, size } } }, tags, type, blur_preview }], current_page, per_page, has_next, meta } }
-// El campo por item es `file` (singular); algunas docs muestran `files` (plural) — el mapper acepta ambos.
+// The per-item field is `file` (singular); some docs show `files` (plural).
 // This mapper therefore accepts both `file` and `files` defensively; unresolved beyond that
 // without a live API key, so treat this as unconfirmed against the primary source.
 export interface GifResult { id: string; title: string; previewUrl: string; url: string; width: number; height: number }

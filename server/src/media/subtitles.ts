@@ -22,8 +22,8 @@ function srtSample(path: string): string {
   }
 }
 
-// Idioma de un .srt externo: primero pistas en el nombre (.es.srt, "Spanish"...),
-// si no, heurística sobre el contenido. null si no hay señal.
+// Language of an external .srt: hints in the name first (.es.srt, "Spanish", …),
+// otherwise a heuristic over the content. null when there is no signal.
 function srtLang(path: string): string | null {
   return guessLangFromName(basename(path)) ?? detectLangFromText(srtSample(path))
 }
@@ -39,7 +39,7 @@ export function listSubtitleOptions(info: MediaInfo, srtFiles: string[]): Subtit
     const lang = srtLang(f)
     opts.push({ id: embedded.length + i, label: langLabel(lang) ?? basename(f, '.srt'), lang: lang ?? 'und' })
   })
-  // Etiquetas repetidas ("Español" incrustado + "Español" externo) → numerarlas.
+  // Repeated labels (embedded "Español" + external "Español") get numbered.
   const seen = new Map<string, number>()
   for (const o of opts) {
     const n = (seen.get(o.label) ?? 0) + 1

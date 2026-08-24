@@ -69,30 +69,30 @@ describe('spaceBelongsTo', () => {
 })
 
 describe('clampPosition', () => {
-  it('recorta al metraje real por los dos lados', () => {
+  it('clamps to the real runtime on both sides', () => {
     expect(clampPosition(-5, 100)).toBe(0)
     expect(clampPosition(500, 100)).toBe(100)
     expect(clampPosition(42, 100)).toBe(42)
   })
 
-  it('un valor no finito vale 0, no un NaN que viaje por el socket', () => {
+  it('a non-finite value becomes 0, not a NaN travelling over the socket', () => {
     expect(clampPosition(NaN, 100)).toBe(0)
     expect(clampPosition(Infinity, 100)).toBe(100)
   })
 
-  it('con duración desconocida (0) no deja pasar posiciones inventadas', () => {
+  it('with an unknown duration (0) it lets no made-up position through', () => {
     expect(clampPosition(42, 0)).toBe(0)
   })
 })
 
 describe('positionGradient', () => {
-  it('pinta el relleno hasta el porcentaje visto', () => {
+  it('paints the fill up to the percentage watched', () => {
     expect(positionGradient(25, 100)).toBe(
       'linear-gradient(90deg, var(--seek-fill) 25%, var(--seek-track) 25%)',
     )
   })
 
-  it('sin duración conocida no rellena nada', () => {
+  it('with no known duration it fills nothing', () => {
     expect(positionGradient(10, 0)).toBe(
       'linear-gradient(90deg, var(--seek-fill) 0%, var(--seek-track) 0%)',
     )
@@ -105,25 +105,25 @@ describe('isTypingTarget', () => {
     ['INPUT', undefined, true],
     ['TEXTAREA', undefined, true],
     ['SELECT', undefined, true],
-  ])('%s/%s se está escribiendo', (tag, type, expected) => {
+  ])('%s/%s counts as typing', (tag, type, expected) => {
     expect(isTypingTarget(tag, type)).toBe(expected)
   })
 
-  it('un range no recibe texto', () => {
+  it('a range receives no text', () => {
     expect(isTypingTarget('INPUT', 'range')).toBe(false)
   })
 
-  it('contenteditable cuenta como escritura', () => {
+  it('contenteditable counts as typing', () => {
     expect(isTypingTarget('DIV', undefined, true)).toBe(true)
   })
 
-  it('un botón NO cuenta: la F debe funcionar con un botón enfocado', () => {
+  it('a button does NOT count: F has to work with a button focused', () => {
     expect(isTypingTarget('BUTTON')).toBe(false)
-    // …a diferencia del espacio, que sí pertenece al botón.
+    // …unlike space, which does belong to the button.
     expect(spaceBelongsTo('BUTTON')).toBe(true)
   })
 
-  it('sin foco en nada, no se está escribiendo', () => {
+  it('with nothing focused, nothing is being typed', () => {
     expect(isTypingTarget(undefined, undefined, undefined)).toBe(false)
   })
 })

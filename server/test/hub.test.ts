@@ -65,10 +65,10 @@ describe('hub', () => {
     expect(wA.t).toBe('welcome')
     expect(wA.self.name).toBe('Ana')
     await a.recv() // presence propio
-    await a.recv() // system "Ana se unió"
+    await a.recv() // system "Ana joined"
     const b = await connect('Luis')
-    await b.recv() // welcome de Luis (incluye history con "Ana se unió")
-    await a.recv(); await a.recv() // presence + system de Luis en A
+    await b.recv() // Luis's welcome (history includes "Ana joined")
+    await a.recv(); await a.recv() // Luis's presence + system, on A
     await b.recv(); await b.recv() // presence + system en B
 
     a.ws.send(JSON.stringify({ t: 'play' }))
@@ -96,7 +96,7 @@ describe('hub', () => {
     const a = await connect('Mara')
     await a.recv() // welcome
     await a.recv() // presence propio
-    await a.recv() // system "Mara se unió"
+    await a.recv() // system "Mara joined"
     const b = await connect('Nico')
     await b.recv() // welcome de Nico
     await a.recv(); await a.recv() // presence + system de Nico en A
@@ -125,7 +125,7 @@ describe('hub', () => {
     const room = await rooms.create(items[0])
     const duration = room.media!.info.durationSec
     const a = await connect('Clara', room.token)
-    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "joined"
 
     a.ws.send(JSON.stringify({ t: 'seek', position: 999999 }))
     const overMsgs = [await a.recv(), await a.recv()]
@@ -143,7 +143,7 @@ describe('hub', () => {
   it('an ffmpeg error mid-session is broadcast to every connected client as {t:"error"}', async () => {
     const room = await rooms.create(items[0])
     const a = await connect('Edi', room.token)
-    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "joined"
     const b = await connect('Uve', room.token)
     await b.recv() // welcome de Uve (incluye history)
     await a.recv(); await a.recv() // presence + system de Uve, en A
@@ -161,7 +161,7 @@ describe('hub', () => {
   it('closing a room (DELETE /api/rooms/:token) closes every live socket with code 4001', async () => {
     const room = await rooms.create(items[0])
     const a = await connect('Zoe', room.token)
-    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "joined"
 
     const closed = new Promise<{ code: number; reason: string }>(resolve => {
       a.ws.on('close', (code: number, reason: Buffer) => resolve({ code, reason: reason.toString() }))
@@ -178,32 +178,32 @@ describe('hub', () => {
   it('a disconnect while buffering broadcasts buffering:false so the indicator does not stick', async () => {
     const room = await rooms.create(items[0])
     const a = await connect('Pau', room.token)
-    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "se unió"
+    await a.recv(); await a.recv(); await a.recv() // welcome, presence, system "joined"
     const b = await connect('Rita', room.token)
     await b.recv() // welcome
     await a.recv(); await a.recv() // presence + system de Rita, en A
     await b.recv(); await b.recv() // presence + system, en B
 
     a.ws.send(JSON.stringify({ t: 'buffering', value: true }))
-    const onMsgs = [await b.recv(), await b.recv()] // buffering + state (la sala se congela)
+    const onMsgs = [await b.recv(), await b.recv()] // buffering + state (the room freezes)
     expect(onMsgs.find(m => m.t === 'buffering')).toEqual({ t: 'buffering', name: 'Pau', value: true })
 
     a.ws.close()
-    const offMsgs = [await b.recv(), await b.recv()] // buffering + state (la sala se reanuda)
+    const offMsgs = [await b.recv(), await b.recv()] // buffering + state (the room resumes)
     expect(offMsgs.find(m => m.t === 'buffering')).toEqual({ t: 'buffering', name: 'Pau', value: false })
 
     b.ws.close()
   })
 
   it('a buffering viewer freezes the room clock and the last ready one resumes it', async () => {
-    // Sala propia: reusar una de otro test corre contra sus close handlers.
+    // Its own room: reusing another test's races against its close handlers.
     const room = await rooms.create(items[0])
     const a = await connect('Iker', room.token)
     await a.recv(); await a.recv(); await a.recv() // welcome, presence, system
     const b = await connect('Sol', room.token)
-    await b.recv() // welcome de Sol
-    await a.recv(); await a.recv() // presence + system de Sol, en A
-    await b.recv(); await b.recv() // presence + system, en B
+    await b.recv() // Sol's welcome
+    await a.recv(); await a.recv() // Sol's presence + system, on A
+    await b.recv(); await b.recv() // presence + system, on B
 
     a.ws.send(JSON.stringify({ t: 'buffering', value: true }))
     const afterBuf = [await b.recv(), await b.recv()]
@@ -230,7 +230,7 @@ describe('hub', () => {
       const frozen = [await a.recv(), await a.recv()]
       expect(frozen.find(m => m.t === 'state')!.state.stalled).toBe(true)
 
-      // Nunca envía buffering:false: la sala debe salir sola por el tope.
+      // It never sends buffering:false: the room has to come out on the cap alone.
       const resumed = await a.recv()
       expect(resumed.t).toBe('state')
       expect(resumed.state.stalled).toBe(false)
@@ -243,19 +243,19 @@ describe('hub', () => {
   })
 
   it('a visibility message updates the participant and rebroadcasts full presence', async () => {
-    // Sala propia para no correr contra los close handlers de tests anteriores
-    // (mismo motivo que el test de seek clamp).
+    // Its own room, so it does not race against earlier tests' close handlers
+    // (same reason as the seek clamp test).
     const room = await rooms.create(items[0])
     const a = await connect('Vera', room.token)
     const wA = await a.recv()
     expect(wA.t).toBe('welcome')
     expect(wA.self.active).toBe(true)
-    await a.recv(); await a.recv() // presence propio + system "se unió"
+    await a.recv(); await a.recv() // own presence + system "joined"
     const b = await connect('Beto', room.token)
-    const wB = await b.recv() // welcome de Beto
+    const wB = await b.recv() // Beto's welcome
     expect(wB.participants.every((p: any) => p.active === true)).toBe(true)
-    await a.recv(); await a.recv() // presence + system de Beto, en A
-    await b.recv(); await b.recv() // presence + system, en B
+    await a.recv(); await a.recv() // Beto's presence + system, on A
+    await b.recv(); await b.recv() // presence + system, on B
 
     a.ws.send(JSON.stringify({ t: 'visibility', active: false }))
     const presB = await b.recv()
@@ -263,7 +263,7 @@ describe('hub', () => {
     expect(presB.participants.find((p: any) => p.name === 'Vera').active).toBe(false)
     expect(presB.participants.find((p: any) => p.name === 'Beto').active).toBe(true)
 
-    // Un payload malformado se ignora en silencio; el siguiente válido sí llega.
+    // A malformed payload is ignored silently; the next valid one still arrives.
     a.ws.send(JSON.stringify({ t: 'visibility', active: 'x' }))
     a.ws.send(JSON.stringify({ t: 'visibility', active: true }))
     const presB2 = await b.recv()
@@ -273,33 +273,33 @@ describe('hub', () => {
     a.ws.close(); b.ws.close()
   })
 
-  it('una sala sin película deja chatear pero ignora play y seek', async () => {
+  it('a room with no movie allows chat but ignores play and seek', async () => {
     const room = await rooms.create()
     const a = await connect('Kira', room.token)
     const w = await a.recv()
     expect(w.t).toBe('welcome')
-    await a.recv(); await a.recv() // presence propio + system "se unió"
+    await a.recv(); await a.recv() // own presence + system "joined"
 
-    // Ni estado ni mensaje de sistema: no hay reloj que mover.
+    // Neither state nor a system message: there is no clock to move.
     a.ws.send(JSON.stringify({ t: 'play' }))
     a.ws.send(JSON.stringify({ t: 'seek', position: 10 }))
-    // El chat sí funciona, y es lo único que debe llegar.
-    a.ws.send(JSON.stringify({ t: 'chat', text: 'esperando' }))
+    // Chat does work, and is the only thing that must arrive.
+    a.ws.send(JSON.stringify({ t: 'chat', text: 'waiting' }))
     const next = await a.recv()
     expect(next.t).toBe('chat')
-    expect(next.entry.text).toBe('esperando')
+    expect(next.entry.text).toBe('waiting')
     expect(room.state.paused).toBe(true)
     expect(room.state.positionBase).toBe(0)
 
     a.ws.close()
   })
 
-  it('poner película difunde media + state y lo cuenta en el chat', async () => {
+  it('setting a movie broadcasts media + state and announces it in the chat', async () => {
     const room = await rooms.create()
     const a = await connect('Lena', room.token)
     await a.recv(); await a.recv(); await a.recv() // welcome, presence, system
 
-    await rooms.setMedia(room.token, items[0], 'Jaime')
+    await rooms.setMedia(room.token, items[0], 'Alex')
 
     const msgs = [await a.recv(), await a.recv(), await a.recv()]
     const media = msgs.find(m => m.t === 'media')!
@@ -309,12 +309,12 @@ describe('hub', () => {
     expect(state.state.positionBase).toBe(0)
     const sys = msgs.find(m => m.t === 'chat')!
     expect(sys.entry.kind).toBe('system')
-    expect(sys.entry.text).toContain('Jaime')
+    expect(sys.entry.text).toContain('Alex')
 
     a.ws.close()
   })
 
-  it('sin `by` el mensaje de sistema es impersonal', async () => {
+  it('without `by` the system message is impersonal', async () => {
     const room = await rooms.create()
     const a = await connect('Ona', room.token)
     await a.recv(); await a.recv(); await a.recv()
@@ -328,10 +328,10 @@ describe('hub', () => {
     a.ws.close()
   })
 
-  // Un socket marcado como «cargando» en la película anterior no vuelve a emitir
-  // el flanco: si su marca sobrevive al cambio, la sala nueva se congela en el
-  // primer play y nadie la saca de ahí hasta agotar el tope.
-  it('el cambio de película limpia el set de buffering', async () => {
+  // A socket marked as "loading" on the previous movie never emits the edge
+  // again: if its mark survives the change, the new room freezes on the first
+  // play and nobody gets it out of there until the cap runs out.
+  it('a movie change clears the buffering set', async () => {
     const room = await rooms.create(items[0])
     const a = await connect('Bruno', room.token)
     await a.recv(); await a.recv(); await a.recv()
@@ -340,7 +340,7 @@ describe('hub', () => {
     const frozen = [await a.recv(), await a.recv()]
     expect(frozen.find(m => m.t === 'state')!.state.stalled).toBe(true)
 
-    await rooms.setMedia(room.token, monoItems[0], 'Jaime')
+    await rooms.setMedia(room.token, monoItems[0], 'Alex')
     await a.recv(); await a.recv(); await a.recv() // media, state, system
 
     a.ws.send(JSON.stringify({ t: 'play' }))
@@ -349,11 +349,11 @@ describe('hub', () => {
     expect(state.state.paused).toBe(false)
     expect(state.state.stalled).toBe(false)
 
-    // Con el set sin limpiar salen TRES mensajes tras el play: `state`
-    // (stalled:false), el de sistema, y un tercer `state` con stalled:true que
-    // dispara el refresh() del play al reevaluar la marca que sobrevivió. Leer
-    // solo los dos de arriba dejaría verde el borrado del re-attach, así que se
-    // asevera que no hay tercero y que la sala sigue descongelada.
+    // With the set uncleared, THREE messages come out after the play: `state`
+    // (stalled:false), the system one, and a third `state` with stalled:true that
+    // the play's refresh() triggers when it re-evaluates the surviving mark.
+    // Reading only the two above would leave deleting the re-attach green, so we
+    // assert there is no third and that the room is still unfrozen.
     const extra = await Promise.race([a.recv(), new Promise<null>(r => setTimeout(() => r(null), 300))])
     expect(extra).toBeNull()
     expect(room.state.stalled).toBe(false)
@@ -361,24 +361,24 @@ describe('hub', () => {
     a.ws.close()
   })
 
-  // Un cliente que no tenía el socket abierto durante el cambio no vio su
-  // {t:'media'}: el epoch del `welcome` es su única forma de descubrir que la
-  // película que tiene ya no es la de la sala.
-  it('el welcome trae la generación viva de la sala', async () => {
+  // A client that did not have the socket open during the change never saw its
+  // {t:'media'}: the `welcome`'s epoch is its only way of discovering that the
+  // movie it holds is no longer the room's.
+  it('the welcome carries the room\'s live generation', async () => {
     const room = await rooms.create()
     const a = await connect('Uma', room.token)
-    const vacia = await a.recv()
-    expect(vacia.t).toBe('welcome')
-    expect(vacia.epoch).toBeNull()
-    await a.recv(); await a.recv() // presence propio + system "se unió"
+    const empty = await a.recv()
+    expect(empty.t).toBe('welcome')
+    expect(empty.epoch).toBeNull()
+    await a.recv(); await a.recv() // own presence + system "joined"
 
-    await rooms.setMedia(room.token, items[0], 'Jaime')
+    await rooms.setMedia(room.token, items[0], 'Alex')
     await a.recv(); await a.recv(); await a.recv() // media, state, system
 
     const b = await connect('Val', room.token)
-    const conPeli = await b.recv()
-    expect(conPeli.t).toBe('welcome')
-    expect(conPeli.epoch).toBe(1)
+    const withMovie = await b.recv()
+    expect(withMovie.t).toBe('welcome')
+    expect(withMovie.epoch).toBe(1)
 
     a.ws.close(); b.ws.close()
   })

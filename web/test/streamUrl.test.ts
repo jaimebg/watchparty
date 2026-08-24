@@ -2,48 +2,48 @@ import { describe, it, expect } from 'vitest'
 import { streamUrl } from '../src/player/streamUrl'
 
 describe('streamUrl', () => {
-  it('sin base usa el mismo origen (comportamiento en LAN y sin relevo)', () => {
+  it('with no base it uses the same origin (LAN behaviour, and with no relay)', () => {
     expect(streamUrl('', 'tok', 1, 'master.m3u8')).toBe('/stream/tok/e1/master.m3u8')
   })
 
-  // El servidor manda '' cuando no hay relevo, pero el tipo permite null/undefined
-  // (config sin el campo, respuesta de una versión vieja): ninguno debe acabar
-  // como el literal 'null' dentro de la URL.
-  it('trata null y undefined como mismo origen', () => {
+  // The server sends '' when there is no relay, but the type allows
+  // null/undefined (a config without the field, a response from an old version):
+  // neither may end up as the literal 'null' inside the URL.
+  it('treats null and undefined as the same origin', () => {
     expect(streamUrl(null, 'tok', 1, 'video.m3u8')).toBe('/stream/tok/e1/video.m3u8')
     expect(streamUrl(undefined, 'tok', 1, 'video.m3u8')).toBe('/stream/tok/e1/video.m3u8')
   })
 
-  it('antepone el origen del relevo', () => {
+  it('prefixes the relay origin', () => {
     expect(streamUrl('https://stream.example.com', 'tok', 3, 'master.m3u8'))
       .toBe('https://stream.example.com/stream/tok/e3/master.m3u8')
   })
 
-  it('no duplica la barra cuando la base ya la trae', () => {
+  it('does not double the slash when the base already carries one', () => {
     expect(streamUrl('https://stream.example.com/', 'tok', 1, 'init_0.mp4'))
       .toBe('https://stream.example.com/stream/tok/e1/init_0.mp4')
     expect(streamUrl('https://stream.example.com///', 'tok', 1, 'init_0.mp4'))
       .toBe('https://stream.example.com/stream/tok/e1/init_0.mp4')
   })
 
-  it('conserva el prefijo de ruta de una base con subdirectorio', () => {
+  it('keeps the path prefix of a base with a subdirectory', () => {
     expect(streamUrl('https://example.com/relay', 'tok', 2, 'sub_0.vtt'))
       .toBe('https://example.com/relay/stream/tok/e2/sub_0.vtt')
   })
 
-  // Lo que hace que el resto de la playlist siga al mismo host sin tocar el
-  // servidor: los nombres relativos que emite planner.ts se resuelven contra la
-  // URL del master, así que basta con que ESTA apunte al relevo.
-  it('el master queda en un directorio del que cuelgan los nombres relativos', () => {
+  // What makes the rest of the playlist follow the same host without touching
+  // the server: the relative names planner.ts emits resolve against the master's
+  // URL, so it is enough that THIS one points at the relay.
+  it('the master sits in a directory the relative names hang off', () => {
     const master = streamUrl('https://stream.example.com', 'tok', 1, 'master.m3u8')
     expect(new URL('seg_0_00001.m4s', master).href)
       .toBe('https://stream.example.com/stream/tok/e1/seg_0_00001.m4s')
   })
 
-  // La razón de meter el epoch en el PATH y no en una query: los nombres
-  // relativos de la playlist caen dentro de e<n>/ solos, así que planner.ts
-  // puede seguir sin saber que el epoch existe.
-  it('los nombres relativos caen dentro del epoch del master', () => {
+  // The reason for putting the epoch in the PATH and not in a query: the
+  // playlist's relative names land inside e<n>/ on their own, so planner.ts can
+  // go on not knowing the epoch exists.
+  it('the relative names land inside the master\'s epoch', () => {
     const master = streamUrl('', 'tok', 7, 'master.m3u8')
     expect(new URL('video.m3u8', `https://app.example.com${master}`).pathname)
       .toBe('/stream/tok/e7/video.m3u8')
@@ -51,10 +51,10 @@ describe('streamUrl', () => {
       .toBe('/stream/tok/e7/init_0.mp4')
   })
 
-  // Dos generaciones de la misma sala NO comparten URL: es lo que impide que la
-  // caché del navegador (o la del relevo) sirva los bytes de la película
-  // anterior, porque init_0.mp4 y seg_0_00000.m4s se llaman igual en las dos.
-  it('dos epochs de la misma sala no comparten URL', () => {
+  // Two generations of the same room do NOT share a URL: that is what stops the
+  // browser's cache (or the relay's) serving the previous movie's bytes, because
+  // init_0.mp4 and seg_0_00000.m4s are named identically in both.
+  it('two epochs of the same room do not share a URL', () => {
     expect(streamUrl('', 'tok', 1, 'seg_0_00000.m4s'))
       .not.toBe(streamUrl('', 'tok', 2, 'seg_0_00000.m4s'))
   })

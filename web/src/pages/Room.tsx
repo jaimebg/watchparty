@@ -61,13 +61,13 @@ export function Room({ token }: { token: string }) {
   // the server's stall-tracking set was just rebuilt empty for this socket.
   const [welcomeCount, setWelcomeCount] = useState(0)
   const [tunnelDown, setTunnelDown] = useState(false)
-  // Solo el host: /api/status responde 401 a los invitados. Es la misma señal
-  // que ya se usaba para el enlace del túnel, ahora con nombre propio, porque
-  // gobierna también el botón de elegir película.
+  // Host only: /api/status answers 401 to guests. It is the same signal already
+  // used for the tunnel link, now with a name of its own, because it also
+  // governs the choose-movie button.
   const [isHost, setIsHost] = useState(false)
-  // Solo el host la conoce: /api/status responde 401 a los invitados. Por eso
-  // el botón de copiar aparece únicamente en la pestaña del host (localhost),
-  // que es justo la que necesita el enlace del túnel en vez de su propia URL.
+  // Only the host knows it: /api/status answers 401 to guests. That is why the
+  // copy button appears only in the host's tab (localhost), which is exactly the
+  // one that needs the tunnel link rather than its own URL.
   const [tunnelUrl, setTunnelUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle')
   const [wsError, setWsError] = useState<string[] | null>(null)
@@ -78,8 +78,8 @@ export function Room({ token }: { token: string }) {
   const gridRef = useRef<HTMLDivElement>(null)
   const { active: fullscreen, cinema, toggle: toggleFullscreen, exit: exitFullscreen } = useFullscreen(gridRef)
 
-  // El temporizador consulta esto al vencer: con la sala en pausa o con alguien
-  // escribiendo, el chrome no se va.
+  // The timer consults this when it expires: with the room paused or someone
+  // typing, the chrome stays.
   const pausedRef = useRef(true)
   pausedRef.current = lastState?.state.paused ?? true
   const { awake: chromeAwake, wake: wakeChrome } = useIdleChrome({
@@ -92,10 +92,9 @@ export function Room({ token }: { token: string }) {
     },
   })
 
-  // Un mensaje nuevo despierta el chrome sin necesidad de tocar el ratón. Los
-  // de sistema («X pausó») no cuentan: son ruido, no conversación. La primera
-  // pasada se ignora para que el historial que llega en el `welcome` no cuente
-  // como mensaje nuevo.
+  // A new message wakes the chrome without touching the mouse. System ones
+  // ("X paused") do not count: that is noise, not conversation. The first pass is
+  // ignored so the history arriving in the `welcome` does not count as new.
   const lastEntryRef = useRef<string | null>(null)
   useEffect(() => {
     const last = chat.entries.at(-1)
@@ -114,8 +113,8 @@ export function Room({ token }: { token: string }) {
       await navigator.clipboard.writeText(shareUrl)
       setCopied('ok')
     } catch {
-      // Sin portapapeles (contexto no seguro, permiso denegado): se enseña el
-      // enlace para copiarlo a mano en vez de fallar en silencio.
+      // No clipboard (insecure context, permission denied): the link is shown
+      // to copy by hand rather than failing silently.
       setCopied('fail')
     }
   }
@@ -126,21 +125,21 @@ export function Room({ token }: { token: string }) {
     return () => clearTimeout(id)
   }, [copied])
 
-  // El reintento se llama a sí mismo, y `reloadInfo` no puede depender de su
-  // propia identidad: cambiarla reengancharía el efecto del socket (reconectar
-  // tira chat y presencia). El ref rompe ese ciclo.
+  // The retry calls itself, and `reloadInfo` cannot depend on its own identity:
+  // changing it would re-run the socket effect (reconnecting throws away chat and
+  // presence). The ref breaks that cycle.
   const reloadRef = useRef<() => Promise<void>>(async () => {})
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryAttemptRef = useRef(0)
 
-  // `getRoom` lanza igual con un 404 que con un 502 del túnel o un corte de red,
-  // y esto ya no corre solo al montar: corre en mitad de la sesión con cada
-  // cambio de película. Solo el 404 significa «esta sala ya no existe»; dar la
-  // sala por perdida ante un error pasajero pintaría «Sala no encontrada» y, de
-  // paso, cerraría el socket por la guarda del efecto de abajo, dejando al
-  // invitado sin chat, sin presencia y sin nada que reintentar. Lo transitorio
-  // no toca el `info` que ya se esté enseñando y se reintenta solo, con el mismo
-  // backoff que usa la reconexión del socket.
+  // `getRoom` throws the same on a 404 as on a 502 from the tunnel or a network
+  // drop, and this no longer runs only on mount: it runs mid-session on every
+  // movie change. Only the 404 means "this room no longer exists"; giving the
+  // room up for lost on a passing error would render "Room not found" and, along
+  // the way, close the socket through the guard in the effect below, leaving the
+  // guest with no chat, no presence and nothing to retry. Anything transient
+  // leaves the `info` already on screen alone and retries itself, with the same
+  // backoff the socket's reconnect uses.
   const reloadInfo = useCallback(async () => {
     try {
       setInfo(await getRoom(token))
@@ -148,8 +147,8 @@ export function Room({ token }: { token: string }) {
       retryAttemptRef.current = 0
     } catch (e) {
       if (e instanceof Error && e.message.includes('404')) { setNotFound(true); return }
-      // Un solo reintento en vuelo: varios {t:'media'} seguidos con la red caída
-      // no deben encadenar temporizadores.
+      // One retry in flight: several {t:'media'} in a row with the network down
+      // must not chain timers.
       if (retryRef.current !== null) return
       retryRef.current = setTimeout(() => {
         retryRef.current = null
@@ -162,8 +161,8 @@ export function Room({ token }: { token: string }) {
   useEffect(() => { void reloadInfo() }, [reloadInfo])
   useEffect(() => () => { if (retryRef.current !== null) clearTimeout(retryRef.current) }, [])
 
-  // Espejo de `info` para el callback del socket: si entrara en las
-  // dependencias del efecto, cada refresco reconectaría el socket.
+  // A mirror of `info` for the socket callback: were it in the effect's
+  // dependencies, every refresh would reconnect the socket.
   const infoRef = useRef<RoomInfo | null>(null)
   infoRef.current = info
 
@@ -176,31 +175,31 @@ export function Room({ token }: { token: string }) {
       }
       if (m.t === 'welcome') {
         setWelcomeCount(c => c + 1)
-        // {t:'media'} solo lo recibe quien tuviera el socket abierto en el
-        // instante del cambio: el invitado que seguía en la puerta del nombre no
-        // lo ve nunca, y el que estaba reconectando tampoco. Sin esto se quedan
-        // con la generación anterior para siempre: cartel de «el host está
-        // eligiendo» en una sala que ya tiene película, o un reproductor pidiendo
-        // URLs que ahora responden 410, en negro y sin ruido. El `welcome` trae
-        // la generación viva, así que se compara y se refresca si no casan.
-        // Con `info` aún sin llegar no se compara: la petición REST del montaje
-        // va en vuelo (o reintentándose) y traerá esa misma generación, y pedirla
-        // aquí sería una petición de más en cada arranque normal.
+        // Only whoever had the socket open at the instant of the change gets
+        // {t:'media'}: the guest still at the name prompt never sees it, and
+        // neither does one that was reconnecting. Without this they stay on the
+        // previous generation forever: a "the host is choosing" card in a room
+        // that already has a movie, or a player asking for URLs that now answer
+        // 410, black and silent. The `welcome` carries the live generation, so it
+        // is compared and refreshed when they do not match. With `info` not in
+        // yet there is nothing to compare: the mount's REST request is in flight
+        // (or retrying) and will bring that same generation, and asking here
+        // would be one request too many on every normal start.
         const known = infoRef.current
         if (known && m.epoch !== (known.media?.epoch ?? null)) {
-          // Mismo tratamiento que el {t:'media'} que este cliente se perdió,
-          // incluido el `wsError`: el fallo de ffmpeg que pudiera arrastrar era
-          // de la generación anterior.
+          // The same treatment as the {t:'media'} this client missed, `wsError`
+          // included: whatever ffmpeg failure it might be carrying belonged to
+          // the previous generation.
           setWsError(null)
           void reloadInfo()
         }
       }
       if (m.t === 'error') setWsError(m.log)
       if (m.t === 'media') {
-        // Un solo camino de refresco, también para el host que lo provocó: el
-        // POST no actualiza estado por su cuenta, así que no hay dos rutas que
-        // puedan divergir. El `wsError` se limpia porque el fallo de ffmpeg era
-        // de la película anterior.
+        // A single refresh path, the host who triggered it included: the POST
+        // updates no state on its own, so there are no two routes that could
+        // drift apart. `wsError` is cleared because the ffmpeg failure belonged
+        // to the previous movie.
         setWsError(null)
         void reloadInfo()
       }
@@ -209,16 +208,16 @@ export function Room({ token }: { token: string }) {
     return () => conn.close()
   }, [token, name, notFound, reloadInfo])
 
-  // Presencia: avisa cuando la pestaña pasa a segundo plano o vuelve (Page
-  // Visibility API; ver spec 2026-07-29-presence-visibility-design.md).
+  // Presence: announces when the tab goes to the background or comes back
+  // (Page Visibility API).
   useEffect(() => {
     const onVis = () => sendRef.current({ t: 'visibility', active: document.visibilityState === 'visible' })
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
-  // Banner de túnel caído: solo el host recibe respuesta de /api/status
-  // (a los invitados les da 401, así que se omite silenciosamente).
+  // The tunnel-down banner: only the host gets a response from /api/status
+  // (guests get a 401, so it is skipped silently).
   useEffect(() => {
     let cancelled = false
     let polling = true
@@ -231,8 +230,8 @@ export function Room({ token }: { token: string }) {
           setTunnelUrl(s.tunnelUrl)
           setTunnelDown(s.tunnelUrl === null)
         })
-        // 401: es un invitado. Se deja de sondear, no se le enseña el enlace del
-        // túnel y no verá el botón de elegir película.
+        // 401: this is a guest. Polling stops, the tunnel link is not shown and
+        // the choose-movie button never appears.
         .catch(() => { polling = false; setIsHost(false) })
     }
     poll()
@@ -242,20 +241,20 @@ export function Room({ token }: { token: string }) {
 
   // A ffmpeg failure can happen either before the client ever connects
   // (info.error, from the initial REST fetch) or mid-session, reported over
-  // the socket as {t:'error'}; both render the same recovery screen. Se
-  // calcula aquí arriba —antes de los "return" tempranos— porque las Reglas
-  // de los Hooks exigen que useEffect se llame siempre en el mismo orden;
-  // `info` aún puede ser `null` en este punto.
+  // the socket as {t:'error'}; both render the same recovery screen. It is
+  // computed up here — before the early returns — because the Rules of Hooks
+  // require useEffect to be called in the same order every time; `info` may
+  // still be `null` at this point.
   const errorLog = wsError ?? info?.error
 
-  // El modo cine no se autolimpia como la pantalla completa nativa (que sí
-  // sale sola en cuanto el nodo desaparece del árbol): es un `position:
-  // fixed` sostenido por estado de React, y Room no se desmonta al entrar en
-  // el estado de error, solo cambia el JSX que devuelve. Sin esto, cinema se
-  // queda en `true` y el body sigue con scroll bloqueado sobre la pantalla de
-  // error, con el botón «Reintentar» posiblemente inalcanzable y sin más
-  // salida que el Escape que el iPhone —el único sitio con modo cine— no
-  // tiene.
+  // Cinema mode does not clean itself up the way native fullscreen does (which
+  // exits on its own the moment the node leaves the tree): it is a
+  // `position: fixed` held up by React state, and Room does not unmount when it
+  // enters the error state, it only changes the JSX it returns. Without this,
+  // cinema stays `true` and the body keeps its scroll locked over the error
+  // screen, with the "Retry" button possibly out of reach and no way out but the
+  // Escape key that the iPhone — the only place with cinema mode — does not
+  // have.
   useEffect(() => {
     if (errorLog) exitFullscreen()
   }, [errorLog, exitFullscreen])
@@ -375,8 +374,8 @@ export function Room({ token }: { token: string }) {
               <ReactionsBar send={m => sendRef.current(m)} />
             </>
           ) : (
-            // El chat sigue montado a la derecha: la gente entra, pone su nombre
-            // y charla mientras el host elige.
+            // The chat stays mounted on the right: people come in, enter their
+            // name and chat while the host chooses.
             <div className="stage-waiting">
               <p className="eyebrow">No movie yet</p>
               <h2>{isHost ? "Pick what you'll watch" : 'The host is picking the movie'}</h2>
