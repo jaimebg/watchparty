@@ -323,7 +323,7 @@ describe('hub', () => {
 
     const msgs = [await a.recv(), await a.recv(), await a.recv()]
     const sys = msgs.find(m => m.t === 'chat')!
-    expect(sys.entry.text).toContain('ahora se ve')
+    expect(sys.entry.text).toContain('now playing')
 
     a.ws.close()
   })

@@ -42,7 +42,7 @@ describe('config', () => {
     mkdirSync(dir, { recursive: true })
     const path = join(dir, 'config.json')
     writeFileSync(path, '{ not valid json')
-    expect(() => loadConfig()).toThrow(new RegExp(`config\\.json inválido en ${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+    expect(() => loadConfig()).toThrow(new RegExp(`invalid config\\.json at ${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
   })
 
   it('toma las keys del config.defaults.json del repo cuando no hay config local', () => {

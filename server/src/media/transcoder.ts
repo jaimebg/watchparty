@@ -124,7 +124,7 @@ export class TranscodeSession {
   // decodifica pero los <track> nativos siguen pintando subtítulos, que es
   // exactamente el síntoma reportado. Se entrega siempre una copia estable.
   async requestInit(variant: number, timeoutMs = 30_000): Promise<string> {
-    if (this.closed) throw new Error(`Sesión cerrada esperando init v${variant}`)
+    if (this.closed) throw new Error(`Session closed waiting for init v${variant}`)
     const stable = join(this.opts.outDir, `init_${variant}.stable.mp4`)
     if (existsSync(stable)) { this.loadTimescales(variant, stable); return stable }
     const live = join(this.opts.outDir, `init_${variant}.mp4`)
@@ -133,7 +133,7 @@ export class TranscodeSession {
       // Una sesión parada ya no es dueña de su roomDir: retry() borra los
       // snapshots y monta una sesión nueva encima, así que copiar aquí
       // resucitaría el init de la ejecución rota.
-      if (this.closed) throw new Error(`Sesión cerrada esperando init v${variant}`)
+      if (this.closed) throw new Error(`Session closed waiting for init v${variant}`)
       // El muxer HLS escribe y cierra el init antes de cerrar el primer
       // segmento, así que ver el segmento —que con temp_file solo aparece ya
       // completo— prueba que el init está entero. Pero eso solo vale si ESE
@@ -150,7 +150,7 @@ export class TranscodeSession {
       }
       await new Promise(r => setTimeout(r, 200))
     }
-    throw new Error(`Timeout esperando init v${variant}`)
+    throw new Error(`Timed out waiting for init v${variant}`)
   }
 
   // Un snapshot que ya existía (misma sesión, otra variante ya servida) no pasó
@@ -190,7 +190,7 @@ export class TranscodeSession {
       }
       await new Promise(r => setTimeout(r, 200))
     }
-    throw new Error(`Timeout esperando segmento v${variant}#${index}`)
+    throw new Error(`Timed out waiting for segment v${variant}#${index}`)
   }
 
   /**
@@ -211,7 +211,7 @@ export class TranscodeSession {
     // hacerlo, servir el archivo tal cual sin reanclar sería resucitar en
     // silencio el fallo que existe esta clase para matar (mismo espíritu que
     // el throw de «sin mdat» más abajo: se prefiere el 504 al bug mudo).
-    if (!timescales || start === undefined) throw new Error(`Sin plan para reanclar v${variant}#${index}`)
+    if (!timescales || start === undefined) throw new Error(`No plan to re-anchor v${variant}#${index}`)
 
     const fh = await open(path, 'r')
     let head: Buffer
@@ -228,7 +228,7 @@ export class TranscodeSession {
       }
       // Sin `mdat` no hay segmento: servirlo tal cual sería resucitar el fallo
       // en silencio, así que se prefiere el 504 que ya devuelve la ruta.
-      if (headLen < 0) throw new Error(`Segmento sin mdat v${variant}#${index}`)
+      if (headLen < 0) throw new Error(`Segment without mdat v${variant}#${index}`)
       head = retimeHeader(probe.subarray(0, headLen), timescales, start)
     } finally {
       await fh.close()

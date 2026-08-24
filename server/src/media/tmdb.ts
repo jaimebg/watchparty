@@ -57,7 +57,7 @@ export function makeTmdbLookup(apiKey: string, fetchImpl: typeof fetch = fetch) 
       const { query, year, episode } = parseTitleYear(cleanTitle)
       if (!query) return null
       const kind = episode ? 'tv' : 'movie'
-      const params = new URLSearchParams({ api_key: apiKey, query, language: 'es-ES' })
+      const params = new URLSearchParams({ api_key: apiKey, query, language: 'en-US' })
       if (year && !episode) params.set('primary_release_year', String(year))
       const res = await fetchImpl(`https://api.themoviedb.org/3/search/${kind}?${params}`, { signal: AbortSignal.timeout(6000) })
       if (!res.ok) return null

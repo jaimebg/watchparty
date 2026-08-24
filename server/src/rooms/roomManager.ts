@@ -82,7 +82,7 @@ export interface Room {
  * host es una sola persona: se rechaza el segundo en vez de encadenar cerrojos.
  */
 export class RoomBusyError extends Error {
-  constructor() { super('La sala ya está cambiando de película') }
+  constructor() { super('The room is already switching movies') }
 }
 
 /** El medio ya construido, antes de que exista su sesión de ffmpeg. */
@@ -155,7 +155,7 @@ export class RoomManager {
 
   async setMedia(token: string, item: LibraryItem, by: string | null = null): Promise<RoomMedia> {
     const room = this.rooms.get(token)
-    if (!room) throw new Error(`Sala desconocida: ${token}`)
+    if (!room) throw new Error(`Unknown room: ${token}`)
     if (room.busy) throw new RoomBusyError()
     room.busy = true
 

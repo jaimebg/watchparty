@@ -6,15 +6,15 @@ export type EmojiRow = [string, string, string, number]
 // El grupo 2 de emojibase son modificadores de tono de piel y de pelo: no son
 // emotes y no deben aparecer en el selector, así que no tiene pestaña.
 export const EMOJI_GROUPS: { group: number; label: string; icon: string }[] = [
-  { group: 0, label: 'Caras', icon: '😀' },
-  { group: 1, label: 'Gente', icon: '👋' },
-  { group: 3, label: 'Animales', icon: '🐱' },
-  { group: 4, label: 'Comida', icon: '🍕' },
-  { group: 5, label: 'Viajes', icon: '🚗' },
-  { group: 6, label: 'Actividades', icon: '🎉' },
-  { group: 7, label: 'Objetos', icon: '💡' },
-  { group: 8, label: 'Símbolos', icon: '❤️' },
-  { group: 9, label: 'Banderas', icon: '🏳️' },
+  { group: 0, label: 'Smileys', icon: '😀' },
+  { group: 1, label: 'People', icon: '👋' },
+  { group: 3, label: 'Animals', icon: '🐱' },
+  { group: 4, label: 'Food', icon: '🍕' },
+  { group: 5, label: 'Travel', icon: '🚗' },
+  { group: 6, label: 'Activities', icon: '🎉' },
+  { group: 7, label: 'Objects', icon: '💡' },
+  { group: 8, label: 'Symbols', icon: '❤️' },
+  { group: 9, label: 'Flags', icon: '🏳️' },
 ]
 
 // Sin tope, buscar «a» metería más de mil botones en el DOM de golpe.

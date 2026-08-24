@@ -21,7 +21,7 @@ export function ReactionsBar({ send }: { send: (m: ClientMsg) => void }) {
           {emoji}
         </button>
       ))}
-      <button type="button" className="btn-add-emoji" aria-label="Elegir emojis" title="Elegir emojis"
+      <button type="button" className="btn-add-emoji" aria-label="Pick emojis" title="Pick emojis"
         onClick={() => setPickerOpen(true)}>+</button>
 
       {pickerOpen && (

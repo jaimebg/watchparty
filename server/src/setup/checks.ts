@@ -65,9 +65,9 @@ export function evaluate(f: Facts): Finding[] {
   if (f.nodeMajor < MIN_NODE) {
     out.push({
       level: 'fatal',
-      title: `Node ${f.nodeMajor} es demasiado antiguo`,
-      detail: `Hace falta Node ${MIN_NODE} o superior.`,
-      fix: 'Instala una versión moderna desde https://nodejs.org y vuelve a intentarlo.',
+      title: `Node ${f.nodeMajor} is too old`,
+      detail: `Node ${MIN_NODE} or newer is required.`,
+      fix: 'Install a modern version from https://nodejs.org and try again.',
     })
   } else {
     out.push({ level: 'ok', title: `Node ${f.nodeMajor}` })
@@ -76,50 +76,52 @@ export function evaluate(f: Facts): Finding[] {
   // Sin ffmpeg no hay nada que servir, y el fallo nativo llega tarde y mudo
   // (ffmpeg muere y la sala se queda esperando segmentos hasta el timeout).
   if (!f.ffmpegOk || !f.ffprobeOk) {
-    const falta = [!f.ffmpegOk && 'ffmpeg', !f.ffprobeOk && 'ffprobe'].filter(Boolean).join(' y ')
+    const falta = [!f.ffmpegOk && 'ffmpeg', !f.ffprobeOk && 'ffprobe'].filter(Boolean).join(' and ')
     out.push({
       level: 'fatal',
-      title: `Falta ${falta}`,
-      detail: 'Los binarios vienen de ffmpeg-static/ffprobe-static y se descargan al instalar.',
-      fix: 'Ejecuta `npm install` (si ya lo hiciste, borra node_modules y repite: la descarga pudo fallar).',
+      title: `Missing ${falta}`,
+      detail: 'The binaries come from ffmpeg-static/ffprobe-static and download on install.',
+      fix: 'Run `npm install` (if you already did, delete node_modules and repeat: the download may have failed).',
     })
   } else {
-    out.push({ level: 'ok', title: 'ffmpeg y ffprobe empaquetados' })
+    out.push({ level: 'ok', title: 'ffmpeg and ffprobe bundled' })
   }
 
   if (!f.webBuilt) {
     // Aviso y no fatal: `npm start` compila web justo después de este chequeo.
     out.push({
       level: 'warn',
-      title: 'La interfaz web no está compilada',
-      detail: 'No hay web/dist/index.html.',
-      fix: '`npm start` la compila; si arrancas el server a mano, lanza antes `npm run build -w web`.',
+      title: 'Web UI not built',
+      detail: 'web/dist/index.html is missing.',
+      fix: '`npm start` builds it; if you start the server by hand, run `npm run build -w web` first.',
     })
   } else {
-    out.push({ level: 'ok', title: 'Interfaz web compilada' })
+    out.push({ level: 'ok', title: 'Web UI built' })
   }
 
   if (f.mediaFolders.length === 0) {
     out.push({
       level: 'warn',
-      title: 'Sin carpetas de medios configuradas',
-      detail: 'La biblioteca arrancará vacía.',
-      fix: 'En el panel del host, pulsa «📁 Elegir carpeta…» — abre el diálogo nativo del sistema.',
+      title: 'No media folders configured',
+      detail: 'The library will start empty.',
+      fix: "In the host panel, press «📁 Add folder…» (it opens the system's native dialog).",
     })
   } else {
     const missing = f.mediaFolders.filter(p => !f.mediaFoldersPresent.includes(p))
     if (missing.length > 0) {
       // Caso típico al mover el repo entre máquinas o al desmontar un disco
       // externo: la ruta está en la config pero no existe aquí.
+      const s = missing.length === 1 ? '' : 's'
       out.push({
         level: 'warn',
-        title: `${missing.length} carpeta(s) de medios no existen`,
+        title: `${missing.length} media folder${s} ${missing.length === 1 ? 'does not exist' : 'do not exist'}`,
         detail: missing.join(', '),
-        fix: 'Quítalas o vuelve a elegirlas desde el panel del host.',
+        fix: 'Remove them or pick them again from the host panel.',
       })
     }
     if (f.mediaFoldersPresent.length > 0) {
-      out.push({ level: 'ok', title: `${f.mediaFoldersPresent.length} carpeta(s) de medios` })
+      const s = f.mediaFoldersPresent.length === 1 ? '' : 's'
+      out.push({ level: 'ok', title: `${f.mediaFoldersPresent.length} media folder${s}` })
     }
   }
 
@@ -128,21 +130,21 @@ export function evaluate(f: Facts): Finding[] {
     // la causa más probable (otra instancia ya levantada).
     out.push({
       level: 'fatal',
-      title: `El puerto ${f.port} está ocupado`,
-      detail: 'Probablemente ya hay otra instancia de jbg-watchparty corriendo.',
-      fix: `Cierra la otra instancia, o cambia "port" en tu config.json.`,
+      title: `Port ${f.port} is taken`,
+      detail: 'Another Watchparty instance is probably already running.',
+      fix: `Close the other instance, or change "port" in your config.json.`,
     })
   } else {
-    out.push({ level: 'ok', title: `Puerto ${f.port} libre` })
+    out.push({ level: 'ok', title: `Port ${f.port} free` })
   }
 
   // Los dos campos del túnel de Cloudflare solo sirven juntos.
   if (Boolean(f.tunnelToken) !== Boolean(f.tunnelUrl)) {
     out.push({
       level: 'warn',
-      title: 'Config del túnel de Cloudflare incompleta',
-      detail: 'tunnelToken y tunnelUrl deben ir juntos.',
-      fix: 'Rellena el que falta, o borra los dos para usar un Quick Tunnel con URL aleatoria.',
+      title: 'Cloudflare tunnel config incomplete',
+      detail: 'tunnelToken and tunnelUrl go together.',
+      fix: 'Fill in the missing one, or remove both to use a Quick Tunnel with a random URL.',
     })
   }
 
@@ -158,9 +160,9 @@ function evaluateRelay(f: Facts): Finding[] {
     return f.tunnel === 'up'
       ? [{
           level: 'warn',
-          title: 'Túnel del relevo activo pero sin usar',
-          detail: 'streamBaseUrl no está configurado, así que el vídeo sale por el mismo origen que la app.',
-          fix: 'Pon "streamBaseUrl" en tu config.json, o baja el túnel con `npm run tunnel:down`.',
+          title: 'Relay tunnel up but unused',
+          detail: 'streamBaseUrl is not configured, so video is served from the same origin as the app.',
+          fix: 'Set "streamBaseUrl" in your config.json, or take the tunnel down with `npm run tunnel:down`.',
         }]
       : []
   }
@@ -168,9 +170,9 @@ function evaluateRelay(f: Facts): Finding[] {
   if (!RELAY_PLATFORMS.has(f.platform)) {
     return [{
       level: 'warn',
-      title: 'El relevo no está soportado en esta plataforma',
-      detail: `streamBaseUrl apunta a ${f.streamBaseUrl}, pero no sé levantar el túnel en ${f.platform}.`,
-      fix: 'Levanta el túnel a mano, o quita streamBaseUrl para servir desde el mismo origen.',
+      title: 'Relay not supported on this platform',
+      detail: `streamBaseUrl points at ${f.streamBaseUrl}, but I can't bring up the tunnel on ${f.platform}.`,
+      fix: 'Bring the tunnel up by hand, or drop streamBaseUrl to serve from the same origin.',
     }]
   }
 
@@ -178,36 +180,36 @@ function evaluateRelay(f: Facts): Finding[] {
     case 'missing-wireguard':
       return [{
         level: 'warn',
-        title: 'Falta WireGuard',
-        detail: `streamBaseUrl apunta a ${f.streamBaseUrl}, pero WireGuard no está instalado.`,
+        title: 'WireGuard missing',
+        detail: `streamBaseUrl points at ${f.streamBaseUrl}, but WireGuard isn't installed.`,
         fix: f.platform === 'win32'
-          ? 'Instálalo desde https://www.wireguard.com/install/ y vuelve a lanzar `npm start`.'
-          : 'Ejecuta `brew install wireguard-tools` y vuelve a lanzar `npm start`.',
+          ? 'Install it from https://www.wireguard.com/install/ and launch `npm start` again.'
+          : 'Run `brew install wireguard-tools` and launch `npm start` again.',
       }]
     case 'unconfigured':
       return [{
         level: 'warn',
-        title: 'Relevo sin configurar en esta máquina',
-        detail: `streamBaseUrl apunta a ${f.streamBaseUrl}, pero falta el wg0.conf local.`,
-        fix: 'Ejecuta `npm run setup` para generar las claves y la configuración del túnel.',
+        title: 'Relay not set up on this machine',
+        detail: `streamBaseUrl points at ${f.streamBaseUrl}, but the local wg0.conf is missing.`,
+        fix: 'Run `npm run setup` to generate the keys and the tunnel configuration.',
       }]
     case 'down':
       // No es fatal: el panel y la LAN funcionan igual. Pero los invitados
       // remotos se quedarían con el reproductor en negro, así que se avisa.
       return [{
         level: 'warn',
-        title: 'El túnel del relevo está bajado',
-        detail: 'Los invitados remotos no verían vídeo.',
-        fix: '`npm start` intenta levantarlo; a mano es `npm run tunnel:up`.',
+        title: 'Relay tunnel is down',
+        detail: 'Remote guests would get no video.',
+        fix: "`npm start` tries to bring it up; manually it's `npm run tunnel:up`.",
       }]
     case 'up':
       return f.tunnelPeerReachable
-        ? [{ level: 'ok', title: `Relevo activo hacia ${f.streamBaseUrl}` }]
+        ? [{ level: 'ok', title: `Relay up toward ${f.streamBaseUrl}` }]
         : [{
             level: 'warn',
-            title: 'Túnel levantado pero el otro extremo no responde',
-            detail: 'La interfaz existe, pero el VPS no contesta al ping por el túnel.',
-            fix: 'Comprueba que el VPS está vivo, o reconstruye con `npm run tunnel:down && npm run tunnel:up`.',
+            title: 'Tunnel is up but the far end does not respond',
+            detail: "The interface exists, but the VPS doesn't answer pings through the tunnel.",
+            fix: 'Check that the VPS is alive, or rebuild with `npm run tunnel:down && npm run tunnel:up`.',
           }]
     default:
       return []

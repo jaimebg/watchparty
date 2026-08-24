@@ -124,13 +124,13 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
       <button type="button" className="media-btn" disabled={busy} onClick={() => pick(i)}>
         <span className="media-title">
           {i.title}
-          {i.id === currentItemId && <span className="media-current"> · en emisión</span>}
+          {i.id === currentItemId && <span className="media-current"> · now playing</span>}
         </span>
         <span className="hint">
           {withFolder && <>{i.folderName} · </>}
           {i.srtFiles.length > 0
-            ? `${i.srtFiles.length} ${i.srtFiles.length === 1 ? 'subtítulo externo' : 'subtítulos externos'}`
-            : 'sin subtítulos externos'}
+            ? `${i.srtFiles.length} external subtitle${i.srtFiles.length === 1 ? '' : 's'}`
+            : 'no external subtitles'}
         </span>
       </button>
     </li>
@@ -142,8 +142,8 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
           tecla para salir del modo y no se puede evitar, así que sería un atajo
           que funciona a medias. Se cierra con el fondo y con la ✕. */}
       <div className="modal media-modal" onClick={e => e.stopPropagation()}>
-        <button className="modal-close" aria-label="Cerrar" onClick={onClose}>✕</button>
-        <h2>{currentItemId ? 'Cambiar película' : 'Elegir película'}</h2>
+        <button className="modal-close" aria-label="Close" onClick={onClose}>✕</button>
+        <h2>{currentItemId ? 'Change movie' : 'Pick movie'}</h2>
 
         {/* Mientras se pone la película el modal no enseña la lista: la espera
             es de varios segundos y dejar la biblioteca a la vista con todo
@@ -152,40 +152,40 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
         {applying ? (
           <div className="modal-busy" role="status" aria-live="polite">
             <span className="spinner spinner--lg" aria-hidden="true" />
-            <p className="media-title">«{applying.title}»</p>
-            <p className="hint">Preparándola para toda la sala: analizamos el vídeo y
-              extraemos los subtítulos. Puede tardar unos segundos.</p>
+            <p className="media-title">“{applying.title}”</p>
+            <p className="hint">Getting it ready for the whole room: we analyze the video and
+              extract the subtitles. It can take a few seconds.</p>
           </div>
         ) : (
           <>
             <input className="emoji-search" value={query} onChange={e => setQuery(e.target.value)}
-              placeholder="Buscar por título…" aria-label="Buscar película" />
+              placeholder="Search by title…" aria-label="Search movies" />
 
             {error && <p className="field-error">{error}</p>}
 
             {pending && (
               <div className="media-confirm">
-                <p>Vas a cambiar la película <strong>para todos</strong>. La reproducción
-                  empieza de cero y el chat se conserva.</p>
-                <p className="media-title">«{pending.title}»</p>
+                <p>You're about to change the movie <strong>for everyone</strong>. Playback
+                  starts over and the chat is kept.</p>
+                <p className="media-title">“{pending.title}”</p>
                 {/* Sin etiqueta de «poniendo»: en cuanto se pulsa, `applying` se
                     lleva por delante esta rama y sale el cartel de espera. */}
                 <button type="button" className="btn-primary" disabled={busy} onClick={() => void apply(pending)}>
-                  Ponerla
+                  Play it
                 </button>
                 <button type="button" className="btn-small" disabled={busy} onClick={() => setPending(null)}>
-                  Cancelar
+                  Cancel
                 </button>
               </div>
             )}
 
             {items === null ? (
-              <p className="gif-picker-status"><span className="spinner" aria-hidden="true" /> Cargando la biblioteca…</p>
+              <p className="gif-picker-status"><span className="spinner" aria-hidden="true" /> Loading the library…</p>
             ) : items.length === 0 ? (
-              <p className="gif-picker-status">No hay vídeos en las carpetas configuradas.</p>
+              <p className="gif-picker-status">No videos in the configured folders.</p>
             ) : searching ? (
               results.length === 0
-                ? <p className="gif-picker-status">Ningún título coincide.</p>
+                ? <p className="gif-picker-status">No titles match.</p>
                 : <ul className="media-list">{results.map(i => row(i, true))}</ul>
             ) : (
               <div className="media-folders">
@@ -211,8 +211,8 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
 
             <button type="button" className="btn-small" disabled={busy} onClick={rescan}>
               {rescanning
-                ? <><span className="spinner" aria-hidden="true" /> Escaneando…</>
-                : '↻ Volver a escanear'}
+                ? <><span className="spinner" aria-hidden="true" /> Scanning…</>
+                : '↻ Rescan'}
             </button>
           </>
         )}

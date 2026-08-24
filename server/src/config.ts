@@ -81,7 +81,7 @@ function readJson(path: string): Partial<Config> {
     return JSON.parse(raw) as Partial<Config>
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    throw new Error(`${basename(path)} inválido en ${path}: ${msg}`)
+    throw new Error(`invalid ${basename(path)} at ${path}: ${msg}`)
   }
 }
 

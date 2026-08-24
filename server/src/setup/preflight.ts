@@ -77,7 +77,7 @@ if (facts.tunnel === 'up') facts.tunnelPeerReachable = peerReachable()
 const findings = evaluate(facts)
 const level = worstLevel(findings)
 
-console.log('\n🎬 jbg-watchparty — comprobación del entorno\n')
+console.log('\n🎬 Watchparty environment check\n')
 // Con todo en verde el detalle no aporta: solo se listan los problemas, y un
 // resumen de una línea para lo que está bien.
 const problems = findings.filter(f => f.level !== 'ok')
@@ -85,12 +85,12 @@ if (problems.length === 0) {
   console.log(findings.map(f => formatFinding(f)).join('\n'))
 } else {
   const okCount = findings.length - problems.length
-  if (okCount > 0) console.log(`✅ ${okCount} comprobación(es) correcta(s)\n`)
+  if (okCount > 0) console.log(`✅ ${okCount} check${okCount === 1 ? '' : 's'} passed\n`)
   console.log(problems.map(f => formatFinding(f)).join('\n'))
 }
 
 if (level === 'fatal') {
-  console.log('\n❌ No se puede arrancar hasta resolver lo de arriba.\n')
+  console.log('\n❌ Can\'t start until the issues above are resolved.\n')
   process.exit(1)
 }
-console.log(level === 'warn' ? '\n▶️  Arrancando con avisos…\n' : '\n▶️  Todo listo.\n')
+console.log(level === 'warn' ? '\n▶️  Starting with warnings…\n' : '\n▶️  All set.\n')

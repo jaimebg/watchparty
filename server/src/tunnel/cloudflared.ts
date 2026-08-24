@@ -31,7 +31,7 @@ export async function ensureBinary(): Promise<string> {
   mkdirSync(binDir, { recursive: true })
   const { url, archive } = binaryUrl(process.platform, process.arch)
   const res = await fetch(url, { redirect: 'follow' })
-  if (!res.ok) throw new Error(`Descarga de cloudflared falló: ${res.status}`)
+  if (!res.ok) throw new Error(`cloudflared download failed: ${res.status}`)
   const buf = Buffer.from(await res.arrayBuffer())
   if (archive === 'tgz') {
     const tgz = join(binDir, 'cloudflared.tgz')

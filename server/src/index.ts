@@ -34,7 +34,7 @@ setInterval(() => {
 const adminToken = randomBytes(12).toString('base64url')
 const namedTunnel = Boolean(config.tunnelToken && config.tunnelUrl)
 if (Boolean(config.tunnelToken) !== Boolean(config.tunnelUrl))
-  console.log('⚠️  tunnelToken y tunnelUrl deben configurarse juntos; usando Quick Tunnel (URL aleatoria)')
+  console.log('⚠️  tunnelToken and tunnelUrl must be configured together; using Quick Tunnel (random URL)')
 const tunnel = new Tunnel({
   port: config.port,
   token: namedTunnel ? config.tunnelToken : null,
@@ -43,12 +43,12 @@ const tunnel = new Tunnel({
 const app = await buildApp({ config, library: () => scanLibrary(config.mediaFolders), rooms, adminToken, tunnel })
 
 await app.listen({ port: config.port, host: '0.0.0.0' })
-tunnel.onUrl(u => console.log(`\n🌍 URL pública: ${u}\n`))
-tunnel.onDown(() => console.log('⚠️  Túnel caído, reintentando…'))
+tunnel.onUrl(u => console.log(`\n🌍 Public URL: ${u}\n`))
+tunnel.onDown(() => console.log('⚠️  Tunnel down, retrying…'))
 tunnel.start()
 
 const adminUrl = `http://localhost:${config.port}/?key=${adminToken}`
-console.log(`🎬 jbg-watchparty — panel: ${adminUrl}`)
+console.log(`🎬 Watchparty host panel: ${adminUrl}`)
 if (process.platform === 'darwin') spawn('open', [adminUrl])
 else if (process.platform === 'win32') spawn('cmd', ['/c', 'start', '', adminUrl])
 

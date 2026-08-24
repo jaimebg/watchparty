@@ -10,11 +10,11 @@ export function pickFolderNative(): Promise<string | null> {
         resolve(err ? null : stdout.trim() || null)))
 
   if (process.platform === 'darwin') {
-    return run('osascript', ['-e', 'POSIX path of (choose folder with prompt "Elige tu carpeta de medios")'])
+    return run('osascript', ['-e', 'POSIX path of (choose folder with prompt "Pick your media folder")'])
   }
   if (process.platform === 'win32') {
     return run('powershell', ['-NoProfile', '-STA', '-Command',
-      "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Elige tu carpeta de medios'; if ($f.ShowDialog() -eq 'OK') { Write-Output $f.SelectedPath }"])
+      "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Pick your media folder'; if ($f.ShowDialog() -eq 'OK') { Write-Output $f.SelectedPath }"])
   }
-  return run('zenity', ['--file-selection', '--directory', '--title=Elige tu carpeta de medios'])
+  return run('zenity', ['--file-selection', '--directory', '--title=Pick your media folder'])
 }

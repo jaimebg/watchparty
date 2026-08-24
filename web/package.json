@@ -1,5 +1,6 @@
 {
   "name": "watchparty-web",
+  "description": "React client for Watchparty: HLS player, chat, reactions and GIF search.",
   "private": true,
   "type": "module",
   "scripts": {

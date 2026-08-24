@@ -38,21 +38,21 @@ export function EmojiPicker({
       <div className="modal emoji-modal" onClick={e => e.stopPropagation()}>
         <button className="modal-close" aria-label="Cerrar" onClick={onClose}>✕</button>
 
-        <h2 className="emoji-heading">Tus accesos rápidos</h2>
+        <h2 className="emoji-heading">Your quick picks</h2>
         {quick.length === 0
-          ? <p className="hint">Ninguno todavía: elige abajo los que quieras.</p>
+          ? <p className="hint">None yet: pick the ones you want below.</p>
           : <ul className="quick-chips">
               {quick.map(e => (
                 <li key={e}>
                   <span aria-hidden>{e}</span>
-                  <button type="button" aria-label={`Quitar ${e}`} onClick={() => onRemove(e)}>✕</button>
+                  <button type="button" aria-label={`Remove `} onClick={() => onRemove(e)}>✕</button>
                 </li>
               ))}
             </ul>}
-        {full && <p className="hint">Máximo {MAX_QUICK}: quita alguno para añadir más.</p>}
+        {full && <p className="hint">Max {MAX_QUICK}: remove one to add another.</p>}
 
         <input className="emoji-search" value={query} onChange={e => setQuery(e.target.value)}
-          placeholder="Buscar emoji…" aria-label="Buscar emoji" />
+          placeholder="Search emoji…" aria-label="Search emoji" />
 
         {!searching && (
           <div className="emoji-tabs" role="tablist">
@@ -66,9 +66,9 @@ export function EmojiPicker({
         )}
 
         {catalog === null ? (
-          <p className="gif-picker-status">Cargando emojis…</p>
+          <p className="gif-picker-status">Loading emojis…</p>
         ) : searching && shown.length === 0 ? (
-          <p className="gif-picker-status">Ningún emoji coincide.</p>
+          <p className="gif-picker-status">No emoji matches.</p>
         ) : (
           <div className="emoji-grid">
             {shown.map(r => (

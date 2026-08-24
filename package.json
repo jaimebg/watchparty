@@ -1,5 +1,6 @@
 {
   "name": "watchparty",
+  "description": "Self-hosted movie nights in sync: synced video, live chat, reactions and GIFs over an HTTPS tunnel.",
   "private": true,
   "type": "module",
   "workspaces": ["server", "web"],

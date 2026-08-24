@@ -84,31 +84,31 @@ export function Library() {
     const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname)
     const enterRoom = () => {
       const token = parseRoomToken(roomInput)
-      if (!token) { setRoomError('Eso no parece un código de sala. Pega el enlace completo o el código que va tras /room/.'); return }
+      if (!token) { setRoomError("That doesn't look like a room code. Paste the full link or the code after /room/."); return }
       location.pathname = `/room/${token}`
     }
     return (
       <main className="page page--gate">
         <header className="masthead">
-          <p className="eyebrow">JBG Watchparty</p>
-          <h1>Función privada</h1>
+          <p className="eyebrow">Watchparty</p>
+          <h1>Private screening</h1>
           <div className="marquee-rule" aria-hidden="true" />
         </header>
-        <p>Para ver la sesión necesitas el <strong>enlace de sala</strong> que comparte el host
-          — termina en <code>/room/…</code>. Pídeselo y ábrelo tal cual.</p>
+        <p>To watch the session you need the <strong>room link</strong> the host shares.
+          It ends in <code>/room/…</code>. Ask them for it and open it as is.</p>
         <form className="name-form" onSubmit={e => { e.preventDefault(); enterRoom() }}>
           <input
             value={roomInput}
             onChange={e => { setRoomInput(e.target.value); setRoomError(null) }}
-            placeholder="Código o enlace de la sala"
-            aria-label="Código o enlace de la sala"
+            placeholder="Room code or link"
+            aria-label="Room code or link"
           />
-          <button type="submit" className="btn-primary">Entrar</button>
+          <button type="submit" className="btn-primary">Join</button>
         </form>
         {roomError && <p className="field-error">{roomError}</p>}
         {isLocal && (
-          <p className="hint">¿Eres el host? Entra con la URL con <code>?key=…</code> que imprime la
-            terminal al arrancar el servidor (se abre sola en el navegador).</p>
+          <p className="hint">Are you the host? Enter through the <code>?key=…</code> URL printed by the
+            terminal when the server starts (it opens in your browser on its own).</p>
         )}
       </main>
     )
@@ -116,10 +116,10 @@ export function Library() {
 
   if (error) return (
     <main className="page">
-      <p>No se pudo cargar la biblioteca. ({error})</p>
+      <p>Couldn't load the library. ({error})</p>
     </main>
   )
-  if (!items) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
+  if (!items) return <main className="page"><p className="loading">Warming up the projector…</p></main>
 
   // Fijo sobre toda la página, así que se monta igual en las dos vistas de
   // cartelera (con títulos y sin ellos) sin importar dónde caiga en el árbol.
@@ -127,7 +127,7 @@ export function Library() {
     <div className="busy-overlay" role="status" aria-live="polite">
       <span className="spinner spinner--lg" aria-hidden="true" />
       <p className="busy-title">
-        {starting.title ? `Montando la sala de «${starting.title}»` : 'Montando la sala…'}
+        {starting.title ? `Setting up the room for “${starting.title}”` : 'Setting up the room…'}
       </p>
       {starting.title && (
         <p className="hint">Analizamos el vídeo y preparamos los subtítulos: con
@@ -140,8 +140,8 @@ export function Library() {
   const emptyRoomButton = (
     <button type="button" className="btn-primary" disabled={starting !== null} onClick={() => void start()}>
       {starting && starting.id === null
-        ? <><span className="spinner" aria-hidden="true" /> Montando la sala…</>
-        : '🎬 Crear sala vacía'}
+        ? <><span className="spinner" aria-hidden="true" /> Setting up the room…</>
+        : '🎬 Create empty room'}
     </button>
   )
 
@@ -153,25 +153,25 @@ export function Library() {
             <li key={f}>
               <code>{f}</code>
               <button type="button" className="btn-small" disabled={busyFolders}
-                onClick={() => void folderOp(() => removeMediaFolder(f))}>Quitar</button>
+                onClick={() => void folderOp(() => removeMediaFolder(f))}>Remove</button>
             </li>
           ))}
         </ul>
       )}
       <button type="button" className="btn-primary" onClick={() => void folderOp(pickMediaFolder)} disabled={busyFolders}>
-        {busyFolders ? 'Esperando…' : '📁 Añadir carpeta…'}
+        {busyFolders ? 'Waiting…' : '📁 Add folder…'}
       </button>
-      <p className="hint">Se abre el diálogo de tu sistema (mira el Finder/Explorador si no lo ves).</p>
+      <p className="hint">Your system's dialog opens (check Finder/File Explorer if you don't see it).</p>
       <details>
-        <summary>O escribe la ruta a mano</summary>
+        <summary>Or type the path by hand</summary>
         <form className="name-form" onSubmit={e => { e.preventDefault(); submitFolder() }}>
           <input
             value={folderPath}
             onChange={e => setFolderPath(e.target.value)}
-            placeholder="/ruta/absoluta/a/tus/vídeos"
-            aria-label="Ruta de la carpeta de medios"
+            placeholder="/absolute/path/to/your/videos"
+            aria-label="Media folder path"
           />
-          <button type="submit" disabled={busyFolders}>{busyFolders ? 'Añadiendo…' : 'Añadir carpeta'}</button>
+          <button type="submit" disabled={busyFolders}>{busyFolders ? 'Adding…' : 'Add folder'}</button>
         </form>
       </details>
       {folderError && <p className="field-error">{folderError}</p>}
@@ -183,14 +183,14 @@ export function Library() {
       <main className="page">
         <header className="masthead">
           <p className="eyebrow">JBG Watchparty</p>
-          <h1>La cartelera</h1>
+          <h1>The marquee</h1>
           <div className="marquee-rule" aria-hidden="true" />
         </header>
         <p>{folders.length === 0
-          ? 'Aún no hay nada en cartel: falta configurar carpetas de medios.'
-          : 'Las carpetas configuradas no contienen vídeos (MKV, MP4, AVI, M4V, WebM).'}</p>
+          ? 'Nothing on the marquee yet: no media folders configured.'
+          : 'The configured folders contain no videos (MKV, MP4, AVI, M4V, WebM).'}</p>
         <p>{emptyRoomButton}</p>
-        <h2>{folders.length === 0 ? 'Añade tu primera carpeta de medios' : 'Carpetas de medios'}</h2>
+        <h2>{folders.length === 0 ? 'Add your first media folder' : 'Media folders'}</h2>
         {foldersSection}
         {startingOverlay}
       </main>
@@ -204,12 +204,12 @@ export function Library() {
     <main className="page">
       <header className="masthead">
         <p className="eyebrow">JBG Watchparty</p>
-        <h1>La cartelera</h1>
-        <div className="marquee-rule" aria-hidden="true" />
-      </header>
-      <p className="hint">
-        {emptyRoomButton}
-        {' '}Reparte el enlace ahora y elige la película dentro de la sala.
+          <h1>The marquee</h1>
+          <div className="marquee-rule" aria-hidden="true" />
+        </header>
+        <p className="hint">
+          {emptyRoomButton}
+          {' '}Share the link now and pick the movie inside the room.
       </p>
       {groups.map(([path, name]) => (
         <section key={path} className="bill">
@@ -220,10 +220,10 @@ export function Library() {
                 <span className="film-title">{i.title}</span>
                 {starting?.id === i.id ? (
                   <span className="film-go film-go--busy" aria-hidden="true">
-                    <span className="spinner" /> Montando…
+                    <span className="spinner" /> Setting up…
                   </span>
                 ) : (
-                  <span className="film-go" aria-hidden="true">Crear sala →</span>
+                  <span className="film-go" aria-hidden="true">Create room →</span>
                 )}
               </button>
             </li>
@@ -231,7 +231,7 @@ export function Library() {
         </section>
       ))}
       <details className="folders-manage">
-        <summary>⚙️ Carpetas de medios ({folders.length})</summary>
+        <summary>⚙️ Media folders ({folders.length})</summary>
         {foldersSection}
       </details>
       {startingOverlay}

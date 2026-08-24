@@ -31,10 +31,10 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   app.post('/api/library/rescan', { preHandler: requireAdmin }, async () => deps.library())
 
   const addFolder = (path: string | undefined, reply: FastifyReply) => {
-    if (typeof path !== 'string' || !path.trim()) return reply.code(400).send({ error: 'ruta requerida' })
+    if (typeof path !== 'string' || !path.trim()) return reply.code(400).send({ error: 'path required' })
     let stat
-    try { stat = statSync(path) } catch { return reply.code(400).send({ error: `la ruta no existe: ${path}` }) }
-    if (!stat.isDirectory()) return reply.code(400).send({ error: `la ruta no es una carpeta: ${path}` })
+    try { stat = statSync(path) } catch { return reply.code(400).send({ error: `path not found: ${path}` }) }
+    if (!stat.isDirectory()) return reply.code(400).send({ error: `not a folder: ${path}` })
     if (!deps.config.mediaFolders.includes(path)) {
       deps.config.mediaFolders.push(path)
       saveConfig(deps.config)
@@ -66,7 +66,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
 
   app.get('/api/status', { preHandler: requireAdmin }, async () => ({
     tunnelUrl: deps.tunnel.url,
-    rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.media?.item.title ?? 'Sin película' })),
+    rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.media?.item.title ?? 'No movie' })),
   }))
 
   // Resuelve el ítem y valida que esté dentro de las carpetas de medios. Envía

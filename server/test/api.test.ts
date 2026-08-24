@@ -390,7 +390,7 @@ describe('api', () => {
     const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: {}, ...admin })
     const empty = res.json().token
     const status = (await app.inject({ url: '/api/status', ...admin })).json()
-    expect(status.rooms.find((r: any) => r.token === empty).title).toBe('Sin película')
+    expect(status.rooms.find((r: any) => r.token === empty).title).toBe('No movie')
     await rooms.close(empty)
   })
 

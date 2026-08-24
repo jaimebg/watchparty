@@ -28,7 +28,7 @@ function broadcast(room: Room, m: ServerMsg): void {
 }
 
 function system(room: Room, text: string): void {
-  const entry: ChatEntry = { id: randomBytes(6).toString('hex'), from: { id: 'sys', name: 'sistema', color: '#888', active: true }, kind: 'system', text, at: Date.now() }
+  const entry: ChatEntry = { id: randomBytes(6).toString('hex'), from: { id: 'sys', name: 'system', color: '#888', active: true }, kind: 'system', text, at: Date.now() }
   room.chat.push(entry)
   room.chat = room.chat.slice(-500)
   broadcast(room, { t: 'chat', entry })
@@ -62,7 +62,7 @@ function onMediaChanged(room: Room, media: RoomMedia): void {
   broadcast(room, { t: 'media', epoch: media.epoch })
   broadcast(room, { t: 'state', state: room.state, serverNow: now })
   const title = displayTitle(media.meta, media.item.title)
-  system(room, media.setBy ? `${media.setBy} puso «${title}»` : `ahora se ve «${title}»`)
+  system(room, media.setBy ? `${media.setBy} put on “${title}”` : `now playing “${title}”`)
 }
 
 export function registerHub(app: FastifyInstance, deps: AppDeps): void {
@@ -97,11 +97,11 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
 
         if (msg.t === 'join') {
           if (typeof msg.name !== 'string') return
-          me = { id: randomBytes(6).toString('hex'), name: msg.name.slice(0, 30) || 'Anónimo', color: COLORS[peers.size % COLORS.length], active: true }
+          me = { id: randomBytes(6).toString('hex'), name: msg.name.slice(0, 30) || 'Anonymous', color: COLORS[peers.size % COLORS.length], active: true }
           peers.set(socket, me)
           send(socket, { t: 'welcome', self: me, participants: [...peers.values()], state: room.state, serverNow: now, history: room.chat, epoch: room.media?.epoch ?? null })
           broadcast(room, { t: 'presence', participants: [...peers.values()] })
-          system(room, `${me.name} se unió`)
+          system(room, `${me.name} joined`)
           return
         }
         if (!me) return
@@ -113,7 +113,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
             if (!room.media) break
             room.state = apply(room.state, { type: msg.t, at: now })
             broadcast(room, { t: 'state', state: room.state, serverNow: now })
-            system(room, msg.t === 'play' ? `${me.name} reanudó` : `${me.name} pausó`)
+            system(room, msg.t === 'play' ? `${me.name} resumed` : `${me.name} paused`)
             if (msg.t === 'play') stall.refresh(room, now)
             break
           }
@@ -124,7 +124,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
             room.state = apply(room.state, { type: 'seek', position, at: now })
             room.media.session.seekTo(segmentForTime(room.media.segments, position))
             broadcast(room, { t: 'state', state: room.state, serverNow: now })
-            system(room, `${me.name} saltó a ${formatTime(position)}`)
+            system(room, `${me.name} jumped to ${formatTime(position)}`)
             stall.refresh(room, now)
             break
           }
@@ -176,7 +176,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
       if (bufferingActive) broadcast(room, { t: 'buffering', name: me.name, value: false })
       stall.forget(room, socket, Date.now())
       broadcast(room, { t: 'presence', participants: [...peers.values()] })
-      system(room, `${me.name} salió`)
+      system(room, `${me.name} left`)
     })
   })
 }

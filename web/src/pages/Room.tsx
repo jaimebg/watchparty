@@ -264,11 +264,11 @@ export function Room({ token }: { token: string }) {
     return (
       <main className="page page--gate">
         <header className="masthead">
-          <p className="eyebrow">JBG Watchparty</p>
-          <h1>Sala no encontrada</h1>
+          <p className="eyebrow">Watchparty</p>
+          <h1>Room not found</h1>
           <div className="marquee-rule" aria-hidden="true" />
         </header>
-        <p className="hint">El enlace puede haber caducado. Pide al host uno nuevo.</p>
+        <p className="hint">The link may have expired. Ask the host for a new one.</p>
       </main>
     )
   }
@@ -277,8 +277,8 @@ export function Room({ token }: { token: string }) {
     return (
       <main className="page page--gate">
         <div className="ticket">
-          <p className="eyebrow">Tu entrada para</p>
-          <h1 className="ticket-title">{info?.media?.title ?? 'la función'}</h1>
+          <p className="eyebrow">Your ticket to</p>
+          <h1 className="ticket-title">{info?.media?.title ?? 'the show'}</h1>
           <div className="ticket-rule" aria-hidden="true" />
           <form
             className="name-form"
@@ -290,15 +290,15 @@ export function Room({ token }: { token: string }) {
               setName(trimmed)
             }}
           >
-            <input value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Tu nombre" aria-label="Tu nombre" autoFocus />
-            <button type="submit" className="btn-primary">Entrar</button>
+            <input value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Your name" aria-label="Your name" autoFocus />
+            <button type="submit" className="btn-primary">Join</button>
           </form>
         </div>
       </main>
     )
   }
 
-  if (!info) return <main className="page"><p className="loading">Encendiendo el proyector…</p></main>
+  if (!info) return <main className="page"><p className="loading">Warming up the projector…</p></main>
 
   if (errorLog) {
     const retry = async () => {
@@ -308,10 +308,10 @@ export function Room({ token }: { token: string }) {
     }
     return (
       <main className="page">
-        <h1>Error al preparar la sala</h1>
+        <h1>Couldn't prepare the room</h1>
         <pre className="error-log">{errorLog.join('\n')}</pre>
-        <button className="btn-primary" onClick={retry}>Reintentar</button>
-        {isHost && <button className="btn-head" onClick={() => setShowPicker(true)}>🎬 Cambiar película</button>}
+        <button className="btn-primary" onClick={retry}>Retry</button>
+        {isHost && <button className="btn-head" onClick={() => setShowPicker(true)}>🎬 Change movie</button>}
         {showPicker && (
           <MediaPicker token={token} currentItemId={info.media?.itemId ?? null}
             by={name} onClose={() => setShowPicker(false)} />
@@ -325,37 +325,37 @@ export function Room({ token }: { token: string }) {
       {tunnelDown && (
         <div className="banner">
           <span className="banner-dot" aria-hidden="true" />
-          Túnel caído, relanzando…
+          Tunnel down, relaunching…
         </div>
       )}
       <div className="room-head">
         <div className="room-head-titles">
-          <h1>{info.media ? info.media.title : 'Sala sin película'}</h1>
+          <h1>{info.media ? info.media.title : 'Room without a movie'}</h1>
         </div>
         <div className="room-head-actions">
           {shareUrl && (
             <button type="button" className="btn-head" onClick={() => void copyLink()}
-              title={`Copiar el enlace público de la sala (${shareUrl})`}>
-              {copied === 'ok' ? <CheckIcon /> : <LinkIcon />} {copied === 'ok' ? '¡Copiado!' : 'Copiar enlace'}
+              title={`Copy the room's public link (${shareUrl})`}>
+              {copied === 'ok' ? <CheckIcon /> : <LinkIcon />} {copied === 'ok' ? 'Copied!' : 'Copy link'}
             </button>
           )}
           {info.media?.meta && (
-            <button type="button" className="btn-head" onClick={() => setShowMeta(true)} title="Información de la película">
+            <button type="button" className="btn-head" onClick={() => setShowMeta(true)} title="Movie info">
               <InfoIcon /> Info
             </button>
           )}
           {isHost && (
             <button type="button" className="btn-head" onClick={() => setShowPicker(true)}
-              title={info.media ? 'Cambiar la película de la sala' : 'Elegir la película de la sala'}>
-              🎬 {info.media ? 'Cambiar película' : 'Elegir película'}
+              title={info.media ? "Change the room's movie" : "Pick the room's movie"}>
+              🎬 {info.media ? 'Change movie' : 'Pick movie'}
             </button>
           )}
         </div>
       </div>
       {copied === 'fail' && shareUrl && (
         <p className="share-fallback">
-          <span>No se pudo copiar solo. Cópialo a mano:</span>
-          <input readOnly autoFocus value={shareUrl} aria-label="Enlace público de la sala"
+          <span>Couldn't copy automatically. Copy it by hand:</span>
+          <input readOnly autoFocus value={shareUrl} aria-label="Room public link"
             onFocus={e => e.currentTarget.select()} />
         </p>
       )}
@@ -378,11 +378,11 @@ export function Room({ token }: { token: string }) {
             // El chat sigue montado a la derecha: la gente entra, pone su nombre
             // y charla mientras el host elige.
             <div className="stage-waiting">
-              <p className="eyebrow">Sin película todavía</p>
-              <h2>{isHost ? 'Elige qué vais a ver' : 'El host está eligiendo la película'}</h2>
+              <p className="eyebrow">No movie yet</p>
+              <h2>{isHost ? "Pick what you'll watch" : 'The host is picking the movie'}</h2>
               <p className="hint">{isHost
-                ? 'Mientras tanto puedes copiar el enlace y repartirlo: la sala ya existe.'
-                : 'Puedes ir charlando en el chat; el vídeo aparecerá solo.'}</p>
+                ? 'Meanwhile you can copy the link and pass it around: the room already exists.'
+                : 'You can start chatting; the video will show up on its own.'}</p>
             </div>
           )}
         </div>

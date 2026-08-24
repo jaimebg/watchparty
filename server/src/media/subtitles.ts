@@ -55,7 +55,7 @@ export async function extractSubtitle(input: string, info: MediaInfo, srtFiles: 
     await pExecFile(ffmpegPath as unknown as string, ['-y', '-i', input, '-map', `0:s:${embedded[id].index}`, '-f', 'webvtt', outVtt])
   } else {
     const srt = srtFiles[id - embedded.length]
-    if (!srt) throw new Error(`Subtítulo ${id} no existe`)
+    if (!srt) throw new Error(`Subtitle ${id} does not exist`)
     await pExecFile(ffmpegPath as unknown as string, ['-y', '-i', srt, '-f', 'webvtt', outVtt])
   }
 }

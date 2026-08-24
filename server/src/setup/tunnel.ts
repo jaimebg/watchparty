@@ -164,7 +164,7 @@ export function peerReachable(): boolean {
 
 function elevateMac(verb: 'up' | 'down'): void {
   const prefix = brewPrefix()
-  if (!prefix) throw new Error('WireGuard no está instalado (falta wg-quick)')
+  if (!prefix) throw new Error('WireGuard is not installed (wg-quick missing)')
   // PATH explícito y bash de brew a la fuerza: wg-quick lleva shebang
   // `env bash` y el bash 3.2 del sistema lo rechaza en su primera comprobación;
   // además necesita encontrar `wg` y `wireguard-go` del mismo prefijo.
@@ -174,7 +174,7 @@ function elevateMac(verb: 'up' | 'down'): void {
 }
 
 function elevateWindows(verb: 'up' | 'down'): void {
-  if (!existsSync(WINDOWS_WIREGUARD)) throw new Error('WireGuard para Windows no está instalado')
+  if (!existsSync(WINDOWS_WIREGUARD)) throw new Error('WireGuard for Windows is not installed')
   // /installtunnelservice registra el túnel como servicio (y así sobrevive al
   // cierre de esta consola); /uninstalltunnelservice lo retira. Ambos exigen
   // administrador, de ahí el -Verb RunAs que dispara el UAC.
@@ -194,37 +194,37 @@ export interface TunnelResult { ok: boolean; message: string }
 
 export function bringUp(): TunnelResult {
   const state = tunnelState()
-  if (state === 'unsupported') return { ok: false, message: `Sin soporte de relevo en ${process.platform}.` }
-  if (state === 'unconfigured') return { ok: false, message: 'Relevo sin configurar. Ejecuta `npm run setup`.' }
-  if (state === 'missing-wireguard') return { ok: false, message: 'WireGuard no está instalado.' }
+  if (state === 'unsupported') return { ok: false, message: `No relay support on ${process.platform}.` }
+  if (state === 'unconfigured') return { ok: false, message: 'Relay not set up. Run `npm run setup`.' }
+  if (state === 'missing-wireguard') return { ok: false, message: 'WireGuard is not installed.' }
   if (state === 'up') {
     return peerReachable()
-      ? { ok: true, message: 'El túnel del relevo ya estaba activo.' }
-      : { ok: false, message: 'El túnel está levantado pero el otro extremo no responde.' }
+      ? { ok: true, message: 'The relay tunnel was already up.' }
+      : { ok: false, message: 'The tunnel is up but the far end does not respond.' }
   }
 
   console.log(process.platform === 'win32'
-    ? '🔐 Levantando el túnel del relevo — Windows va a pedirte confirmación de administrador (UAC).'
-    : '🔐 Levantando el túnel del relevo — macOS va a pedirte tu contraseña de administrador.')
+    ? '🔐 Bringing up the relay tunnel. Windows will ask for administrator confirmation (UAC).'
+    : '🔐 Bringing up the relay tunnel. macOS will ask for your administrator password.')
   try {
     elevate('up')
   } catch {
-    return { ok: false, message: 'No se pudo levantar el túnel (¿se canceló la autenticación?).' }
+    return { ok: false, message: 'Could not bring up the tunnel (was authentication cancelled?).' }
   }
   // En Windows no hay wg-quick, así que el mensaje no nombra la herramienta.
-  if (tunnelState() !== 'up') return { ok: false, message: 'WireGuard terminó pero la interfaz no aparece.' }
+  if (tunnelState() !== 'up') return { ok: false, message: 'WireGuard finished but the interface does not appear.' }
   return peerReachable()
-    ? { ok: true, message: 'Túnel del relevo activo.' }
-    : { ok: false, message: 'Túnel levantado, pero el otro extremo no responde. ¿Está vivo el VPS?' }
+    ? { ok: true, message: 'Relay tunnel is up.' }
+    : { ok: false, message: 'Tunnel is up, but the far end does not respond. Is the VPS alive?' }
 }
 
 export function bringDown(): TunnelResult {
   const state = tunnelState()
-  if (state !== 'up') return { ok: true, message: 'El túnel del relevo ya estaba bajado.' }
+  if (state !== 'up') return { ok: true, message: 'The relay tunnel was already down.' }
   try {
     elevate('down')
   } catch {
-    return { ok: false, message: 'No se pudo bajar el túnel (¿se canceló la autenticación?).' }
+    return { ok: false, message: 'Could not take the tunnel down (was authentication cancelled?).' }
   }
-  return { ok: true, message: 'Túnel del relevo bajado.' }
+  return { ok: true, message: 'Relay tunnel is down.' }
 }

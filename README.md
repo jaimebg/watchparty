@@ -28,16 +28,16 @@ npm install
 ### Step 2: Configure media folders
 
 The first time you open the library, a **«📁 Choose folder…»** button opens your
-system's native dialog (Finder/File Explorer) to pick your videos folder — no
+system's native dialog (Finder/File Explorer) so you can pick your videos folder. No
 file editing required. If you prefer, you can also type the path by hand in the
 same setup wizard, or edit the configuration directly.
 
 Configuration is read in two layers, from lowest to highest priority:
 
 1. **`config.defaults.json`** (repo root, versioned). A template with generic
-   defaults only — it ships with every optional field set to `null`.
+   defaults only. Every optional field ships as `null`.
 2. **`config.json`** (local, outside the repo). Everything specific to your
-   machine — media folders and any API keys or tunnel settings. It lives in the
+   machine: media folders and any API keys or tunnel settings. It lives in the
    data directory of your platform:
    - **macOS:** `~/Library/Application Support/jbg-watchparty/config.json`
    - **Windows:** `%APPDATA%\jbg-watchparty\config.json`
@@ -87,7 +87,7 @@ another instance. Warnings (empty library, folder that no longer exists, tunnel 
 not block anything, because the panel and the local network keep working.
 
 ```
-🎬 Watchparty — environment check
+🎬 Watchparty environment check
 
 ✅ Node 22
 ✅ ffmpeg and ffprobe bundled
@@ -102,7 +102,7 @@ not block anything, because the panel and the local network keep working.
 You can run just the check with `npm run preflight`. Afterwards, the server:
 1. Scans the configured media folders
 2. Automatically brings up a secure HTTPS tunnel (cloudflared Quick Tunnel)
-3. Opens your browser at `http://localhost:8400/?key=<admin-token>` — `key` is a token generated at startup that authenticates the host panel (stored in a cookie after the first visit)
+3. Opens your browser at `http://localhost:8400/?key=<admin-token>`. The `key` is a token generated at startup that authenticates the host panel (stored in a cookie after the first visit)
 4. Shows the secure public URL to share with guests
 
 **All commands:**
@@ -129,8 +129,8 @@ A room and a movie are different things:
 - **Creating an empty room** gives you a shareable link instantly, before choosing
   anything. Guests join, type their name and can **chat** while the host decides;
   they see a waiting card where the video would be.
-- **Only the host** — whoever holds the admin cookie, i.e. whoever opened the
-  panel on `localhost`— can set or change the movie, with the
+- **Only the host** (whoever holds the admin cookie, i.e. whoever opened the
+  panel on `localhost`) can set or change the movie, with the
   «🎬 Choose/Change movie» button in the room header. Play, pause and the seek bar
   belong to everyone.
 - **Changing movies** neither closes the room nor changes the link. The new file is
@@ -141,7 +141,7 @@ A room and a movie are different things:
 Each movie in a room is a numbered "generation", and that number goes into the video
 URL: `/stream/<token>/e2/master.m3u8`. It isn't decorative. Segments and init are named
 identically across movies (`init_0.mp4`, `seg_0_00000.m4s`), so without versioning the
-URL the browser cache —or the relay cache, if you use `streamBaseUrl`— would serve the
+URL the browser cache (or the relay cache, if you use `streamBaseUrl`) would serve the
 previous movie's bytes. It goes in the path rather than a query string so versioning
 doesn't depend on how the relay proxy treats queries, and so the relative URIs inside
 playlists land within the right generation by themselves.
@@ -153,7 +153,7 @@ changes on every start. If you have a domain managed in Cloudflare, you can get 
 URL (e.g. `https://watchparty.yourdomain.com`) with a one-time setup:
 
 1. Sign in at [one.dash.cloudflare.com](https://one.dash.cloudflare.com) → **Networks → Tunnels → Create a tunnel** (Cloudflared type) and give it a name (e.g. `watchparty`).
-2. At the connector step, **don't install anything**: just copy the token shown in the command (`cloudflared service install <TOKEN>` — the token is the long string).
+2. At the connector step, **don't install anything**: just copy the token shown in the command (`cloudflared service install <TOKEN>`; the token is the long string).
 3. Under **Public Hostnames**, add `watchparty.yourdomain.com` → service `http://localhost:8400` (the port from your `config.json`). Cloudflare creates the DNS route automatically.
 4. In your local `config.json`, add:
 
@@ -174,15 +174,15 @@ The Cloudflare CDN terms for Free/Pro/Business plans reserve the right to limit 
 for anyone using it "to serve video or a disproportionate percentage of pictures, audio
 files, or other large files", with an exemption only if the content is hosted on a
 Cloudflare service (Stream, Images, R2). The public hostname of a tunnel is a CNAME to
-`<uuid>.cfargotunnel.com`, which **only resolves through the proxy** — you can't grey-route
-it — so all video goes through the CDN by construction. A 6-person, 2-hour session moves
+`<uuid>.cfargotunnel.com`, which **only resolves through the proxy**: you can't grey-route
+it, so all video goes through the CDN by construction. A 6-person, 2-hour session moves
 roughly 30 GB.
 
 `streamBaseUrl` separates the two planes:
 
 | Plane | What it carries | How it travels |
 |---|---|---|
-| Control | HTML, API, WebSocket (chat, sync, presence) | Cloudflare tunnel — intended use, negligible traffic |
+| Control | HTML, API, WebSocket (chat, sync, presence) | Cloudflare tunnel (intended use, negligible traffic) |
 | Data | `master.m3u8`, `init_*.mp4`, `seg_*.m4s`, `sub_*.vtt` | Your relay, bypassing the CDN |
 
 Pointing the `master.m3u8` at the relay is enough: HLS resolves the playlist's relative
@@ -230,8 +230,8 @@ right behavior on a LAN.
 ### Setting up the home end on another machine (macOS or Windows)
 
 With the `relay*` fields in place, a new machine gets ready with a single command.
-Install WireGuard first — `brew install wireguard-tools` on macOS,
-[the official installer](https://www.wireguard.com/install/) on Windows — then:
+Install WireGuard first (`brew install wireguard-tools` on macOS,
+[the official installer](https://www.wireguard.com/install/) on Windows), then:
 
 ```bash
 npm run setup
@@ -271,7 +271,7 @@ Without an API key, chat works perfectly fine; only the GIF button is unavailabl
 ## Supported formats
 
 **Video:**
-- MKV (Matroska) — multiple audio and subtitle tracks
+- MKV (Matroska): multiple audio and subtitle tracks
 - MP4 (H.264)
 - AVI
 - WebM
@@ -280,8 +280,8 @@ Without an API key, chat works perfectly fine; only the GIF button is unavailabl
 - Everything is transcoded to H.264 with keyframes forced every 4 s (hardware
   acceleration when available: VideoToolbox on macOS, NVENC/QSV on Windows).
 
-  Stream-copying the video would be cheaper, but the playlist is VOD — the server must
-  declare *in advance* where each segment will be cut — and in copy mode the cuts are
+  Stream-copying the video would be cheaper, but the playlist is VOD: the server must
+  declare *in advance* where each segment will be cut. In copy mode the cuts are
   chosen by ffmpeg's HLS muxer against its own grid, which the server cannot predict.
   When the two lists disagree, the playlist ends up short and the room freezes mid-movie.
   The full reasoning, with measurements, lives in
@@ -342,14 +342,14 @@ Without an API key, chat works perfectly fine; only the GIF button is unavailabl
 
 Open two terminals:
 
-**Terminal 1 — Server (no auto-reload):**
+**Terminal 1: Server (no auto-reload)**
 ```bash
 npm start -w server
 ```
 `tsx` runs the server straight from TypeScript, but without `--watch`: after every change
 in `server/src`, stop the process (`Ctrl+C`) and launch `npm start -w server` again.
 
-**Terminal 2 — Client (with Vite dev server):**
+**Terminal 2: Client (with Vite dev server)**
 ```bash
 npm run dev -w web
 ```
@@ -398,10 +398,10 @@ Builds the React client for production into `web/dist/`.
 
 ## Limitations in v1
 
-- **Image-based subtitles** (PGS/VobSub) — unsupported; silently skipped (they don't appear as options in the selector)
-- **Persistence** — chat and room history are lost when the room closes
-- **User accounts** — no authentication; only basic host/guest roles
-- **Native packaging** — v1 requires Node.js and `npm start`; Electron/installer left for future versions
+- **Image-based subtitles** (PGS/VobSub): unsupported; silently skipped (they don't appear as options in the selector)
+- **Persistence**: chat and room history are lost when the room closes
+- **User accounts**: no authentication; only basic host/guest roles
+- **Native packaging**: v1 requires Node.js and `npm start`; Electron/installer left for future versions
 
 ## Project structure
 
@@ -448,8 +448,8 @@ Builds the React client for production into `web/dist/`.
 - Verify the file is inside a folder listed in `mediaFolders`
 - If it's HEVC/x265, ffmpeg is transcoding; this can take minutes on old hardware
 - On error, the room shows the ffmpeg log with a «Retry» button
-- If after a seek the position stalls and «X is loading…» appears, that's expected: the room waits up to 20 s for the straggler
-- Seeking mid-MKV used to leave subtitles over a black frame; that sync bug was fixed. If you ever see it again, please report it — it's not a known limitation
+- If after a seek the position stalls and "X is buffering…" appears, that's expected: the room waits up to 20 s for the straggler
+- Seeking mid-MKV used to leave subtitles over a black frame; that sync bug was fixed. If you ever see it again, please report it; it's not a known limitation
 
 ### Audio doesn't change for some viewers
 - That's expected: each user picks their track independently

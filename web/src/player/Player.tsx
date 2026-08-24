@@ -392,7 +392,7 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
   if (mode === 'unsupported') {
     return (
       <div className="player">
-        <p className="field-error">Este navegador no puede reproducir HLS. Prueba con una versión reciente de Chrome, Firefox o Safari.</p>
+        <p className="field-error">This browser can't play HLS. Try a recent version of Chrome, Firefox or Safari.</p>
       </div>
     )
   }
@@ -412,19 +412,19 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
         ))}
       </video>
       <div className="controls">
-        <button type="button" className="btn-play" aria-label={paused ? 'Reproducir (espacio)' : 'Pausar (espacio)'}
-          title={paused ? 'Reproducir (espacio)' : 'Pausar (espacio)'} onClick={togglePlay}>
+        <button type="button" className="btn-play" aria-label={paused ? 'Play (space)' : 'Pause (space)'}
+          title={paused ? 'Play (space)' : 'Pause (space)'} onClick={togglePlay}>
           {paused ? <PlayIcon /> : <PauseIcon />}
         </button>
         <div className="volume-group">
-          <button type="button" className="btn-mute" aria-label={muted ? 'Quitar silencio' : 'Silenciar'}
-            title={muted ? 'Quitar silencio' : 'Silenciar'} onClick={() => setMuted(m => !m)}>
+          <button type="button" className="btn-mute" aria-label={muted ? 'Unmute' : 'Mute'}
+            title={muted ? 'Unmute' : 'Mute'} onClick={() => setMuted(m => !m)}>
             {muted || volume === 0 ? <MutedIcon /> : <VolumeIcon />}
           </button>
           <input className="seek volume" type="range" min={0} max={MAX_VOLUME} step={0.01}
-            aria-label="Volumen"
+            aria-label="Volume"
             aria-valuetext={`${Math.round((muted ? 0 : volume) * 100)}%`}
-            title={`Volumen ${Math.round((muted ? 0 : volume) * 100)}%`}
+            title={`Volume ${Math.round((muted ? 0 : volume) * 100)}%`}
             style={{ background: volumeGradient(muted ? 0 : volume) }}
             value={muted ? 0 : volume}
             onChange={e => { setVolume(Number(e.target.value)); if (muted) setMuted(false) }} />
@@ -434,8 +434,8 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
         <input className="seek position" type="range" step={1}
           min={0} max={Math.max(1, Math.round(media.durationSec))}
           disabled={media.durationSec <= 0}
-          aria-label="Posición en la película"
-          aria-valuetext={`${formatClock(shownPosition)} de ${formatClock(media.durationSec)}`}
+          aria-label="Position in movie"
+          aria-valuetext={`${formatClock(shownPosition)} of ${formatClock(media.durationSec)}`}
           style={{ background: positionGradient(shownPosition, media.durationSec) }}
           value={Math.round(shownPosition)}
           onPointerDown={() => { draggingRef.current = true; committedRef.current = false; pointerDownRef.current = true; armDragWatchdog() }}
@@ -463,22 +463,22 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
           // Si el foco se va a media pulsación (raro, pero posible) tampoco
           // llega un keyup a este input: mismo motivo que pointercancel.
           onBlur={() => { draggingRef.current = false; pointerDownRef.current = false; disarmDragWatchdog() }} />
-        <span className="time-label" title={`Duración total ${formatClock(media.durationSec)}`}>−{formatClock(remaining)}</span>
+        <span className="time-label" title={`Total duration ${formatClock(media.durationSec)}`}>−{formatClock(remaining)}</span>
         {/* Con una sola pista el audio va muxeado en el propio segmento de vídeo
             y hls.js no anuncia ninguna: no hay nada entre lo que elegir. */}
         {mode === 'hls' && audioTracks.length > 1 && (
-          <select aria-label="Pista de audio" value={audioTrack}
+          <select aria-label="Audio track" value={audioTrack}
             onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
             {audioTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         )}
-        <select aria-label="Subtítulos" value={sub} onChange={e => setSub(Number(e.target.value))}>
-          <option value={-1}>Sin subtítulos</option>
+        <select aria-label="Subtitles" value={sub} onChange={e => setSub(Number(e.target.value))}>
+          <option value={-1}>No subtitles</option>
           {media.subtitles.map((s, i) => <option key={s.id} value={i}>{s.label}</option>)}
         </select>
         <button type="button" className="btn-fullscreen"
-          aria-label={fullscreen ? 'Salir de pantalla completa (F)' : 'Pantalla completa (F)'}
-          title={fullscreen ? 'Salir de pantalla completa (F)' : 'Pantalla completa (F)'}
+          aria-label={fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          title={fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
           onClick={onToggleFullscreen}>
           {fullscreen ? <ExitFullscreenIcon /> : <EnterFullscreenIcon />}
         </button>

@@ -52,13 +52,13 @@ describe('EMOJI_CATALOG', () => {
     expect(EMOJI_CATALOG.every(r => typeof r[0] === 'string' && r[0] !== '')).toBe(true)
     // El grupo 2 son tonos de piel y pelo: no deben haberse colado.
     expect(EMOJI_CATALOG.some(r => r[3] === 2)).toBe(false)
-    // Las etiquetas vienen en castellano.
-    expect(EMOJI_CATALOG.find(r => r[0] === '🍿')?.[1]).toBe('palomitas')
+    // Labels come in English.
+    expect(EMOJI_CATALOG.find(r => r[0] === '🍿')?.[1]).toBe('popcorn')
   })
 
-  it('la búsqueda en castellano funciona sobre el catálogo real', async () => {
+  it('la búsqueda en inglés funciona sobre el catálogo real', async () => {
     const { EMOJI_CATALOG } = await import('../src/chat/emojiCatalog')
-    expect(searchEmojis(EMOJI_CATALOG, 'palomitas').map(r => r[0])).toContain('🍿')
-    expect(searchEmojis(EMOJI_CATALOG, 'corazon').length).toBeGreaterThan(0)
+    expect(searchEmojis(EMOJI_CATALOG, 'popcorn').map(r => r[0])).toContain('🍿')
+    expect(searchEmojis(EMOJI_CATALOG, 'heart').length).toBeGreaterThan(0)
   })
 })

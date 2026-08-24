@@ -16,7 +16,7 @@ export async function probeFile(path: string): Promise<MediaInfo> {
   const json = JSON.parse(stdout)
   const streams: any[] = json.streams ?? []
   const video = streams.find(s => s.codec_type === 'video')
-  if (!video) throw new Error(`Sin pista de vídeo: ${path}`)
+  if (!video) throw new Error(`No video track: ${path}`)
   const audioStreams = streams.filter(s => s.codec_type === 'audio')
   const subStreams = streams.filter(s => s.codec_type === 'subtitle')
   return {
@@ -26,11 +26,11 @@ export async function probeFile(path: string): Promise<MediaInfo> {
     width: video.width, height: video.height,
     audio: audioStreams.map((s, i) => ({
       index: i, codec: s.codec_name, lang: s.tags?.language ?? 'und',
-      label: s.tags?.title ?? `Pista ${i + 1}`, channels: s.channels ?? 2,
+      label: s.tags?.title ?? `Track ${i + 1}`, channels: s.channels ?? 2,
     })),
     subs: subStreams.map((s, i) => ({
       index: i, codec: s.codec_name, lang: s.tags?.language ?? 'und',
-      label: s.tags?.title ?? `Subtítulo ${i + 1}`, textBased: TEXT_SUB_CODECS.has(s.codec_name),
+      label: s.tags?.title ?? `Subtitle ${i + 1}`, textBased: TEXT_SUB_CODECS.has(s.codec_name),
     })),
   }
 }

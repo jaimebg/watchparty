@@ -1,5 +1,6 @@
 {
   "name": "watchparty-server",
+  "description": "Fastify server that transcodes video to HLS, syncs playback and tunnels guests in.",
   "private": true,
   "type": "module",
   "scripts": {

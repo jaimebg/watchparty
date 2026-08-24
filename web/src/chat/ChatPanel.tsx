@@ -55,7 +55,7 @@ export function ChatPanel({
         {state.participants.map(p => {
           const flash = state.flashes[p.id]
           return (
-            <li key={p.id} className={p.active ? undefined : 'away'} title={p.active ? undefined : 'ausente'}>
+            <li key={p.id} className={p.active ? undefined : 'away'} title={p.active ? undefined : 'away'}>
               <span className="dot" style={{ background: p.color }} />
               {p.name}
               {/* La key es el id del destello, no el del participante: así una
@@ -95,15 +95,15 @@ export function ChatPanel({
       </div>
 
       {state.buffering.map(n => (
-        <p key={n} className="buffering-note">{n} está cargando…</p>
+        <p key={n} className="buffering-note">{n} is buffering…</p>
       ))}
 
       <form className="chat-input" onSubmit={e => { e.preventDefault(); submit() }}>
-        <input value={text} onChange={e => setText(e.target.value)} placeholder="Escribe un mensaje…" aria-label="Mensaje de chat" />
+        <input value={text} onChange={e => setText(e.target.value)} placeholder="Type a message…" aria-label="Chat message" />
         {!gifsDisabled && (
           <button type="button" onClick={() => setGifOpen(v => !v)}>GIF</button>
         )}
-        <button type="submit" className="btn-primary">Enviar</button>
+        <button type="submit" className="btn-primary">Send</button>
       </form>
 
       {gifOpen && !gifsDisabled && (
