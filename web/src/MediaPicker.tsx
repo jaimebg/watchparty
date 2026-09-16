@@ -4,6 +4,7 @@ import { getLibrary, rescanLibrary, setRoomMedia } from './api'
 // the diacritic-free NFD that lets "corazon" find "Corazón", and `SEARCH_LIMIT`
 // is already the 120-result cap that keeps hundreds of buttons out of the DOM.
 import { normalize, SEARCH_LIMIT } from './chat/emojiSearch'
+import { t } from './i18n'
 import type { LibraryItem } from './types'
 
 interface Folder { path: string; name: string; items: LibraryItem[] }
@@ -123,13 +124,13 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
       <button type="button" className="media-btn" disabled={busy} onClick={() => pick(i)}>
         <span className="media-title">
           {i.title}
-          {i.id === currentItemId && <span className="media-current"> · now playing</span>}
+          {i.id === currentItemId && <span className="media-current">{t('picker.nowPlaying')}</span>}
         </span>
         <span className="hint">
           {withFolder && <>{i.folderName} · </>}
           {i.srtFiles.length > 0
-            ? `${i.srtFiles.length} external subtitle${i.srtFiles.length === 1 ? '' : 's'}`
-            : 'no external subtitles'}
+            ? i.srtFiles.length === 1 ? t('picker.externalOne') : t('picker.externalMany', { count: i.srtFiles.length })
+            : t('picker.noExternalSubs')}
         </span>
       </button>
     </li>
@@ -141,8 +142,8 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
           the mode and there is no preventing it, so it would be a shortcut that
           half works. It closes with the backdrop and with the ✕. */}
       <div className="modal media-modal" onClick={e => e.stopPropagation()}>
-        <button className="modal-close" aria-label="Close" onClick={onClose}>✕</button>
-        <h2>{currentItemId ? 'Change movie' : 'Pick movie'}</h2>
+        <button className="modal-close" aria-label={t('common.close')} onClick={onClose}>✕</button>
+        <h2>{currentItemId ? t('movie.change') : t('movie.pick')}</h2>
 
         {/* While the movie is being set the modal hides the list: the wait runs
             several seconds and leaving the library on screen with everything
@@ -151,40 +152,38 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
         {applying ? (
           <div className="modal-busy" role="status" aria-live="polite">
             <span className="spinner spinner--lg" aria-hidden="true" />
-            <p className="media-title">“{applying.title}”</p>
-            <p className="hint">Getting it ready for the whole room: we analyze the video and
-              extract the subtitles. It can take a few seconds.</p>
+            <p className="media-title">{t('picker.applyingTitle', { title: applying.title })}</p>
+            <p className="hint">{t('picker.gettingReady')}</p>
           </div>
         ) : (
           <>
             <input className="emoji-search" value={query} onChange={e => setQuery(e.target.value)}
-              placeholder="Search by title…" aria-label="Search movies" />
+              placeholder={t('picker.searchPlaceholder')} aria-label={t('picker.searchLabel')} />
 
             {error && <p className="field-error">{error}</p>}
 
             {pending && (
               <div className="media-confirm">
-                <p>You're about to change the movie <strong>for everyone</strong>. Playback
-                  starts over and the chat is kept.</p>
-                <p className="media-title">“{pending.title}”</p>
+                <p>{t('picker.confirmA')}<strong>{t('picker.confirmForEveryone')}</strong>{t('picker.confirmB')}</p>
+                <p className="media-title">{t('picker.applyingTitle', { title: pending.title })}</p>
                 {/* No "setting…" label: the moment it is pressed, `applying`
                     takes this branch away and the waiting card appears. */}
                 <button type="button" className="btn-primary" disabled={busy} onClick={() => void apply(pending)}>
-                  Play it
+                  {t('picker.playIt')}
                 </button>
                 <button type="button" className="btn-small" disabled={busy} onClick={() => setPending(null)}>
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
             )}
 
             {items === null ? (
-              <p className="gif-picker-status"><span className="spinner" aria-hidden="true" /> Loading the library…</p>
+              <p className="gif-picker-status"><span className="spinner" aria-hidden="true" /> {t('picker.loadingLibrary')}</p>
             ) : items.length === 0 ? (
-              <p className="gif-picker-status">No videos in the configured folders.</p>
+              <p className="gif-picker-status">{t('picker.noVideos')}</p>
             ) : searching ? (
               results.length === 0
-                ? <p className="gif-picker-status">No titles match.</p>
+                ? <p className="gif-picker-status">{t('picker.noTitlesMatch')}</p>
                 : <ul className="media-list">{results.map(i => row(i, true))}</ul>
             ) : (
               <div className="media-folders">
@@ -210,8 +209,8 @@ export function MediaPicker({ token, currentItemId, by, onClose }: {
 
             <button type="button" className="btn-small" disabled={busy} onClick={rescan}>
               {rescanning
-                ? <><span className="spinner" aria-hidden="true" /> Scanning…</>
-                : '↻ Rescan'}
+                ? <><span className="spinner" aria-hidden="true" /> {t('picker.scanning')}</>
+                : t('picker.rescan')}
             </button>
           </>
         )}

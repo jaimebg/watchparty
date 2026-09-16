@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { t } from '../i18n'
 import { EmojiPicker } from './EmojiPicker'
 import { addQuick, parseQuick, QUICK_KEY, removeQuick } from './quickEmojis'
 import type { ClientMsg } from '../types'
@@ -21,7 +22,7 @@ export function ReactionsBar({ send }: { send: (m: ClientMsg) => void }) {
           {emoji}
         </button>
       ))}
-      <button type="button" className="btn-add-emoji" aria-label="Pick emojis" title="Pick emojis"
+      <button type="button" className="btn-add-emoji" aria-label={t('emoji.pickEmojis')} title={t('emoji.pickEmojis')}
         onClick={() => setPickerOpen(true)}>+</button>
 
       {pickerOpen && (

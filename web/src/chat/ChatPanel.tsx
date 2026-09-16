@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { searchGifs } from '../api'
+import { t } from '../i18n'
 import { GifPicker } from './GifPicker'
+import { formatSystemEvent } from './systemText'
 import type { ChatState } from './chatStore'
 import type { ClientMsg } from '../types'
 
@@ -55,7 +57,7 @@ export function ChatPanel({
         {state.participants.map(p => {
           const flash = state.flashes[p.id]
           return (
-            <li key={p.id} className={p.active ? undefined : 'away'} title={p.active ? undefined : 'away'}>
+            <li key={p.id} className={p.active ? undefined : 'away'} title={p.active ? undefined : t('chat.away')}>
               <span className="dot" style={{ background: p.color }} />
               {p.name}
               {/* The key is the flash's id, not the participant's: that way a
@@ -77,11 +79,11 @@ export function ChatPanel({
           {state.entries.map(e => (
             <div key={e.id} className={`chat-entry chat-entry--${e.kind}`}>
               {e.kind === 'system' ? (
-                <em>{e.text}</em>
+                <em>{formatSystemEvent(e.event)}</em>
               ) : e.kind === 'gif' ? (
                 <>
                   <span style={{ color: e.from.color }}>{e.from.name}</span>
-                  <img src={e.gifUrl ?? ''} alt="gif" />
+                  <img src={e.gifUrl} alt="gif" />
                 </>
               ) : (
                 <>
@@ -95,15 +97,15 @@ export function ChatPanel({
       </div>
 
       {state.buffering.map(n => (
-        <p key={n} className="buffering-note">{n} is buffering…</p>
+        <p key={n} className="buffering-note">{t('chat.buffering', { name: n })}</p>
       ))}
 
       <form className="chat-input" onSubmit={e => { e.preventDefault(); submit() }}>
-        <input value={text} onChange={e => setText(e.target.value)} placeholder="Type a message…" aria-label="Chat message" />
+        <input value={text} onChange={e => setText(e.target.value)} placeholder={t('chat.placeholder')} aria-label={t('chat.messageLabel')} />
         {!gifsDisabled && (
           <button type="button" onClick={() => setGifOpen(v => !v)}>GIF</button>
         )}
-        <button type="submit" className="btn-primary">Send</button>
+        <button type="submit" className="btn-primary">{t('chat.send')}</button>
       </form>
 
       {gifOpen && !gifsDisabled && (

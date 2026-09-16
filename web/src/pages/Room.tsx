@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import { getRoom, getStatus } from '../api'
+import { getRoom, getStatus, retryRoom } from '../api'
+import { t } from '../i18n'
 import { connectRoom, nextDelay } from '../ws'
 import { Player, type LastState } from '../player/Player'
 import { useFullscreen } from '../player/useFullscreen'
@@ -264,10 +265,10 @@ export function Room({ token }: { token: string }) {
       <main className="page page--gate">
         <header className="masthead">
           <p className="eyebrow">Watchparty</p>
-          <h1>Room not found</h1>
+          <h1>{t('room.notFound')}</h1>
           <div className="marquee-rule" aria-hidden="true" />
         </header>
-        <p className="hint">The link may have expired. Ask the host for a new one.</p>
+        <p className="hint">{t('room.notFoundHint')}</p>
       </main>
     )
   }
@@ -276,8 +277,8 @@ export function Room({ token }: { token: string }) {
     return (
       <main className="page page--gate">
         <div className="ticket">
-          <p className="eyebrow">Your ticket to</p>
-          <h1 className="ticket-title">{info?.media?.title ?? 'the show'}</h1>
+          <p className="eyebrow">{t('room.ticketTo')}</p>
+          <h1 className="ticket-title">{info?.media?.title ?? t('room.theShow')}</h1>
           <div className="ticket-rule" aria-hidden="true" />
           <form
             className="name-form"
@@ -289,28 +290,28 @@ export function Room({ token }: { token: string }) {
               setName(trimmed)
             }}
           >
-            <input value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Your name" aria-label="Your name" autoFocus />
-            <button type="submit" className="btn-primary">Join</button>
+            <input value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder={t('room.yourName')} aria-label={t('room.yourName')} autoFocus />
+            <button type="submit" className="btn-primary">{t('common.join')}</button>
           </form>
         </div>
       </main>
     )
   }
 
-  if (!info) return <main className="page"><p className="loading">Warming up the projector…</p></main>
+  if (!info) return <main className="page"><p className="loading">{t('library.loading')}</p></main>
 
   if (errorLog) {
     const retry = async () => {
       setWsError(null)
-      await fetch(`/api/rooms/${token}/retry`, { method: 'POST' })
+      await retryRoom(token)
       location.reload()
     }
     return (
       <main className="page">
-        <h1>Couldn't prepare the room</h1>
+        <h1>{t('room.prepareError')}</h1>
         <pre className="error-log">{errorLog.join('\n')}</pre>
-        <button className="btn-primary" onClick={retry}>Retry</button>
-        {isHost && <button className="btn-head" onClick={() => setShowPicker(true)}>🎬 Change movie</button>}
+        <button className="btn-primary" onClick={retry}>{t('common.retry')}</button>
+        {isHost && <button className="btn-head" onClick={() => setShowPicker(true)}>🎬 {t('movie.change')}</button>}
         {showPicker && (
           <MediaPicker token={token} currentItemId={info.media?.itemId ?? null}
             by={name} onClose={() => setShowPicker(false)} />
@@ -324,37 +325,37 @@ export function Room({ token }: { token: string }) {
       {tunnelDown && (
         <div className="banner">
           <span className="banner-dot" aria-hidden="true" />
-          Tunnel down, relaunching…
+          {t('room.tunnelDown')}
         </div>
       )}
       <div className="room-head">
         <div className="room-head-titles">
-          <h1>{info.media ? info.media.title : 'Room without a movie'}</h1>
+          <h1>{info.media ? info.media.title : t('room.noMovie')}</h1>
         </div>
         <div className="room-head-actions">
           {shareUrl && (
             <button type="button" className="btn-head" onClick={() => void copyLink()}
-              title={`Copy the room's public link (${shareUrl})`}>
-              {copied === 'ok' ? <CheckIcon /> : <LinkIcon />} {copied === 'ok' ? 'Copied!' : 'Copy link'}
+              title={t('room.copyLinkTitle', { url: shareUrl })}>
+              {copied === 'ok' ? <CheckIcon /> : <LinkIcon />} {copied === 'ok' ? t('common.copied') : t('common.copyLink')}
             </button>
           )}
           {info.media?.meta && (
-            <button type="button" className="btn-head" onClick={() => setShowMeta(true)} title="Movie info">
+            <button type="button" className="btn-head" onClick={() => setShowMeta(true)} title={t('room.movieInfo')}>
               <InfoIcon /> Info
             </button>
           )}
           {isHost && (
             <button type="button" className="btn-head" onClick={() => setShowPicker(true)}
-              title={info.media ? "Change the room's movie" : "Pick the room's movie"}>
-              🎬 {info.media ? 'Change movie' : 'Pick movie'}
+              title={info.media ? t('room.changeMovieTitle') : t('room.pickMovieTitle')}>
+              🎬 {info.media ? t('movie.change') : t('movie.pick')}
             </button>
           )}
         </div>
       </div>
       {copied === 'fail' && shareUrl && (
         <p className="share-fallback">
-          <span>Couldn't copy automatically. Copy it by hand:</span>
-          <input readOnly autoFocus value={shareUrl} aria-label="Room public link"
+          <span>{t('room.copyFailed')}</span>
+          <input readOnly autoFocus value={shareUrl} aria-label={t('room.publicLinkLabel')}
             onFocus={e => e.currentTarget.select()} />
         </p>
       )}
@@ -377,11 +378,11 @@ export function Room({ token }: { token: string }) {
             // The chat stays mounted on the right: people come in, enter their
             // name and chat while the host chooses.
             <div className="stage-waiting">
-              <p className="eyebrow">No movie yet</p>
-              <h2>{isHost ? "Pick what you'll watch" : 'The host is picking the movie'}</h2>
+              <p className="eyebrow">{t('room.noMovieYet')}</p>
+              <h2>{isHost ? t('room.pickWhatYouWatch') : t('room.hostPicking')}</h2>
               <p className="hint">{isHost
-                ? 'Meanwhile you can copy the link and pass it around: the room already exists.'
-                : 'You can start chatting; the video will show up on its own.'}</p>
+                ? t('room.hostWaitingHint')
+                : t('room.guestWaitingHint')}</p>
             </div>
           )}
         </div>

@@ -2,6 +2,12 @@
 // server's config and never reaches the client. Any failure yields null (metadata
 // never blocks room creation).
 
+import type { Lang } from '../i18n.js'
+
+// The metadata is shared by the whole room, so it is fetched in the language of
+// whoever picks the movie: their client's accept-language travels here.
+const TMDB_LANG: Record<Lang, string> = { en: 'en-US', es: 'es-ES' }
+
 export interface RoomMeta {
   title: string
   year: number | null
@@ -52,12 +58,12 @@ export function displayTitle(meta: RoomMeta | null, fallback: string): string {
 }
 
 export function makeTmdbLookup(apiKey: string, fetchImpl: typeof fetch = fetch) {
-  return async (cleanTitle: string): Promise<RoomMeta | null> => {
+  return async (cleanTitle: string, lang: Lang = 'en'): Promise<RoomMeta | null> => {
     try {
       const { query, year, episode } = parseTitleYear(cleanTitle)
       if (!query) return null
       const kind = episode ? 'tv' : 'movie'
-      const params = new URLSearchParams({ api_key: apiKey, query, language: 'en-US' })
+      const params = new URLSearchParams({ api_key: apiKey, query, language: TMDB_LANG[lang] })
       if (year && !episode) params.set('primary_release_year', String(year))
       const res = await fetchImpl(`https://api.themoviedb.org/3/search/${kind}?${params}`, { signal: AbortSignal.timeout(6000) })
       if (!res.ok) return null

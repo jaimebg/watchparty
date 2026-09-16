@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { searchGifs } from '../api'
+import { t } from '../i18n'
 import type { GifResult } from '../types'
 
 const DEBOUNCE_MS = 300
@@ -35,10 +36,10 @@ export function GifPicker({
   return (
     <div className="gif-picker">
       <div className="gif-picker-header">
-        <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search GIFs…" aria-label="Search GIFs" />
-        <button type="button" aria-label="Close GIF picker" onClick={onClose}>✕</button>
+        <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder={t('gif.searchPlaceholder')} aria-label={t('gif.searchLabel')} />
+        <button type="button" aria-label={t('gif.closePicker')} onClick={onClose}>✕</button>
       </div>
-      {loading && <p className="gif-picker-status">Searching…</p>}
+      {loading && <p className="gif-picker-status">{t('gif.searching')}</p>}
       <div className="gif-grid">
         {results.map(g => (
           <img key={g.id} src={g.previewUrl} alt={g.title} onClick={() => onPick(g.url)} />

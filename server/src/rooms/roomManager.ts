@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { Readable } from 'node:stream'
 import { cacheDir } from '../config.js'
+import type { Lang } from '../i18n.js'
 import type { LibraryItem } from '../library/scanner.js'
 import { probeFile, extractKeyframes, type MediaInfo } from '../media/probe.js'
 import { planSegments, type Segment } from '../media/planner.js'
@@ -99,15 +100,16 @@ interface Deps {
   // the decision has to live in the same place as the planning.
   createSession: (item: LibraryItem, info: MediaInfo, segments: Segment[], roomDir: string, mode: 'copy' | 'transcode') => SessionLike
   // External metadata (TMDB); absent means no metadata. Never throws (the lookup
-  // catches its own errors and returns null).
-  lookupMeta?: (cleanTitle: string) => Promise<RoomMeta | null>
+  // catches its own errors and returns null). `lang` is the language of whoever
+  // picked the movie, because its result is shared by the whole room.
+  lookupMeta?: (cleanTitle: string, lang: Lang) => Promise<RoomMeta | null>
 }
 
 export class RoomManager {
   private rooms = new Map<string, Room>()
   constructor(private deps: Deps) {}
 
-  async create(item?: LibraryItem): Promise<Room> {
+  async create(item?: LibraryItem, lang: Lang = 'en'): Promise<Room> {
     const token = randomBytes(16).toString('base64url')
     const dir = join(cacheDir(), token)
     mkdirSync(dir, { recursive: true })
@@ -120,7 +122,7 @@ export class RoomManager {
       // A phantom room with media set to null would be worse than none: the
       // host thought they were creating a room WITH a movie, and the link would
       // say nothing about it.
-      try { await this.setMedia(token, item) } catch (e) { await this.close(token); throw e }
+      try { await this.setMedia(token, item, null, lang) } catch (e) { await this.close(token); throw e }
     }
     return room
   }
@@ -132,7 +134,7 @@ export class RoomManager {
    * All the work that can fail, before touching the room: if the file is
    * unreadable or ffprobe chokes, the previous movie keeps playing.
    */
-  private async prepareMedia(item: LibraryItem, dir: string, epoch: number): Promise<PreparedMedia> {
+  private async prepareMedia(item: LibraryItem, dir: string, epoch: number, lang: Lang): Promise<PreparedMedia> {
     mkdirSync(dir, { recursive: true })
     const info = await probeFile(item.path)
     const mode = pickMode(info)
@@ -147,14 +149,14 @@ export class RoomManager {
     for (const s of subtitles) {
       await extractSubtitle(item.path, info, item.srtFiles, s.id, join(dir, `sub_${s.id}.vtt`)).catch(() => {})
     }
-    const meta = this.deps.lookupMeta ? await this.deps.lookupMeta(item.title) : null
+    const meta = this.deps.lookupMeta ? await this.deps.lookupMeta(item.title, lang) : null
     // Audio tracks with no declared language: inferred from the file name, or
     // from the original language (TMDB) when there is only one track.
     info.audio = enrichAudioLangs(info.audio, basename(item.path), meta?.originalLang ?? null)
     return { epoch, item, info, segments, subtitles, meta, dir, mode }
   }
 
-  async setMedia(token: string, item: LibraryItem, by: string | null = null): Promise<RoomMedia> {
+  async setMedia(token: string, item: LibraryItem, by: string | null = null, lang: Lang = 'en'): Promise<RoomMedia> {
     const room = this.rooms.get(token)
     if (!room) throw new Error(`Unknown room: ${token}`)
     if (room.busy) throw new RoomBusyError()
@@ -167,7 +169,7 @@ export class RoomManager {
     const dir = join(room.dir, `e${epoch}`)
     let prepared: PreparedMedia
     try {
-      prepared = await this.prepareMedia(item, dir, epoch)
+      prepared = await this.prepareMedia(item, dir, epoch, lang)
     } catch (e) {
       try { rmSync(dir, { recursive: true, force: true }) } catch { /* never came into existence */ }
       room.busy = false

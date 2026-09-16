@@ -3,6 +3,7 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, PlaybackState, RoomMediaInfo } from '../types'
 import { bufferedAhead, computeCorrection, targetPosition } from '../sync/driftControl'
 import { clampPosition, formatClock, isTypingTarget, MAX_VOLUME, parseStoredVolume, positionGradient, spaceBelongsTo, volumeGradient } from './format'
+import { t } from '../i18n'
 import { streamUrl } from './streamUrl'
 
 export interface LastState { state: PlaybackState; serverNow: number; receivedAt: number }
@@ -395,7 +396,7 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
   if (mode === 'unsupported') {
     return (
       <div className="player">
-        <p className="field-error">This browser can't play HLS. Try a recent version of Chrome, Firefox or Safari.</p>
+        <p className="field-error">{t('player.noHls')}</p>
       </div>
     )
   }
@@ -415,19 +416,19 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
         ))}
       </video>
       <div className="controls">
-        <button type="button" className="btn-play" aria-label={paused ? 'Play (space)' : 'Pause (space)'}
-          title={paused ? 'Play (space)' : 'Pause (space)'} onClick={togglePlay}>
+        <button type="button" className="btn-play" aria-label={paused ? t('player.play') : t('player.pause')}
+          title={paused ? t('player.play') : t('player.pause')} onClick={togglePlay}>
           {paused ? <PlayIcon /> : <PauseIcon />}
         </button>
         <div className="volume-group">
-          <button type="button" className="btn-mute" aria-label={muted ? 'Unmute' : 'Mute'}
-            title={muted ? 'Unmute' : 'Mute'} onClick={() => setMuted(m => !m)}>
+          <button type="button" className="btn-mute" aria-label={muted ? t('player.unmute') : t('player.mute')}
+            title={muted ? t('player.unmute') : t('player.mute')} onClick={() => setMuted(m => !m)}>
             {muted || volume === 0 ? <MutedIcon /> : <VolumeIcon />}
           </button>
           <input className="seek volume" type="range" min={0} max={MAX_VOLUME} step={0.01}
-            aria-label="Volume"
+            aria-label={t('player.volume')}
             aria-valuetext={`${Math.round((muted ? 0 : volume) * 100)}%`}
-            title={`Volume ${Math.round((muted ? 0 : volume) * 100)}%`}
+            title={t('player.volumePercent', { percent: Math.round((muted ? 0 : volume) * 100) })}
             style={{ background: volumeGradient(muted ? 0 : volume) }}
             value={muted ? 0 : volume}
             onChange={e => { setVolume(Number(e.target.value)); if (muted) setMuted(false) }} />
@@ -437,8 +438,8 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
         <input className="seek position" type="range" step={1}
           min={0} max={Math.max(1, Math.round(media.durationSec))}
           disabled={media.durationSec <= 0}
-          aria-label="Position in movie"
-          aria-valuetext={`${formatClock(shownPosition)} of ${formatClock(media.durationSec)}`}
+          aria-label={t('player.position')}
+          aria-valuetext={t('player.positionOf', { position: formatClock(shownPosition), duration: formatClock(media.durationSec) })}
           style={{ background: positionGradient(shownPosition, media.durationSec) }}
           value={Math.round(shownPosition)}
           onPointerDown={() => { draggingRef.current = true; committedRef.current = false; pointerDownRef.current = true; armDragWatchdog() }}
@@ -467,22 +468,22 @@ export function Player({ token, media, streamBase, send, lastState, welcomeCount
           // If focus leaves mid-press (rare, but possible) no keyup reaches this
           // input either: same reason as pointercancel.
           onBlur={() => { draggingRef.current = false; pointerDownRef.current = false; disarmDragWatchdog() }} />
-        <span className="time-label" title={`Total duration ${formatClock(media.durationSec)}`}>−{formatClock(remaining)}</span>
+        <span className="time-label" title={t('player.totalDuration', { duration: formatClock(media.durationSec) })}>−{formatClock(remaining)}</span>
         {/* With a single track the audio is muxed into the video segment itself
             and hls.js announces none: there is nothing to choose between. */}
         {mode === 'hls' && audioTracks.length > 1 && (
-          <select aria-label="Audio track" value={audioTrack}
+          <select aria-label={t('player.audioTrack')} value={audioTrack}
             onChange={e => { if (hlsRef.current) hlsRef.current.audioTrack = Number(e.target.value) }}>
             {audioTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         )}
-        <select aria-label="Subtitles" value={sub} onChange={e => setSub(Number(e.target.value))}>
-          <option value={-1}>No subtitles</option>
+        <select aria-label={t('player.subtitles')} value={sub} onChange={e => setSub(Number(e.target.value))}>
+          <option value={-1}>{t('player.noSubtitles')}</option>
           {media.subtitles.map((s, i) => <option key={s.id} value={i}>{s.label}</option>)}
         </select>
         <button type="button" className="btn-fullscreen"
-          aria-label={fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
-          title={fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          aria-label={fullscreen ? t('player.exitFullscreen') : t('player.fullscreen')}
+          title={fullscreen ? t('player.exitFullscreen') : t('player.fullscreen')}
           onClick={onToggleFullscreen}>
           {fullscreen ? <ExitFullscreenIcon /> : <EnterFullscreenIcon />}
         </button>

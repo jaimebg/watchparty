@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { lang, t } from '../i18n'
 import { EMOJI_GROUPS, searchEmojis, type EmojiRow } from './emojiSearch'
 import { MAX_QUICK } from './quickEmojis'
 
@@ -28,7 +29,7 @@ export function EmojiPicker({
   const full = quick.length >= MAX_QUICK
   const shown = catalog === null ? []
     : searching ? searchEmojis(catalog, query)
-    : catalog.filter(r => r[3] === group)
+    : catalog.filter(r => r[4] === group)
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -36,23 +37,23 @@ export function EmojiPicker({
           the mode and there is no preventing it, so it would be a shortcut that
           half works. It closes with the backdrop and with the ✕. */}
       <div className="modal emoji-modal" onClick={e => e.stopPropagation()}>
-        <button className="modal-close" aria-label="Cerrar" onClick={onClose}>✕</button>
+        <button className="modal-close" aria-label={t('common.close')} onClick={onClose}>✕</button>
 
-        <h2 className="emoji-heading">Your quick picks</h2>
+        <h2 className="emoji-heading">{t('emoji.quickPicks')}</h2>
         {quick.length === 0
-          ? <p className="hint">None yet: pick the ones you want below.</p>
+          ? <p className="hint">{t('emoji.noneYet')}</p>
           : <ul className="quick-chips">
               {quick.map(e => (
                 <li key={e}>
                   <span aria-hidden>{e}</span>
-                  <button type="button" aria-label={`Remove `} onClick={() => onRemove(e)}>✕</button>
+                  <button type="button" aria-label={t('emoji.remove', { emoji: e })} onClick={() => onRemove(e)}>✕</button>
                 </li>
               ))}
             </ul>}
-        {full && <p className="hint">Max {MAX_QUICK}: remove one to add another.</p>}
+        {full && <p className="hint">{t('emoji.max', { max: MAX_QUICK })}</p>}
 
         <input className="emoji-search" value={query} onChange={e => setQuery(e.target.value)}
-          placeholder="Search emoji…" aria-label="Search emoji" />
+          placeholder={t('emoji.searchPlaceholder')} aria-label={t('emoji.searchLabel')} />
 
         {!searching && (
           <div className="emoji-tabs" role="tablist">
@@ -66,13 +67,13 @@ export function EmojiPicker({
         )}
 
         {catalog === null ? (
-          <p className="gif-picker-status">Loading emojis…</p>
+          <p className="gif-picker-status">{t('emoji.loading')}</p>
         ) : searching && shown.length === 0 ? (
-          <p className="gif-picker-status">No emoji matches.</p>
+          <p className="gif-picker-status">{t('emoji.noMatch')}</p>
         ) : (
           <div className="emoji-grid">
             {shown.map(r => (
-              <button key={r[0]} type="button" aria-label={r[1]} title={r[1]}
+              <button key={r[0]} type="button" aria-label={lang === 'es' ? r[2] : r[1]} title={lang === 'es' ? r[2] : r[1]}
                 disabled={full || quick.includes(r[0])}
                 onClick={() => onAdd(r[0])}>{r[0]}</button>
             ))}

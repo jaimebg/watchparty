@@ -78,6 +78,7 @@ describe('hub', () => {
     expect(typeof state.serverNow).toBe('number')
     const sys = msgsB.find(m => m.t === 'chat')!
     expect(sys.entry.kind).toBe('system')
+    expect(sys.entry.event).toEqual({ type: 'resumed', name: 'Ana' })
 
     a.ws.send(JSON.stringify({ t: 'chat', text: 'hola' }))
     const chatB = await b.recv()
@@ -131,11 +132,16 @@ describe('hub', () => {
     const overMsgs = [await a.recv(), await a.recv()]
     const overState = overMsgs.find(m => m.t === 'state')!
     expect(overState.state.positionBase).toBeCloseTo(duration)
+    const overChat = overMsgs.find(m => m.t === 'chat')!
+    expect(overChat.entry.event).toMatchObject({ type: 'seek', name: 'Clara' })
+    expect(overChat.entry.event.position).toBeCloseTo(duration)
 
     a.ws.send(JSON.stringify({ t: 'seek', position: -5 }))
     const underMsgs = [await a.recv(), await a.recv()]
     const underState = underMsgs.find(m => m.t === 'state')!
     expect(underState.state.positionBase).toBe(0)
+    const underChat = underMsgs.find(m => m.t === 'chat')!
+    expect(underChat.entry.event).toEqual({ type: 'seek', name: 'Clara', position: 0 })
 
     a.ws.close()
   })
@@ -309,7 +315,7 @@ describe('hub', () => {
     expect(state.state.positionBase).toBe(0)
     const sys = msgs.find(m => m.t === 'chat')!
     expect(sys.entry.kind).toBe('system')
-    expect(sys.entry.text).toContain('Alex')
+    expect(sys.entry.event).toMatchObject({ type: 'nowPlaying', setBy: 'Alex' })
 
     a.ws.close()
   })
@@ -323,7 +329,7 @@ describe('hub', () => {
 
     const msgs = [await a.recv(), await a.recv(), await a.recv()]
     const sys = msgs.find(m => m.t === 'chat')!
-    expect(sys.entry.text).toContain('now playing')
+    expect(sys.entry.event).toEqual({ type: 'nowPlaying', title: expect.any(String), setBy: null })
 
     a.ws.close()
   })

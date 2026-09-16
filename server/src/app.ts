@@ -5,6 +5,7 @@ import cookie from '@fastify/cookie'
 import websocket from '@fastify/websocket'
 import fastifyStatic from '@fastify/static'
 import type { Config } from './config.js'
+import type { Lang } from './i18n.js'
 import type { LibraryItem } from './library/scanner.js'
 import type { RoomManager } from './rooms/roomManager.js'
 import { registerApi } from './http/api.js'
@@ -18,7 +19,7 @@ export interface AppDeps {
   adminToken: string
   tunnel: { url: string | null }
   fetchImpl?: typeof fetch
-  pickFolder?: () => Promise<string | null>
+  pickFolder?: (lang?: Lang) => Promise<string | null>
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {

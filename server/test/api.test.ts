@@ -69,6 +69,17 @@ describe('api', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  it('answers API errors in the language the client advertises', async () => {
+    const missing = '/definitely/does/not/exist/xyz'
+    const en = await app.inject({ method: 'POST', url: '/api/config/folders', payload: { path: missing }, ...admin })
+    expect(en.json().error).toBe(`path not found: ${missing}`)
+    const es = await app.inject({
+      method: 'POST', url: '/api/config/folders', payload: { path: missing },
+      headers: { 'accept-language': 'es-ES,es;q=0.9,en;q=0.8' }, ...admin,
+    })
+    expect(es.json().error).toBe(`la ruta no existe: ${missing}`)
+  })
+
   it('requires admin to add a media folder', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/config/folders', payload: { path: mediaDir } })
     expect(res.statusCode).toBe(401)
@@ -87,6 +98,27 @@ describe('api', () => {
     expect(res.json().media.title).toBe('The Big Movie (2020)')
     expect(res.json().media.meta).toEqual(meta)
     await metaRooms.close(room.token)
+    await metaApp.close()
+  })
+
+  it('looks up TMDB metadata in the language the client advertises', async () => {
+    const langs: string[] = []
+    const metaRooms = new RoomManager({
+      createSession: () => fakeSession,
+      lookupMeta: async (_title: string, lang: string) => { langs.push(lang); return null },
+    })
+    const metaApp = await buildApp({
+      config: { mediaFolders: [mediaDir], klipyApiKey: null, port: 8400, hostName: 'Host', cacheLimitGB: 10 },
+      library: () => scanLibrary([mediaDir]), rooms: metaRooms, adminToken: ADMIN, tunnel: { url: null },
+    })
+    const items = await scanLibrary([mediaDir])
+    const res = await metaApp.inject({
+      method: 'POST', url: '/api/rooms', payload: { itemId: items[0].id },
+      headers: { 'accept-language': 'es-ES,es;q=0.9' }, ...admin,
+    })
+    expect(res.statusCode).toBe(200)
+    expect(langs).toEqual(['es'])
+    await metaRooms.close(res.json().token)
     await metaApp.close()
   })
 
@@ -393,6 +425,14 @@ describe('api', () => {
     const empty = res.json().token
     const status = (await app.inject({ url: '/api/status', ...admin })).json()
     expect(status.rooms.find((r: any) => r.token === empty).title).toBe('No movie')
+    await rooms.close(empty)
+  })
+
+  it('the empty-room placeholder title follows the advertised language', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/rooms', payload: {}, ...admin })
+    const empty = res.json().token
+    const status = (await app.inject({ url: '/api/status', headers: { 'accept-language': 'es' }, ...admin })).json()
+    expect(status.rooms.find((r: any) => r.token === empty).title).toBe('Sin película')
     await rooms.close(empty)
   })
 

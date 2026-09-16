@@ -1,4 +1,4 @@
-// Regenerates web/src/chat/emojiCatalog.ts from emojibase-data (English).
+// Regenerates web/src/chat/emojiCatalog.ts from emojibase-data, English + Spanish.
 //
 //   node web/scripts/gen-emoji-catalog.mjs
 //
@@ -11,22 +11,37 @@ import { fileURLToPath } from 'node:url'
 
 // A pinned version, not `latest`: a regeneration must not change its result on
 // its own between one run and the next.
-const SOURCE = 'https://cdn.jsdelivr.net/npm/emojibase-data@16/en/compact.json'
+const VERSION = '16'
+const source = locale => `https://cdn.jsdelivr.net/npm/emojibase-data@${VERSION}/${locale}/compact.json`
 // Skin-tone and hair modifiers. Not emotes.
 const COMPONENT_GROUP = 2
 
-const res = await fetch(SOURCE)
-if (!res.ok) throw new Error(`${SOURCE} responded ${res.status}`)
-const data = await res.json()
+async function fetchLocale(locale) {
+  const res = await fetch(source(locale))
+  if (!res.ok) throw new Error(`${source(locale)} responded ${res.status}`)
+  return res.json()
+}
 
-const rows = data
+const [english, spanish] = await Promise.all([fetchLocale('en'), fetchLocale('es')])
+const spanishByUnicode = new Map(spanish.map(e => [e.unicode, e]))
+
+// One row per emoji, bilingual: [unicode, labelEn, labelEs, keywords, group].
+// Keywords carry the tags of both languages so a Spanish viewer can search
+// "risa" and an English one "laugh" against the same catalog.
+// The label falls back to the English one for the rare emoji missing from the
+// Spanish dataset.
+const rows = english
   .filter(e => e.group !== undefined && e.group !== COMPONENT_GROUP)
   .sort((a, b) => a.order - b.order)
-  .map(e => [e.unicode, e.label, (e.tags ?? []).join(' '), e.group])
+  .map(e => {
+    const alt = spanishByUnicode.get(e.unicode)
+    const keywords = [...new Set([...(e.tags ?? []), ...(alt?.tags ?? [])])]
+    return [e.unicode, e.label, alt?.label ?? e.label, keywords.join(' '), e.group]
+  })
 
 const out = `// GENERATED — do not edit by hand. Regenerate with:
 //   node web/scripts/gen-emoji-catalog.mjs
-// Source: ${SOURCE}
+// Source: ${source('en')} + ${source('es')}
 import type { EmojiRow } from './emojiSearch'
 
 export const EMOJI_CATALOG: EmojiRow[] = ${JSON.stringify(rows)}

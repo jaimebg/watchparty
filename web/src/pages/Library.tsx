@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { addMediaFolder, bootstrapAdmin, createRoom, getLibrary, getMediaFolders, getStatus, pickMediaFolder, removeMediaFolder } from '../api'
+import { t } from '../i18n'
 import type { LibraryItem } from '../types'
 import { parseRoomToken, roomLink } from './roomToken'
 
@@ -85,31 +86,29 @@ export function Library() {
     const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname)
     const enterRoom = () => {
       const token = parseRoomToken(roomInput)
-      if (!token) { setRoomError("That doesn't look like a room code. Paste the full link or the code after /room/."); return }
+      if (!token) { setRoomError(t('library.badRoomCode')); return }
       location.pathname = `/room/${token}`
     }
     return (
       <main className="page page--gate">
         <header className="masthead">
           <p className="eyebrow">Watchparty</p>
-          <h1>Private screening</h1>
+          <h1>{t('library.privateScreening')}</h1>
           <div className="marquee-rule" aria-hidden="true" />
         </header>
-        <p>To watch the session you need the <strong>room link</strong> the host shares.
-          It ends in <code>/room/…</code>. Ask them for it and open it as is.</p>
+        <p>{t('library.gateA')}<strong>{t('library.gateRoomLink')}</strong>{t('library.gateB')}<code>/room/…</code>{t('library.gateC')}</p>
         <form className="name-form" onSubmit={e => { e.preventDefault(); enterRoom() }}>
           <input
             value={roomInput}
             onChange={e => { setRoomInput(e.target.value); setRoomError(null) }}
-            placeholder="Room code or link"
-            aria-label="Room code or link"
+            placeholder={t('library.roomCode')}
+            aria-label={t('library.roomCode')}
           />
-          <button type="submit" className="btn-primary">Join</button>
+          <button type="submit" className="btn-primary">{t('common.join')}</button>
         </form>
         {roomError && <p className="field-error">{roomError}</p>}
         {isLocal && (
-          <p className="hint">Are you the host? Enter through the <code>?key=…</code> URL printed by the
-            terminal when the server starts (it opens in your browser on its own).</p>
+          <p className="hint">{t('library.hostHintA')}<code>?key=…</code>{t('library.hostHintB')}</p>
         )}
       </main>
     )
@@ -117,10 +116,10 @@ export function Library() {
 
   if (error) return (
     <main className="page">
-      <p>Couldn't load the library. ({error})</p>
+      <p>{t('library.loadError', { error })}</p>
     </main>
   )
-  if (!items) return <main className="page"><p className="loading">Warming up the projector…</p></main>
+  if (!items) return <main className="page"><p className="loading">{t('library.loading')}</p></main>
 
   // Fixed over the whole page, so it mounts the same in both marquee views
   // (with titles and without) wherever it lands in the tree.
@@ -128,21 +127,20 @@ export function Library() {
     <div className="busy-overlay" role="status" aria-live="polite">
       <span className="spinner spinner--lg" aria-hidden="true" />
       <p className="busy-title">
-        {starting.title ? `Setting up the room for “${starting.title}”` : 'Setting up the room…'}
+        {starting.title ? t('library.settingUpFor', { title: starting.title }) : t('library.settingUp')}
       </p>
       {starting.title && (
-        <p className="hint">We probe the video and prepare the subtitles: with
-          long movies this can take a few seconds.</p>
+        <p className="hint">{t('library.settingUpHint')}</p>
       )}
-      <p className="hint">The link is copied to your clipboard as soon as it's ready.</p>
+      <p className="hint">{t('library.linkCopiedHint')}</p>
     </div>
   )
 
   const emptyRoomButton = (
     <button type="button" className="btn-primary" disabled={starting !== null} onClick={() => void start()}>
       {starting && starting.id === null
-        ? <><span className="spinner" aria-hidden="true" /> Setting up the room…</>
-        : '🎬 Create empty room'}
+        ? <><span className="spinner" aria-hidden="true" /> {t('library.settingUp')}</>
+        : t('library.createEmptyRoom')}
     </button>
   )
 
@@ -154,25 +152,25 @@ export function Library() {
             <li key={f}>
               <code>{f}</code>
               <button type="button" className="btn-small" disabled={busyFolders}
-                onClick={() => void folderOp(() => removeMediaFolder(f))}>Remove</button>
+                onClick={() => void folderOp(() => removeMediaFolder(f))}>{t('common.remove')}</button>
             </li>
           ))}
         </ul>
       )}
       <button type="button" className="btn-primary" onClick={() => void folderOp(pickMediaFolder)} disabled={busyFolders}>
-        {busyFolders ? 'Waiting…' : '📁 Add folder…'}
+        {busyFolders ? t('library.waiting') : t('library.addFolderBusy')}
       </button>
-      <p className="hint">Your system's dialog opens (check Finder/File Explorer if you don't see it).</p>
+      <p className="hint">{t('library.folderDialogHint')}</p>
       <details>
-        <summary>Or type the path by hand</summary>
+        <summary>{t('library.typePath')}</summary>
         <form className="name-form" onSubmit={e => { e.preventDefault(); submitFolder() }}>
           <input
             value={folderPath}
             onChange={e => setFolderPath(e.target.value)}
-            placeholder="/absolute/path/to/your/videos"
-            aria-label="Media folder path"
+            placeholder={t('library.folderPathPlaceholder')}
+            aria-label={t('library.folderPathLabel')}
           />
-          <button type="submit" disabled={busyFolders}>{busyFolders ? 'Adding…' : 'Add folder'}</button>
+          <button type="submit" disabled={busyFolders}>{busyFolders ? t('library.adding') : t('library.addFolder')}</button>
         </form>
       </details>
       {folderError && <p className="field-error">{folderError}</p>}
@@ -184,14 +182,14 @@ export function Library() {
       <main className="page">
         <header className="masthead">
           <p className="eyebrow">Watchparty</p>
-          <h1>The marquee</h1>
+          <h1>{t('library.marquee')}</h1>
           <div className="marquee-rule" aria-hidden="true" />
         </header>
         <p>{folders.length === 0
-          ? 'Nothing on the marquee yet: no media folders configured.'
-          : 'The configured folders contain no videos (MKV, MP4, AVI, M4V, WebM).'}</p>
+          ? t('library.emptyNoFolders')
+          : t('library.emptyNoVideos')}</p>
         <p>{emptyRoomButton}</p>
-        <h2>{folders.length === 0 ? 'Add your first media folder' : 'Media folders'}</h2>
+        <h2>{folders.length === 0 ? t('library.addFirstFolder') : t('library.mediaFolders')}</h2>
         {foldersSection}
         {startingOverlay}
       </main>
@@ -205,12 +203,12 @@ export function Library() {
     <main className="page">
       <header className="masthead">
         <p className="eyebrow">Watchparty</p>
-          <h1>The marquee</h1>
+          <h1>{t('library.marquee')}</h1>
           <div className="marquee-rule" aria-hidden="true" />
         </header>
         <p className="hint">
           {emptyRoomButton}
-          {' '}Share the link now and pick the movie inside the room.
+          {' '}{t('library.shareNow')}
       </p>
       {groups.map(([path, name]) => (
         <section key={path} className="bill">
@@ -221,10 +219,10 @@ export function Library() {
                 <span className="film-title">{i.title}</span>
                 {starting?.id === i.id ? (
                   <span className="film-go film-go--busy" aria-hidden="true">
-                    <span className="spinner" /> Setting up…
+                    <span className="spinner" /> {t('library.settingUpShort')}
                   </span>
                 ) : (
-                  <span className="film-go" aria-hidden="true">Create room →</span>
+                  <span className="film-go" aria-hidden="true">{t('library.createRoom')}</span>
                 )}
               </button>
             </li>
@@ -232,7 +230,7 @@ export function Library() {
         </section>
       ))}
       <details className="folders-manage">
-        <summary>⚙️ Media folders ({folders.length})</summary>
+        <summary>{t('library.mediaFoldersCount', { count: folders.length })}</summary>
         {foldersSection}
       </details>
       {startingOverlay}

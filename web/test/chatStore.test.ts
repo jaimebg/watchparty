@@ -23,7 +23,7 @@ describe('chatReducer', () => {
     let s: ChatState = { ...initialChat, entries: Array.from({ length: 500 }, (_, i) => entry(String(i))) }
     s = chatReducer(s, { t: 'chat', entry: entry('newest') } as any)
     expect(s.entries).toHaveLength(500)
-    expect(s.entries.at(-1)!.text).toBe('newest')
+    expect(s.entries.at(-1)).toMatchObject({ kind: 'text', text: 'newest' })
   })
   it('buffering adds and removes names', () => {
     let s = chatReducer(initialChat, { t: 'buffering', name: 'Ana', value: true } as any)

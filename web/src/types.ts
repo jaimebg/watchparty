@@ -26,7 +26,21 @@ export interface PlaybackState {
 
 // server/src/ws/messages.ts
 export interface Participant { id: string; name: string; color: string; active: boolean }
-export interface ChatEntry { id: string; from: Participant; kind: 'text' | 'gif' | 'system'; text: string; gifUrl?: string; at: number }
+
+// What a system message means, not what it says: each client renders it in its
+// own language (the server broadcasts one entry to the whole room).
+export type SystemEvent =
+  | { type: 'join'; name: string }
+  | { type: 'left'; name: string }
+  | { type: 'resumed'; name: string }
+  | { type: 'paused'; name: string }
+  | { type: 'seek'; name: string; position: number }
+  | { type: 'nowPlaying'; title: string; setBy: string | null }
+
+export type ChatEntry =
+  | { id: string; from: Participant; kind: 'text'; text: string; at: number }
+  | { id: string; from: Participant; kind: 'gif'; gifUrl: string; at: number }
+  | { id: string; kind: 'system'; event: SystemEvent; at: number }
 
 export type ClientMsg =
   | { t: 'join'; name: string }

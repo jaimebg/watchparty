@@ -7,17 +7,10 @@ import { apply } from '../rooms/syncState.js'
 import * as stall from '../rooms/stallControl.js'
 import { segmentForTime } from '../media/planner.js'
 import { displayTitle } from '../media/tmdb.js'
-import type { ChatEntry, ClientMsg, Participant, ServerMsg } from './messages.js'
+import type { ChatEntry, ClientMsg, Participant, ServerMsg, SystemEvent } from './messages.js'
 
 const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c']
 const conns = new Map<Room, Map<WebSocket, Participant>>()
-
-export function formatTime(sec: number): string {
-  const clamped = Math.max(0, sec)
-  const h = Math.floor(clamped / 3600), m = Math.floor((clamped % 3600) / 60), s = Math.floor(clamped % 60)
-  const mm = String(m).padStart(2, '0'), ss = String(s).padStart(2, '0')
-  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`
-}
 
 function send(ws: WebSocket, m: ServerMsg): void { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 
@@ -27,8 +20,8 @@ function broadcast(room: Room, m: ServerMsg): void {
   for (const ws of peers.keys()) send(ws, m)
 }
 
-function system(room: Room, text: string): void {
-  const entry: ChatEntry = { id: randomBytes(6).toString('hex'), from: { id: 'sys', name: 'system', color: '#888', active: true }, kind: 'system', text, at: Date.now() }
+function system(room: Room, event: SystemEvent): void {
+  const entry: ChatEntry = { id: randomBytes(6).toString('hex'), kind: 'system', event, at: Date.now() }
   room.chat.push(entry)
   room.chat = room.chat.slice(-500)
   broadcast(room, { t: 'chat', entry })
@@ -62,7 +55,7 @@ function onMediaChanged(room: Room, media: RoomMedia): void {
   broadcast(room, { t: 'media', epoch: media.epoch })
   broadcast(room, { t: 'state', state: room.state, serverNow: now })
   const title = displayTitle(media.meta, media.item.title)
-  system(room, media.setBy ? `${media.setBy} put on “${title}”` : `now playing “${title}”`)
+  system(room, { type: 'nowPlaying', title, setBy: media.setBy })
 }
 
 export function registerHub(app: FastifyInstance, deps: AppDeps): void {
@@ -100,7 +93,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
           peers.set(socket, me)
           send(socket, { t: 'welcome', self: me, participants: [...peers.values()], state: room.state, serverNow: now, history: room.chat, epoch: room.media?.epoch ?? null })
           broadcast(room, { t: 'presence', participants: [...peers.values()] })
-          system(room, `${me.name} joined`)
+          system(room, { type: 'join', name: me.name })
           return
         }
         if (!me) return
@@ -112,7 +105,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
             if (!room.media) break
             room.state = apply(room.state, { type: msg.t, at: now })
             broadcast(room, { t: 'state', state: room.state, serverNow: now })
-            system(room, msg.t === 'play' ? `${me.name} resumed` : `${me.name} paused`)
+            system(room, { type: msg.t === 'play' ? 'resumed' : 'paused', name: me.name })
             if (msg.t === 'play') stall.refresh(room, now)
             break
           }
@@ -123,7 +116,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
             room.state = apply(room.state, { type: 'seek', position, at: now })
             room.media.session.seekTo(segmentForTime(room.media.segments, position))
             broadcast(room, { t: 'state', state: room.state, serverNow: now })
-            system(room, `${me.name} jumped to ${formatTime(position)}`)
+            system(room, { type: 'seek', name: me.name, position })
             stall.refresh(room, now)
             break
           }
@@ -137,7 +130,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
           }
           case 'gif': {
             if (typeof msg.url !== 'string') return
-            const entry: ChatEntry = { id: randomBytes(6).toString('hex'), from: me, at: now, kind: 'gif', text: '', gifUrl: msg.url }
+            const entry: ChatEntry = { id: randomBytes(6).toString('hex'), from: me, at: now, kind: 'gif', gifUrl: msg.url }
             room.chat.push(entry)
             room.chat = room.chat.slice(-500)
             broadcast(room, { t: 'chat', entry })
@@ -175,7 +168,7 @@ export function registerHub(app: FastifyInstance, deps: AppDeps): void {
       if (bufferingActive) broadcast(room, { t: 'buffering', name: me.name, value: false })
       stall.forget(room, socket, Date.now())
       broadcast(room, { t: 'presence', participants: [...peers.values()] })
-      system(room, `${me.name} left`)
+      system(room, { type: 'left', name: me.name })
     })
   })
 }

@@ -1,8 +1,9 @@
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { AppDeps } from '../app.js'
 import { saveConfig } from '../config.js'
+import { langFromAcceptLanguage, serverMessage, type Lang } from '../i18n.js'
 import { variantCount } from '../media/hlsLayout.js'
 import { buildMasterPlaylist, buildMediaPlaylist } from '../media/planner.js'
 import { displayTitle } from '../media/tmdb.js'
@@ -26,15 +27,19 @@ const EPOCH_RE = /^e([1-9]\d*)$/
 export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   const requireAdmin = makeRequireAdmin(deps.adminToken)
   const lastRetryAt = new Map<string, number>()
+  // Every user-facing string is resolved per request from the language the
+  // client advertises, so two viewers of the same room can read errors in
+  // different languages.
+  const langOf = (req: FastifyRequest): Lang => langFromAcceptLanguage(req.headers['accept-language'])
 
   app.get('/api/library', { preHandler: requireAdmin }, async () => deps.library())
   app.post('/api/library/rescan', { preHandler: requireAdmin }, async () => deps.library())
 
-  const addFolder = (path: string | undefined, reply: FastifyReply) => {
-    if (typeof path !== 'string' || !path.trim()) return reply.code(400).send({ error: 'path required' })
+  const addFolder = (path: string | undefined, reply: FastifyReply, lang: Lang) => {
+    if (typeof path !== 'string' || !path.trim()) return reply.code(400).send({ error: serverMessage(lang, 'error.pathRequired') })
     let stat
-    try { stat = statSync(path) } catch { return reply.code(400).send({ error: `path not found: ${path}` }) }
-    if (!stat.isDirectory()) return reply.code(400).send({ error: `not a folder: ${path}` })
+    try { stat = statSync(path) } catch { return reply.code(400).send({ error: serverMessage(lang, 'error.pathNotFound', { path }) }) }
+    if (!stat.isDirectory()) return reply.code(400).send({ error: serverMessage(lang, 'error.notAFolder', { path }) })
     if (!deps.config.mediaFolders.includes(path)) {
       deps.config.mediaFolders.push(path)
       saveConfig(deps.config)
@@ -46,7 +51,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
 
   app.post('/api/config/folders', { preHandler: requireAdmin }, async (req, reply) => {
     const { path } = (req.body ?? {}) as { path?: string }
-    return addFolder(path, reply)
+    return addFolder(path, reply, langOf(req))
   })
 
   // Idempotent: removing a folder that is already gone still returns the library.
@@ -58,24 +63,28 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
     return deps.library()
   })
 
-  app.post('/api/config/pick-folder', { preHandler: requireAdmin }, async (_req, reply) => {
-    const picked = await (deps.pickFolder ?? pickFolderNative)()
+  app.post('/api/config/pick-folder', { preHandler: requireAdmin }, async (req, reply) => {
+    const lang = langOf(req)
+    const picked = await (deps.pickFolder ?? pickFolderNative)(lang)
     if (!picked) return { cancelled: true }
-    return addFolder(picked, reply)
+    return addFolder(picked, reply, lang)
   })
 
-  app.get('/api/status', { preHandler: requireAdmin }, async () => ({
-    tunnelUrl: deps.tunnel.url,
-    rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.media?.item.title ?? 'No movie' })),
-  }))
+  app.get('/api/status', { preHandler: requireAdmin }, async (req) => {
+    const noMovie = serverMessage(langOf(req), 'status.noMovie')
+    return {
+      tunnelUrl: deps.tunnel.url,
+      rooms: deps.rooms.all().map(r => ({ token: r.token, title: r.media?.item.title ?? noMovie })),
+    }
+  })
 
   // Resolves the item and checks it sits inside the media folders. Sends the
   // error response and returns null; the caller does `return reply`.
-  const resolveItem = async (itemId: string | undefined, reply: FastifyReply) => {
+  const resolveItem = async (itemId: string | undefined, reply: FastifyReply, lang: Lang) => {
     const item = (await deps.library()).find(i => i.id === itemId)
-    if (!item) { reply.code(404).send({ error: 'item not found' }); return null }
+    if (!item) { reply.code(404).send({ error: serverMessage(lang, 'error.itemNotFound') }); return null }
     if (!deps.config.mediaFolders.some(f => isPathInside(f, item.path))) {
-      reply.code(400).send({ error: 'path outside media folders' })
+      reply.code(400).send({ error: serverMessage(lang, 'error.pathOutside') })
       return null
     }
     return item
@@ -83,29 +92,31 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
 
   app.post('/api/rooms', { preHandler: requireAdmin }, async (req, reply) => {
     const { itemId } = (req.body ?? {}) as { itemId?: string }
+    const lang = langOf(req)
     // No itemId means an empty room: the host hands out the link and picks
     // later, with people already inside chatting.
     if (itemId === undefined) return { token: (await deps.rooms.create()).token }
-    const item = await resolveItem(itemId, reply)
+    const item = await resolveItem(itemId, reply, lang)
     if (!item) return reply
-    return { token: (await deps.rooms.create(item)).token }
+    return { token: (await deps.rooms.create(item, lang)).token }
   })
 
   app.post('/api/rooms/:token/media', { preHandler: requireAdmin }, async (req, reply) => {
     const { token } = req.params as { token: string }
     const room = deps.rooms.get(token)
-    if (!room) return reply.code(404).send({ error: 'room not found' })
+    if (!room) return reply.code(404).send({ error: serverMessage(langOf(req), 'error.roomNotFound') })
     const { itemId, by } = (req.body ?? {}) as { itemId?: string; by?: string }
-    const item = await resolveItem(itemId, reply)
+    const lang = langOf(req)
+    const item = await resolveItem(itemId, reply, lang)
     if (!item) return reply
     try {
-      const media = await deps.rooms.setMedia(token, item, typeof by === 'string' ? by : null)
+      const media = await deps.rooms.setMedia(token, item, typeof by === 'string' ? by : null, lang)
       // The previous movie's retry cooldown must not apply to the new one:
       // these are different ffmpeg runs.
       lastRetryAt.delete(token)
       return { epoch: media.epoch }
     } catch (e) {
-      if (e instanceof RoomBusyError) return reply.code(409).send({ error: 'room busy' })
+      if (e instanceof RoomBusyError) return reply.code(409).send({ error: serverMessage(lang, 'error.roomBusy') })
       throw e
     }
   })
@@ -117,7 +128,7 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
 
   app.get('/api/rooms/:token', async (req, reply) => {
     const room = deps.rooms.get((req.params as any).token)
-    if (!room) return reply.code(404).send({ error: 'room not found' })
+    if (!room) return reply.code(404).send({ error: serverMessage(langOf(req), 'error.roomNotFound') })
     const media = room.media
     // '' means same origin (see streamBaseUrl in config.ts). It sits at the top
     // level rather than inside `media` because it describes where the server
@@ -150,16 +161,17 @@ export function registerApi(app: FastifyInstance, deps: AppDeps): void {
   app.post('/api/rooms/:token/retry', async (req, reply) => {
     const room = deps.rooms.get((req.params as any).token)
     if (!room) return reply.code(404).send()
+    const lang = langOf(req)
     // With no movie there is no ffmpeg run to retry.
-    if (!room.media) return reply.code(409).send({ error: 'room has no media' })
+    if (!room.media) return reply.code(409).send({ error: serverMessage(lang, 'error.roomNoMedia') })
     const now = Date.now()
     const last = lastRetryAt.get(room.token)
-    if (last !== undefined && now - last < RETRY_COOLDOWN_MS) return reply.code(429).send({ error: 'retry cooldown' })
+    if (last !== undefined && now - last < RETRY_COOLDOWN_MS) return reply.code(429).send({ error: serverMessage(lang, 'error.retryCooldown') })
     lastRetryAt.set(room.token, now)
     try {
       await deps.rooms.retry(room.token)
     } catch (e) {
-      if (e instanceof RoomBusyError) return reply.code(409).send({ error: 'room busy' })
+      if (e instanceof RoomBusyError) return reply.code(409).send({ error: serverMessage(lang, 'error.roomBusy') })
       throw e
     }
     return { ok: true }

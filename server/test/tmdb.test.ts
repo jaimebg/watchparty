@@ -64,4 +64,16 @@ describe('makeTmdbLookup', () => {
     expect(await makeTmdbLookup('KEY', fetchStub)('Serie S01E02')).toBeNull()
     expect(calledUrl).toContain('/search/tv?')
   })
+
+  it('asks TMDB for metadata in the requested language, English by default', async () => {
+    let calledUrl = ''
+    const fetchStub = (async (url: string | URL | Request) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ results: [{ title: 'Casa', release_date: '2023-01-01' }] }))
+    }) as typeof fetch
+    await makeTmdbLookup('KEY', fetchStub)('Casa 2023', 'es')
+    expect(calledUrl).toContain('language=es-ES')
+    await makeTmdbLookup('KEY', fetchStub)('Casa 2023')
+    expect(calledUrl).toContain('language=en-US')
+  })
 })
